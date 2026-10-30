@@ -4,10 +4,12 @@
 // Every index and count a call takes, given -1 and the least integer of
 // its type: refused as invalid, never read below an array's start. Where
 // -1 names something (every emitter of GetBounds and BreakRibbons), -2
-// stands in for it.
-// An instance plain and one planned, of an effect with an emitter, a
-// parameter, a gas and a water surface, so each index has something to
-// be past.
+// stands in for it. The calls go to an instance plain and one planned, of
+// an effect with two emitters, a parameter, two gases and two water
+// surfaces, so each index has something to be past. Then every index and
+// count field of an effect def, and the counts of a mesh, grid and layout
+// def, each from a def made with the field valid, set to both: refused as
+// invalid, an effect def's naming the field.
 
 #include "test_harness.h"
 
@@ -20,6 +22,7 @@
 #include "maul-vfx/plan.h"
 #include "maul-vfx/water.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -35,26 +38,42 @@ static void Open(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
-    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
-    mvfxGasDef gas = mvfxDefaultGasDef();
-    gas.size[0] = 4;
-    gas.size[1] = 4;
-    gas.size[2] = 4;
-    gas.cellSize = 0.25f;
-    mvfxWaterDef water = mvfxDefaultWaterDef();
-    water.size[0] = 4;
-    water.size[1] = 4;
-    water.cellSize = 0.25f;
+    // Gas 1 is a liquid and water 1 shallow, which the liquid's and the
+    // water's speeds and counts need before they read their tick.
+    mvfxEmitterDef emitters[2] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
+    emitters[1].liquid.enable = true;
+    emitters[1].liquid.solver = mvfx_liquidGrid;
+    emitters[1].liquid.gas = 1;
+    emitters[1].liquid.spacing = 0.05f;
+    mvfxGasDef gases[2] = {mvfxDefaultGasDef(), mvfxDefaultGasDef()};
+    for (int32_t g = 0; g < 2; ++g)
+    {
+        gases[g].size[0] = 4;
+        gases[g].size[1] = 4;
+        gases[g].size[2] = 4;
+        gases[g].cellSize = 0.25f;
+    }
+    gases[1].kind = mvfx_gasLiquid;
+    gases[1].closedWalls = 63;
+    gases[1].courant = 0.3f;
+    mvfxWaterDef waters[2] = {mvfxDefaultWaterDef(), mvfxDefaultWaterDef()};
+    for (int32_t w = 0; w < 2; ++w)
+    {
+        waters[w].size[0] = 4;
+        waters[w].size[1] = 4;
+        waters[w].cellSize = 0.25f;
+    }
+    waters[1].model = mvfx_waterShallow;
     static const float parameter[4] = {1, 0, 0, 0};
     mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = &emitter;
-    def.emitterCount = 1;
+    def.emitters = emitters;
+    def.emitterCount = 2;
     def.parameters = parameter;
     def.parameterCount = 1;
-    def.gases = &gas;
-    def.gasCount = 1;
-    def.waters = &water;
-    def.waterCount = 1;
+    def.gases = gases;
+    def.gasCount = 2;
+    def.waters = waters;
+    def.waterCount = 2;
     CHECK(mvfxCreateEffect(s_context, &def, &s_effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = s_effect;
@@ -224,6 +243,19 @@ static void TestInstanceIndices(void)
     }
 }
 
+static void TestTicksTaken(void)
+{
+    // The tick of 0 the tick rows change is taken, so a negative is what
+    // they refuse.
+    CHECK(mvfxInstance_SetLiquidSpeed(s_context, s_planned, 1, 0, 1.0f) == mvfx_success &&
+              mvfxInstance_SetWaterSpeed(s_context, s_planned, 1, 0, 1.0f) == mvfx_success &&
+              mvfxInstance_SetWaterCounts(s_context, s_planned, 1, 0, 1.0f, 0, 0.0) ==
+                  mvfx_success &&
+              mvfxInstance_SetGasHolds(s_context, s_planned, 0, 0, true) == mvfx_success &&
+              mvfxInstance_SetWaterHolds(s_context, s_planned, 0, 0, true) == mvfx_success,
+          "a tick of 0 taken by each call whose tick a row makes negative");
+}
+
 static void TestCounts(void)
 {
     // Counts, capacities, sizes and ticks, of 32 and of 64 bits.
@@ -305,14 +337,366 @@ static void TestCounts(void)
                 "OrderEmitters", k);
         Refused(mvfxInstance_SetGasHolds(x, s_planned, 0, m, true), "SetGasHolds' tick", k);
         Refused(mvfxInstance_SetWaterHolds(x, s_planned, 0, m, true), "SetWaterHolds' tick", k);
+        // Gas 1 a liquid and water 1 shallow, as these calls need.
+        Refused(mvfxInstance_SetLiquidSpeed(x, s_planned, 1, m, 1.0f), "SetLiquidSpeed's tick", k);
+        Refused(mvfxInstance_SetWaterSpeed(x, s_planned, 1, m, 1.0f), "SetWaterSpeed's tick", k);
+        Refused(mvfxInstance_SetWaterCounts(x, s_planned, 1, m, 1.0f, 0, 0.0),
+                "SetWaterCounts' tick", k);
     }
+}
+
+// The parts of an effect def a row changes: two emitters, a gas and a
+// water surface, two parameters, and what a row turns on.
+typedef struct Defs
+{
+    mvfxEmitterDef emitters[2];
+    mvfxBurst burst;
+    mvfxCurveKey keys[2];
+    mvfxColorKey colorKeys[2];
+    mvfxAlphaKey alphaKeys[2];
+    mvfxForce force;
+    mvfxGasDef gas;
+    mvfxWaterDef water;
+    float parameters[8];
+    float path[6];
+    mvfxEffectDef effect;
+} Defs;
+
+static void MakeDefs(Defs* d)
+{
+    *d = (Defs){0};
+    d->emitters[0] = mvfxDefaultEmitterDef();
+    d->emitters[1] = mvfxDefaultEmitterDef();
+    d->gas = mvfxDefaultGasDef();
+    d->gas.size[0] = 4;
+    d->gas.size[1] = 4;
+    d->gas.size[2] = 4;
+    d->gas.cellSize = 0.25f;
+    d->water = mvfxDefaultWaterDef();
+    d->water.size[0] = 4;
+    d->water.size[1] = 4;
+    d->water.cellSize = 0.25f;
+    d->effect = mvfxDefaultEffectDef();
+    d->effect.emitters = d->emitters;
+    d->effect.emitterCount = 2;
+    d->effect.parameters = d->parameters;
+    d->effect.parameterCount = 2;
+    d->effect.gases = &d->gas;
+    d->effect.gasCount = 1;
+    d->effect.waters = &d->water;
+    d->effect.waterCount = 1;
+}
+
+// An index or count field of an effect def: the path a refusal of it
+// names, and a value the def takes once the row has turned on what the
+// field belongs to. A count is named as the array it counts, and a
+// maxCount below its minCount as the minCount, whose comment states the
+// rule between them.
+typedef struct Row
+{
+    const char* path;
+    int32_t valid;
+} Row;
+
+static const Row s_rows[] = {
+    {"emitters", 2},
+    {"parameters", 2},
+    {"qualityLevels", 0},
+    {"gases", 1},
+    {"waters", 1},
+    {"emitters[0].bursts", 1},
+    {"emitters[0].bursts[0].minCount", 1},
+    {"emitters[0].bursts[0].minCount", 1},
+    {"emitters[0].forces", 1},
+    {"emitters[0].killRules", 0},
+    {"emitters[0].colliders", 0},
+    {"emitters[0].hostModules", 0},
+    {"emitters[0].custom", 0},
+    {"emitters[0].forces[0].strength.parameter", 1},
+    {"emitters[0].size.parameter", 1},
+    {"emitters[0].forces[0].gas", 0},
+    {"emitters[0].liquid.gas", 0},
+    {"emitters[0].gasSplat.gas", 0},
+    {"emitters[0].water.water", 0},
+    {"emitters[0].beam.start.parameter", 1},
+    {"emitters[0].beam.controlCount", 0},
+    {"gases[0].surface.emitter", 0},
+    {"emitters[0].forces[0].strength.curve.keys", 2},
+    {"emitters[0].color.gradient.colorKeys", 2},
+    {"emitters[0].color.gradient.alphaKeys", 2},
+    {"emitters[1].eventSpawn.minCount", 1},
+    {"emitters[1].eventSpawn.minCount", 1},
+    {"gases[0].sources", 0},
+    {"gases[0].obstacles", 0},
+    {"gases[0].forces", 0},
+    {"waters[0].sources", 0},
+    {"emitters[0].overLife.frame.frameCount", 16},
+    {"emitters[0].steering.path.points", 2},
+};
+
+// Turns on what row r's field belongs to, and returns the field.
+static int32_t* Field(Defs* d, int32_t r)
+{
+    mvfxEmitterDef* e = d->emitters;
+    switch (r)
+    {
+    case 0:
+        return &d->effect.emitterCount;
+    case 1:
+        return &d->effect.parameterCount;
+    case 2:
+        return &d->effect.qualityLevelCount;
+    case 3:
+        return &d->effect.gasCount;
+    case 4:
+        return &d->effect.waterCount;
+    case 5:
+    case 6:
+    case 7:
+        d->burst = (mvfxBurst){.minCount = 1, .maxCount = 1, .cycles = 1, .probability = 1};
+        e[0].bursts = &d->burst;
+        e[0].burstCount = 1;
+        return r == 5 ? &e[0].burstCount : r == 6 ? &d->burst.minCount : &d->burst.maxCount;
+    case 8:
+        d->force = (mvfxForce){.kind = mvfx_forceConstant,
+                               .strength = {.kind = mvfx_sourceRange, .range = {1, 1}}};
+        e[0].forces = &d->force;
+        e[0].forceCount = 1;
+        return &e[0].forceCount;
+    case 9:
+        return &e[0].killRuleCount;
+    case 10:
+        return &e[0].colliderCount;
+    case 11:
+        return &e[0].hostModuleCount;
+    case 12:
+        return &e[0].customCount;
+    case 13:
+        d->force =
+            (mvfxForce){.kind = mvfx_forceConstant, .strength = {.kind = mvfx_sourceParameter}};
+        e[0].forces = &d->force;
+        e[0].forceCount = 1;
+        return &d->force.strength.parameter;
+    case 14:
+        e[0].size = (mvfxVectorSource){.kind = mvfx_sourceParameter};
+        return &e[0].size.parameter;
+    case 15:
+        d->force = (mvfxForce){.kind = mvfx_forceGas,
+                               .strength = {.kind = mvfx_sourceRange, .range = {1, 1}},
+                               .fieldMode = mvfx_fieldVelocity,
+                               .tightness = 8.0f};
+        e[0].forces = &d->force;
+        e[0].forceCount = 1;
+        return &d->force.gas;
+    case 16:
+        d->gas.kind = mvfx_gasLiquid;
+        d->gas.closedWalls = 63;
+        d->gas.courant = 0.3f;
+        e[0].liquid.enable = true;
+        e[0].liquid.solver = mvfx_liquidGrid;
+        e[0].liquid.spacing = 0.05f;
+        return &e[0].liquid.gas;
+    case 17:
+        e[0].gasSplat = (mvfxGasSplat){.enable = true, .density = 1.0f};
+        return &e[0].gasSplat.gas;
+    case 18:
+        e[0].water = (mvfxWaterCoupling){.enable = true, .radius = 0.05f};
+        return &e[0].water.water;
+    case 19:
+    case 20:
+        e[0].rate = 0.0f;
+        e[0].capacity = 8;
+        e[0].ribbon.ids = mvfx_ribbonOne;
+        e[0].beam = (mvfxBeamDef){.enable = true,
+                                  .segments = 4,
+                                  .start = {.fromParameter = true},
+                                  .end = {.point = {1, 0, 0}}};
+        return r == 19 ? &e[0].beam.start.parameter : &e[0].beam.controlCount;
+    case 21:
+        d->gas.kind = mvfx_gasSurface;
+        d->gas.surface.radius = 0.1f;
+        return &d->gas.surface.emitter;
+    case 22:
+        d->keys[0] = (mvfxCurveKey){.time = 0.0f, .value = 1.0f};
+        d->keys[1] = (mvfxCurveKey){.time = 1.0f, .value = 2.0f};
+        d->force = (mvfxForce){
+            .kind = mvfx_forceConstant,
+            .strength = {.kind = mvfx_sourceCurve, .range = {1, 1}, .curve = {.keys = d->keys}}};
+        e[0].forces = &d->force;
+        e[0].forceCount = 1;
+        return &d->force.strength.curve.keyCount;
+    case 23:
+    case 24:
+        d->colorKeys[0] = (mvfxColorKey){.time = 0.0f, .red = 1.0f};
+        d->colorKeys[1] = (mvfxColorKey){.time = 1.0f, .blue = 1.0f};
+        d->alphaKeys[0] = (mvfxAlphaKey){.time = 0.0f, .alpha = 1.0f};
+        d->alphaKeys[1] = (mvfxAlphaKey){.time = 1.0f, .alpha = 0.0f};
+        e[0].color =
+            (mvfxVectorSource){.kind = mvfx_sourceGradient,
+                               .gradient = {.colorKeys = d->colorKeys, .alphaKeys = d->alphaKeys}};
+        e[0].color.gradient.colorKeyCount = 2;
+        e[0].color.gradient.alphaKeyCount = 2;
+        return r == 23 ? &e[0].color.gradient.colorKeyCount : &e[0].color.gradient.alphaKeyCount;
+    case 25:
+    case 26:
+        e[0].events = mvfx_eventMaskBirth;
+        e[0].eventCapacity = 4;
+        e[1].eventSpawn = (mvfxEventSpawn){.enable = true,
+                                           .source = 0,
+                                           .kind = mvfx_eventBirth,
+                                           .minCount = 1,
+                                           .maxCount = 1,
+                                           .capacity = 4};
+        return r == 25 ? &e[1].eventSpawn.minCount : &e[1].eventSpawn.maxCount;
+    case 27:
+        return &d->gas.sourceCount;
+    case 28:
+        return &d->gas.obstacleCount;
+    case 29:
+        return &d->gas.forceCount;
+    case 30:
+        return &d->water.sourceCount;
+    case 31:
+        e[0].overLife.frame =
+            (mvfxFrameOverLife){.animation = mvfx_frameAtRate, .frameRate = 24.0f, .loop = true};
+        return &e[0].overLife.frame.frameCount;
+    default:
+        d->path[3] = 1.0f;
+        e[0].steering = (mvfxSteeringDef){
+            .enable = true, .path = {.weight = 1.0f, .points = d->path, .radius = 0.5f}};
+        return &e[0].steering.path.pointCount;
+    }
+}
+
+// Whether a refusal names the field of a path, as text.
+static bool IsPath(const mvfxEffectRefusal* refusal, const char* path)
+{
+    char text[256];
+    int64_t length = -1;
+    return mvfxGetEffectFieldPath(refusal, text, sizeof text, &length) == mvfx_success &&
+           length == (int64_t)strlen(path) && memcmp(text, path, (size_t)length) == 0;
+}
+
+static void TestDefFields(void)
+{
+    // Each row from a def made with its field valid, then the field -1
+    // and the least integer: refused as invalid, naming the field.
+    static Defs d;
+    int32_t made = 0;
+    int32_t named = 0;
+    const int32_t rows = (int32_t)(sizeof s_rows / sizeof s_rows[0]);
+    for (int32_t r = 0; r < rows; ++r)
+    {
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            MakeDefs(&d);
+            int32_t* field = Field(&d, r);
+            *field = s_rows[r].valid;
+            mvfxEffectId effect = {0};
+            mvfxEffectRefusal refusal;
+            char text[256] = {0};
+            int64_t length = 0;
+            bool valid =
+                mvfxCreateEffect(s_context, &d.effect, &effect, &refusal) == mvfx_success &&
+                mvfxDestroyEffect(s_context, effect) == mvfx_success;
+            if (!valid)
+            {
+                (void)mvfxGetEffectFieldPath(&refusal, text, sizeof text, &length);
+                printf("  %s's valid def refused, naming %s\n", s_rows[r].path, text);
+            }
+            *field = s_negatives[k];
+            mvfxResult result = mvfxCreateEffect(s_context, &d.effect, &effect, &refusal);
+            bool refused = result == mvfx_errorInvalid && IsPath(&refusal, s_rows[r].path);
+            if (!refused)
+            {
+                (void)mvfxGetEffectFieldPath(&refusal, text, sizeof text, &length);
+                printf("  %s with %s: %s naming %s\n", s_rows[r].path,
+                       k == 0 ? "-1" : "the least integer", mvfxGetResultName(result), text);
+            }
+            made += valid ? 1 : 0;
+            named += refused ? 1 : 0;
+        }
+    }
+    CHECK(made == 2 * rows, "each row's def made with its field valid");
+    CHECK(named == 2 * rows, "each field refused as invalid when negative, and named");
+}
+
+static void TestOtherDefCounts(void)
+{
+    // The counts of a mesh, a grid and a layout def, each from a def made.
+    static const float corner[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1};
+    static const uint32_t faces[3] = {0, 1, 2};
+    static const uint32_t solid[4] = {0, 1, 2, 3};
+    static const float values[8] = {0};
+    static const mvfxLayoutField position = {
+        .field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3};
+    int32_t refused = 0;
+    int32_t made = 0;
+    for (int32_t f = 0; f < 8; ++f)
+    {
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            mvfxMeshDef mesh = mvfxDefaultMeshDef();
+            mesh.positions = corner;
+            mesh.vertexCount = 4;
+            mesh.triangles = faces;
+            mesh.triangleCount = 1;
+            mesh.tetrahedra = solid;
+            mesh.tetrahedronCount = 1;
+            mvfxGridDef grid = mvfxDefaultGridDef();
+            grid.size[0] = 2;
+            grid.size[1] = 2;
+            grid.size[2] = 2;
+            grid.components = 1;
+            grid.values = values;
+            mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+            layout.fields = &position;
+            layout.fieldCount = 1;
+            layout.stride = 16;
+            int32_t* fields[8] = {&mesh.vertexCount, &mesh.triangleCount, &mesh.tetrahedronCount,
+                                  &grid.size[0],     &grid.size[1],       &grid.size[2],
+                                  &grid.components,  &layout.fieldCount};
+            mvfxMeshId meshId = {0};
+            mvfxGridId gridId = {0};
+            mvfxLayoutId layoutId = {0};
+            for (int32_t pass = 0; pass < 2; ++pass)
+            {
+                int32_t saved = *fields[f];
+                *fields[f] = pass == 0 ? saved : s_negatives[k];
+                mvfxResult result = f < 3   ? mvfxCreateMesh(s_context, &mesh, &meshId)
+                                    : f < 7 ? mvfxCreateGrid(s_context, &grid, &gridId)
+                                            : mvfxCreateLayout(s_context, &layout, &layoutId);
+                if (pass == 0)
+                {
+                    made += result == mvfx_success ? 1 : 0;
+                    (void)(f < 3   ? mvfxDestroyMesh(s_context, meshId)
+                           : f < 7 ? mvfxDestroyGrid(s_context, gridId)
+                                   : mvfxDestroyLayout(s_context, layoutId));
+                }
+                else
+                {
+                    Refused(result,
+                            f < 3   ? "a mesh def's count"
+                            : f < 7 ? "a grid def's size"
+                                    : "a layout def's fields",
+                            k);
+                    refused += result == mvfx_errorInvalid ? 1 : 0;
+                }
+                *fields[f] = saved;
+            }
+        }
+    }
+    CHECK(made == 16 && refused == 16, "a mesh, a grid and a layout def's counts");
 }
 
 int main(void)
 {
     Open();
     TestInstanceIndices();
+    TestTicksTaken();
     TestCounts();
+    TestDefFields();
+    TestOtherDefCounts();
     CHECK(s_taken == 0, "every negative index and count refused as invalid");
     mvfxDestroyContext(s_context);
     return s_failures == 0 ? 0 : 1;
