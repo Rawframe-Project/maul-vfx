@@ -287,12 +287,12 @@ static bool RecordMesh(mvfxGpuSim* sim, SimGas* gas, const SurfaceMesh* mesh)
     bool recorded =
         mrhiImportBuffer(sim->device, gas->meshScratch, &scratch) == mrhi_success &&
         mrhiImportBuffer(sim->device, gas->marching, &marching) == mrhi_success &&
-        mrhiBeginPass(sim->device, mesh->passes[0]) == mrhi_success &&
+        mrhiPass_Begin(sim->device, mesh->passes[0]) == mrhi_success &&
         mvfxUpload(sim->device, &sim->uploaded, mesh->passes[0], mesh->resource, 0, mesh->words,
                    sizeof mesh->words) &&
         (!mesh->uploads || mvfxUpload(sim->device, &sim->uploaded, mesh->passes[0], marching, 0,
                                       mvfxMarchingWords, sizeof mvfxMarchingWords));
-    recorded = mrhiEndPass(sim->device, mesh->passes[0]) == mrhi_success && recorded;
+    recorded = mrhiPass_End(sim->device, mesh->passes[0]) == mrhi_success && recorded;
     const mrhiBinding bindings[9] = {
         {.slot = 0, .resource = gas->resources[GAS_NUMBERS], .size = MRHI_WHOLE_SIZE},
         {.slot = 1, .resource = gas->resources[GAS_FIELDS], .size = MRHI_WHOLE_SIZE},
@@ -310,13 +310,13 @@ static bool RecordMesh(mvfxGpuSim* sim, SimGas* gas, const SurfaceMesh* mesh)
     {
         mrhiPassId pass = mesh->passes[p];
         uint32_t groups = kernels[p - 1] == mvfx_kernelMeshOffsets ? 1u : mesh->groups;
-        bool ran =
-            mrhiBeginPass(sim->device, pass) == mrhi_success &&
-            mrhiSetComputePipeline(sim->device, pass, mvfxGpuPipeline(sim->gpu, kernels[p - 1])) ==
-                mrhi_success &&
-            mrhiSetBindings(sim->device, pass, 0, bindings, 9) == mrhi_success &&
-            mrhiDispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
-        recorded = mrhiEndPass(sim->device, pass) == mrhi_success && ran;
+        bool ran = mrhiPass_Begin(sim->device, pass) == mrhi_success &&
+                   mrhiPass_SetComputePipeline(sim->device, pass,
+                                               mvfxGpuPipeline(sim->gpu, kernels[p - 1])) ==
+                       mrhi_success &&
+                   mrhiPass_SetBindings(sim->device, pass, 0, bindings, 9) == mrhi_success &&
+                   mrhiPass_Dispatch(sim->device, pass, groups, 1, 1) == mrhi_success;
+        recorded = mrhiPass_End(sim->device, pass) == mrhi_success && ran;
     }
     return recorded;
 }

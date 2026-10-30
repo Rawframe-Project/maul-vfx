@@ -54,17 +54,17 @@ static bool Open(Gpu* gpu)
     mrhiAdapterId adapter;
     size_t count = 0;
     if (mrhiCreateInstance(&def, &gpu->instance) != mrhi_success ||
-        mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
-        mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
-        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count != 1)
+        mrhiInstance_RequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
+        mrhiInstance_TakeNotification(gpu->instance, &record) != mrhi_success ||
+        mrhiInstance_GetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count != 1)
     {
         return false;
     }
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
-    deviceDef.deviceLimits.frameUploadBytes = 4u << 20u;
+    deviceDef.budgets.frameUploadBytes = 4u << 20u;
     return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
-           mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
+           mrhiInstance_TakeNotification(gpu->instance, &record) == mrhi_success &&
            record.outcome == mrhi_success;
 }
 
@@ -86,7 +86,7 @@ static bool AwaitReady(Gpu* gpu, mvfxGpu* kernels)
     for (int32_t poll = 0; poll < 100 && !mvfxGpu_IsReady(kernels); ++poll)
     {
         mrhiDeviceNotification record;
-        while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+        while (mrhiDevice_TakeNotification(gpu->device, &record) == mrhi_success)
         {
             (void)mvfxGpu_Notify(kernels, &record);
         }
@@ -200,22 +200,22 @@ static void TestCallsBackIn(Gpu* gpu, mvfxGpu* kernels)
     CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success, "stepped");
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     mrhiRequestId token = {0};
-    CHECK(mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+    CHECK(mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
               mvfxGpuSim_AddPasses(sim) == mvfx_success &&
-              mrhiCompileFrame(gpu->device) == mrhi_success &&
+              mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
               mvfxGpuSim_Record(sim) == mvfx_success &&
-              mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-              mrhiWaitFrame(gpu->device, token, 1000000000ull) == mrhi_success,
+              mrhiDevice_SubmitFrame(gpu->device, &token) == mrhi_success &&
+              mrhiRequest_WaitFrame(gpu->device, token, 1000000000ull) == mrhi_success,
           "a frame");
     // Its destruction in an open frame, called back into from its first
     // release; the frame then empty, and all its memory given back.
-    CHECK(mrhiBeginFrame(gpu->device, &frame) == mrhi_success, "a frame open");
+    CHECK(mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success, "a frame open");
     s_target = sim;
     mvfxDestroyGpuSim(sim);
     CHECK(s_made == 1 && s_refused, "calls back in from the allocator refused");
-    CHECK(mrhiCompileFrame(gpu->device) == mrhi_success &&
-              mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-              mrhiWaitFrame(gpu->device, token, 1000000000ull) == mrhi_success,
+    CHECK(mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+              mrhiDevice_SubmitFrame(gpu->device, &token) == mrhi_success &&
+              mrhiRequest_WaitFrame(gpu->device, token, 1000000000ull) == mrhi_success,
           "the frame open meanwhile untouched");
     CHECK(s_held == 0, "the memory all given back");
     mvfxDestroyContext(context);

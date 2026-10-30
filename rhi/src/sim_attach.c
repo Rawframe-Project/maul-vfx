@@ -93,9 +93,9 @@ static bool CopyArrays(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter,
                        const Emitter* source, int16_t a, uint32_t count, uint64_t at)
 {
     uint64_t c = (uint64_t)source->capacity;
-    return mrhiCopyBuffer(sim->device, pass, source->resources[BUFFER_OTHER],
-                          4u * mvfxWordOf(a) * c, emitter->resources[BUFFER_BIRTHS], 4u * at,
-                          4u * count * c) == mrhi_success;
+    return mrhiPass_CopyBuffer(sim->device, pass, source->resources[BUFFER_OTHER],
+                               4u * mvfxWordOf(a) * c, emitter->resources[BUFFER_BIRTHS], 4u * at,
+                               4u * count * c) == mrhi_success;
 }
 
 bool mvfxRecordSourceCopy(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass)
@@ -114,8 +114,8 @@ bool mvfxRecordSourceCopy(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pa
         return mvfxUpload(sim->device, &sim->uploaded, pass, emitter->resources[BUFFER_BIRTHS],
                           4u * at, &none, sizeof none);
     }
-    return mrhiCopyBuffer(sim->device, pass, source->resources[BUFFER_STATISTICS], 0,
-                          emitter->resources[BUFFER_BIRTHS], 4u * at, 4u) == mrhi_success &&
+    return mrhiPass_CopyBuffer(sim->device, pass, source->resources[BUFFER_STATISTICS], 0,
+                               emitter->resources[BUFFER_BIRTHS], 4u * at, 4u) == mrhi_success &&
            CopyArrays(sim, pass, emitter, source, arrays->serial, 1u, at + SOURCE_HEAD) &&
            CopyArrays(sim, pass, emitter, source, arrays->position, 3u, at + SOURCE_HEAD + c) &&
            (!emitter->sourceTurned || CopyArrays(sim, pass, emitter, source, arrays->orientation,

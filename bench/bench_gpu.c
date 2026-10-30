@@ -74,19 +74,19 @@ static bool Open(Gpu* gpu)
     mrhiAdapterId adapter;
     size_t count = 0;
     if (mrhiCreateInstance(&def, &gpu->instance) != mrhi_success ||
-        mrhiRequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
-        mrhiNextInstanceNotification(gpu->instance, &record) != mrhi_success ||
+        mrhiInstance_RequestAdapters(gpu->instance, &search, &request) != mrhi_success ||
+        mrhiInstance_TakeNotification(gpu->instance, &record) != mrhi_success ||
         record.outcome != mrhi_success ||
-        mrhiGetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0)
+        mrhiInstance_GetAdapters(gpu->instance, &adapter, 1, &count) != mrhi_success || count == 0)
     {
         return false;
     }
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
     // The grids' first upload: two of 512 KiB.
-    deviceDef.deviceLimits.frameUploadBytes = 8u << 20u;
+    deviceDef.budgets.frameUploadBytes = 8u << 20u;
     return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
-           mrhiNextInstanceNotification(gpu->instance, &record) == mrhi_success &&
+           mrhiInstance_TakeNotification(gpu->instance, &record) == mrhi_success &&
            record.outcome == mrhi_success;
 }
 
@@ -109,7 +109,7 @@ static bool AwaitReady(Gpu* gpu, mvfxGpu* kernels)
     while (!mvfxGpu_IsReady(kernels) && Now() < deadline)
     {
         mrhiDeviceNotification record;
-        while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+        while (mrhiDevice_TakeNotification(gpu->device, &record) == mrhi_success)
         {
             (void)mvfxGpu_Notify(kernels, &record);
         }
@@ -123,20 +123,21 @@ static bool Step(Gpu* gpu, mvfxContext* context, mvfxGpuSim* sim)
     mrhiFrameDef frame = mrhiDefaultFrameDef();
     mrhiRequestId token = {0};
     if (mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) != mvfx_success ||
-        mrhiBeginFrame(gpu->device, &frame) != mrhi_success)
+        mrhiDevice_BeginFrame(gpu->device, &frame) != mrhi_success)
     {
         return false;
     }
     if (mvfxGpuSim_AddPasses(sim) != mvfx_success ||
-        mrhiCompileFrame(gpu->device) != mrhi_success || mvfxGpuSim_Record(sim) != mvfx_success)
+        mrhiDevice_CompileFrame(gpu->device) != mrhi_success ||
+        mvfxGpuSim_Record(sim) != mvfx_success)
     {
-        (void)mrhiDropFrame(gpu->device);
+        (void)mrhiDevice_DropFrame(gpu->device);
         return false;
     }
-    bool done = mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
+    bool done = mrhiDevice_SubmitFrame(gpu->device, &token) == mrhi_success &&
+                mrhiRequest_WaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
     mrhiDeviceNotification record;
-    while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+    while (mrhiDevice_TakeNotification(gpu->device, &record) == mrhi_success)
     {
     }
     return done;
@@ -353,7 +354,7 @@ static double Uploads(Gpu* gpu, uint64_t bytes)
             mrhiResourceId resource = {0};
             mrhiPassId pass = {0};
             mrhiRequestId token = {0};
-            made = mrhiBeginFrame(gpu->device, &frame) == mrhi_success &&
+            made = mrhiDevice_BeginFrame(gpu->device, &frame) == mrhi_success &&
                    mrhiImportBuffer(gpu->device, buffer, &resource) == mrhi_success;
             const mrhiAccess written[1] = {
                 {.resource = resource, .kind = mrhi_accessCopyDestination}};
@@ -362,14 +363,14 @@ static double Uploads(Gpu* gpu, uint64_t bytes)
             passDef.accesses = written;
             passDef.accessCount = 1;
             passDef.neverCull = true;
-            made =
-                made && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
-                mrhiCompileFrame(gpu->device) == mrhi_success &&
-                mrhiBeginPass(gpu->device, pass) == mrhi_success &&
-                mrhiWriteBuffer(gpu->device, pass, resource, 0, s_bytes, bytes) == mrhi_success &&
-                mrhiEndPass(gpu->device, pass) == mrhi_success &&
-                mrhiSubmitFrame(gpu->device, &token) == mrhi_success &&
-                mrhiWaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
+            made = made && mrhiAddPass(gpu->device, &passDef, &pass) == mrhi_success &&
+                   mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
+                   mrhiPass_Begin(gpu->device, pass) == mrhi_success &&
+                   mrhiPass_WriteBuffer(gpu->device, pass, resource, 0, s_bytes, bytes) ==
+                       mrhi_success &&
+                   mrhiPass_End(gpu->device, pass) == mrhi_success &&
+                   mrhiDevice_SubmitFrame(gpu->device, &token) == mrhi_success &&
+                   mrhiRequest_WaitFrame(gpu->device, token, WAIT_NS) == mrhi_success;
         }
         double seconds = Now() - start;
         best = seconds < best ? seconds : best;

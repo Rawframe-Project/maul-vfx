@@ -70,7 +70,7 @@ static bool AwaitReady(Gpu* gpu, mvfxGpu* kernels)
     while (!mvfxGpu_IsReady(kernels) && Seconds() < deadline)
     {
         mrhiDeviceNotification record;
-        while (mrhiNextDeviceNotification(gpu->device, &record) == mrhi_success)
+        while (mrhiDevice_TakeNotification(gpu->device, &record) == mrhi_success)
         {
             (void)mvfxGpu_Notify(kernels, &record);
         }
@@ -123,17 +123,18 @@ static bool GpuFountain(mrhiDevice* device, mvfxGpu* kernels)
         mrhiFrameDef frame = mrhiDefaultFrameDef();
         mrhiRequestId submitted = {0};
         made = mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success &&
-               mrhiBeginFrame(device, &frame) == mrhi_success &&
+               mrhiDevice_BeginFrame(device, &frame) == mrhi_success &&
                mvfxGpuSim_AddPasses(sim) == mvfx_success &&
-               mrhiCompileFrame(device) == mrhi_success && mvfxGpuSim_Record(sim) == mvfx_success &&
-               mrhiSubmitFrame(device, &submitted) == mrhi_success &&
-               mrhiWaitFrame(device, submitted, UINT64_C(10000000000)) == mrhi_success;
+               mrhiDevice_CompileFrame(device) == mrhi_success &&
+               mvfxGpuSim_Record(sim) == mvfx_success &&
+               mrhiDevice_SubmitFrame(device, &submitted) == mrhi_success &&
+               mrhiRequest_WaitFrame(device, submitted, UINT64_C(10000000000)) == mrhi_success;
         if (!made)
         {
-            (void)mrhiDropFrame(device); // a frame left open by a failure
+            (void)mrhiDevice_DropFrame(device); // a frame left open by a failure
         }
         mrhiDeviceNotification note;
-        while (mrhiNextDeviceNotification(device, &note) == mrhi_success)
+        while (mrhiDevice_TakeNotification(device, &note) == mrhi_success)
         {
             (void)mvfxGpu_Notify(kernels, &note);
         }
@@ -148,7 +149,7 @@ static bool GpuFountain(mrhiDevice* device, mvfxGpu* kernels)
     mrhiRequestId read = {0};
     mrhiRequestId submitted = {0};
     made = made && mvfxGpuSim_GetParticles(sim, 0, &particles) == mvfx_success &&
-           mrhiBeginFrame(device, &frame) == mrhi_success &&
+           mrhiDevice_BeginFrame(device, &frame) == mrhi_success &&
            mrhiImportBuffer(device, particles.statistics, &statistics) == mrhi_success;
     const mrhiAccess reading = {.resource = statistics, .kind = mrhi_accessCopySource};
     mrhiPassDef passDef = mrhiDefaultPassDef();
@@ -158,23 +159,24 @@ static bool GpuFountain(mrhiDevice* device, mvfxGpu* kernels)
     passDef.neverCull = true;
     static uint32_t record[MVFX_GPU_STATISTICS_WORDS];
     made = made && mrhiAddPass(device, &passDef, &pass) == mrhi_success &&
-           mrhiCompileFrame(device) == mrhi_success &&
-           mrhiBeginPass(device, pass) == mrhi_success &&
-           mrhiReadBuffer(device, pass, statistics, 0, sizeof record, &read) == mrhi_success &&
-           mrhiEndPass(device, pass) == mrhi_success &&
-           mrhiSubmitFrame(device, &submitted) == mrhi_success &&
-           mrhiWaitFrame(device, submitted, UINT64_C(10000000000)) == mrhi_success;
+           mrhiDevice_CompileFrame(device) == mrhi_success &&
+           mrhiPass_Begin(device, pass) == mrhi_success &&
+           mrhiPass_ReadBuffer(device, pass, statistics, 0, sizeof record, &read) == mrhi_success &&
+           mrhiPass_End(device, pass) == mrhi_success &&
+           mrhiDevice_SubmitFrame(device, &submitted) == mrhi_success &&
+           mrhiRequest_WaitFrame(device, submitted, UINT64_C(10000000000)) == mrhi_success;
     if (!made)
     {
-        (void)mrhiDropFrame(device);
+        (void)mrhiDevice_DropFrame(device);
     }
     mrhiDeviceNotification note;
-    while (mrhiNextDeviceNotification(device, &note) == mrhi_success)
+    while (mrhiDevice_TakeNotification(device, &note) == mrhi_success)
     {
         (void)mvfxGpu_Notify(kernels, &note);
     }
     size_t taken = 0;
-    made = made && mrhiTakeReadback(device, read, record, sizeof record, &taken) == mrhi_success;
+    made = made &&
+           mrhiRequest_TakeReadback(device, read, record, sizeof record, &taken) == mrhi_success;
 
     // About 50 live, as on the CPU, and their bounds above the ground.
     mvfxBounds bounds;
