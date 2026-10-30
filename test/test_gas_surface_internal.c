@@ -108,7 +108,7 @@ static void TestEigenvalueBits(void)
         Repeated(3, m, &state);
         found[c] = mvfxSurfaceEigenvalue(m, 3, 0.4f);
     }
-    uint64_t hash = mvfxHash64(0u, found, (int32_t)sizeof found);
+    uint64_t hash = mvfxHash64(0u, found, (int64_t)sizeof found);
     CHECK(hash == 0xF00EFE8D94E08F23u, "near-degenerate eigenvalues' bits as committed");
 }
 

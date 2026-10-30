@@ -786,55 +786,55 @@ void mvfxReleaseInstance(mvfxInstance* instance, const mvfxAllocator* allocator)
 // nothing fixed).
 static uint64_t HashEvents(const mvfxEmitterState* state, uint64_t hash)
 {
-    hash = mvfxHash64(hash, &state->eventCount, (int32_t)sizeof state->eventCount);
+    hash = mvfxHash64(hash, &state->eventCount, (int64_t)sizeof state->eventCount);
     for (int32_t e = 0; e < state->eventCount; ++e)
     {
         const mvfxEvent* event = &state->events[e];
         uint8_t flags[2] = {event->kind, event->killed ? 1u : 0u};
-        hash = mvfxHash64(hash, flags, (int32_t)sizeof flags);
-        hash = mvfxHash64(hash, &event->serial, (int32_t)sizeof event->serial);
-        hash = mvfxHash64(hash, &event->tick, (int32_t)sizeof event->tick);
-        hash = mvfxHash64(hash, event->place, (int32_t)sizeof event->place);
-        hash = mvfxHash64(hash, event->velocity, (int32_t)sizeof event->velocity);
-        hash = mvfxHash64(hash, event->normal, (int32_t)sizeof event->normal);
-        hash = mvfxHash64(hash, event->color, (int32_t)sizeof event->color);
-        hash = mvfxHash64(hash, event->size, (int32_t)sizeof event->size);
+        hash = mvfxHash64(hash, flags, (int64_t)sizeof flags);
+        hash = mvfxHash64(hash, &event->serial, (int64_t)sizeof event->serial);
+        hash = mvfxHash64(hash, &event->tick, (int64_t)sizeof event->tick);
+        hash = mvfxHash64(hash, event->place, (int64_t)sizeof event->place);
+        hash = mvfxHash64(hash, event->velocity, (int64_t)sizeof event->velocity);
+        hash = mvfxHash64(hash, event->normal, (int64_t)sizeof event->normal);
+        hash = mvfxHash64(hash, event->color, (int64_t)sizeof event->color);
+        hash = mvfxHash64(hash, event->size, (int64_t)sizeof event->size);
     }
     return hash;
 }
 
 uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
 {
-    uint64_t hash = mvfxHash64(seed, &instance->clock, (int32_t)sizeof instance->clock);
+    uint64_t hash = mvfxHash64(seed, &instance->clock, (int64_t)sizeof instance->clock);
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {
         const mvfxEmitterState* state = &instance->emitters[e];
-        hash = mvfxHash64(hash, &state->count, (int32_t)sizeof state->count);
-        hash = mvfxHash64(hash, &state->owed, (int32_t)sizeof state->owed);
-        hash = mvfxHash64(hash, &state->refused, (int32_t)sizeof state->refused);
-        hash = mvfxHash64(hash, &state->neighborsCapped, (int32_t)sizeof state->neighborsCapped);
-        hash = mvfxHash64(hash, &state->contactsCapped, (int32_t)sizeof state->contactsCapped);
-        hash = mvfxHash64(hash, &state->linksDropped, (int32_t)sizeof state->linksDropped);
-        hash = mvfxHash64(hash, &state->torn, (int32_t)sizeof state->torn);
+        hash = mvfxHash64(hash, &state->count, (int64_t)sizeof state->count);
+        hash = mvfxHash64(hash, &state->owed, (int64_t)sizeof state->owed);
+        hash = mvfxHash64(hash, &state->refused, (int64_t)sizeof state->refused);
+        hash = mvfxHash64(hash, &state->neighborsCapped, (int64_t)sizeof state->neighborsCapped);
+        hash = mvfxHash64(hash, &state->contactsCapped, (int64_t)sizeof state->contactsCapped);
+        hash = mvfxHash64(hash, &state->linksDropped, (int64_t)sizeof state->linksDropped);
+        hash = mvfxHash64(hash, &state->torn, (int64_t)sizeof state->torn);
         hash =
-            mvfxHash64(hash, &state->selfContactsCapped, (int32_t)sizeof state->selfContactsCapped);
+            mvfxHash64(hash, &state->selfContactsCapped, (int64_t)sizeof state->selfContactsCapped);
         hash = mvfxHash64(hash, &state->rigidContactsCapped,
-                          (int32_t)sizeof state->rigidContactsCapped);
+                          (int64_t)sizeof state->rigidContactsCapped);
         hash = mvfxHash64(hash, &state->rigidSearchesCapped,
-                          (int32_t)sizeof state->rigidSearchesCapped);
-        hash = mvfxHash64(hash, &state->plexus.linkCount, (int32_t)sizeof state->plexus.linkCount);
+                          (int64_t)sizeof state->rigidSearchesCapped);
+        hash = mvfxHash64(hash, &state->plexus.linkCount, (int64_t)sizeof state->plexus.linkCount);
         if (state->plexus.linkCount > 0)
         {
             hash = mvfxHash64(hash, state->plexus.links,
-                              2 * state->plexus.linkCount * (int32_t)sizeof(int32_t));
+                              2 * (int64_t)state->plexus.linkCount * (int64_t)sizeof(int32_t));
         }
         hash = HashEvents(state, hash);
-        hash = mvfxHash64(hash, &state->ribbonCounter, (int32_t)sizeof state->ribbonCounter);
-        hash = mvfxHash64(hash, &state->beamStrike, (int32_t)sizeof state->beamStrike);
+        hash = mvfxHash64(hash, &state->ribbonCounter, (int64_t)sizeof state->ribbonCounter);
+        hash = mvfxHash64(hash, &state->beamStrike, (int64_t)sizeof state->beamStrike);
         if (state->hasBounds)
         {
-            hash = mvfxHash64(hash, state->boundsMin, (int32_t)sizeof state->boundsMin);
-            hash = mvfxHash64(hash, state->boundsMax, (int32_t)sizeof state->boundsMax);
+            hash = mvfxHash64(hash, state->boundsMin, (int64_t)sizeof state->boundsMin);
+            hash = mvfxHash64(hash, state->boundsMax, (int64_t)sizeof state->boundsMax);
         }
         const mvfxAttributePlan* plan = &instance->effect->emitters[e].plan;
         for (int32_t a = 0; a < MVFX_ATTRIBUTE_COUNT; ++a)
@@ -842,7 +842,7 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
             if (mvfxHasAttribute(plan, a))
             {
                 hash = mvfxHash64(hash, mvfxAttributeArray(instance, e, a),
-                                  state->count * (int32_t)sizeof(float));
+                                  state->count * (int64_t)sizeof(float));
             }
         }
     }
@@ -853,11 +853,11 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         // A surface holds its distance only: no faces, levels or other
         // scalars.
         bool surface = compiled->def.kind == mvfx_gasSurface;
-        int32_t cells = (int32_t)(compiled->cells * (int64_t)sizeof(float));
+        int64_t cells = compiled->cells * (int64_t)sizeof(float);
         for (int32_t k = 0; k < 3; ++k)
         {
             hash = mvfxHash64(hash, gas->velocity[k][gas->current],
-                              (int32_t)(compiled->faces[k] * (int64_t)sizeof(float)));
+                              compiled->faces[k] * (int64_t)sizeof(float));
             hash = mvfxHash64(hash, gas->scalars[k][gas->current], surface && k > 0 ? 0 : cells);
         }
         hash = surface ? hash : mvfxHash64(hash, gas->levels[0].pressure, cells);
@@ -865,20 +865,20 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
     for (int32_t w = 0; w < instance->effect->waterCount; ++w)
     {
         const mvfxWaterState* water = &instance->waters[w];
-        int32_t cells = (int32_t)(instance->effect->waters[w].cells * (int64_t)sizeof(float));
+        int64_t cells = instance->effect->waters[w].cells * (int64_t)sizeof(float);
         hash = mvfxHash64(hash, water->heights[water->current], cells);
         hash = mvfxHash64(hash, water->rates, cells);
-        hash = mvfxHash64(hash, &water->stepsSlowed, (int32_t)sizeof water->stepsSlowed);
-        hash = mvfxHash64(hash, &water->facesHeld, (int32_t)sizeof water->facesHeld);
-        hash = mvfxHash64(hash, &water->volumePoured, (int32_t)sizeof water->volumePoured);
+        hash = mvfxHash64(hash, &water->stepsSlowed, (int64_t)sizeof water->stepsSlowed);
+        hash = mvfxHash64(hash, &water->facesHeld, (int64_t)sizeof water->facesHeld);
+        hash = mvfxHash64(hash, &water->volumePoured, (int64_t)sizeof water->volumePoured);
         // Crossings wait only within a context's step: their count.
-        hash = mvfxHash64(hash, &water->crossingCount, (int32_t)sizeof water->crossingCount);
+        hash = mvfxHash64(hash, &water->crossingCount, (int64_t)sizeof water->crossingCount);
         // Shallow water's faces now; its ground is read anew each step.
         for (int32_t k = 0; water->ground != nullptr && k < 2; ++k)
         {
             int64_t faces = mvfxWaterFaces(instance->effect->waters[w].def.size, k);
             hash = mvfxHash64(hash, water->faces[k][water->faceCurrent],
-                              (int32_t)(faces * (int64_t)sizeof(float)));
+                              faces * (int64_t)sizeof(float));
         }
     }
     return hash;

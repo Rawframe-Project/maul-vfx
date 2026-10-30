@@ -93,7 +93,7 @@ static void Set32(uint8_t* bytes, int64_t at, uint32_t value)
 // The hash set again after a change, so the change is what is read.
 static void Rehash(uint8_t* bytes, int64_t size)
 {
-    uint64_t hash = mvfxHash64(MVFX_HASH_INIT, bytes + 24, (int32_t)(size - 24));
+    uint64_t hash = mvfxHash64(MVFX_HASH_INIT, bytes + 24, size - 24);
     Set32(bytes, 16, (uint32_t)hash);
     Set32(bytes, 20, (uint32_t)(hash >> 32));
 }

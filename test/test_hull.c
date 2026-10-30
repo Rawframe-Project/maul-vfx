@@ -242,18 +242,18 @@ static void TestFan(void)
 // The hash of everything a hull holds.
 static uint64_t HashHull(const mvfxHull* hull)
 {
-    uint64_t h = mvfxHash64(0u, &hull->vertexCount, (int32_t)sizeof hull->vertexCount);
-    h = mvfxHash64(h, &hull->faceCount, (int32_t)sizeof hull->faceCount);
+    uint64_t h = mvfxHash64(0u, &hull->vertexCount, (int64_t)sizeof hull->vertexCount);
+    h = mvfxHash64(h, &hull->faceCount, (int64_t)sizeof hull->faceCount);
     h = mvfxHash64(h, hull->vertices,
-                   (int32_t)(sizeof hull->vertices[0] * (size_t)hull->vertexCount));
-    h = mvfxHash64(h, hull->planes, (int32_t)(sizeof hull->planes[0] * (size_t)hull->faceCount));
+                   (int64_t)(sizeof hull->vertices[0] * (size_t)hull->vertexCount));
+    h = mvfxHash64(h, hull->planes, (int64_t)(sizeof hull->planes[0] * (size_t)hull->faceCount));
     h = mvfxHash64(h, hull->faceStart,
-                   (int32_t)(sizeof hull->faceStart[0] * (size_t)(hull->faceCount + 1)));
+                   (int64_t)(sizeof hull->faceStart[0] * (size_t)(hull->faceCount + 1)));
     h = mvfxHash64(h, hull->loop,
-                   (int32_t)(sizeof hull->loop[0] * (size_t)hull->faceStart[hull->faceCount]));
-    h = mvfxHash64(h, &hull->volume, (int32_t)sizeof hull->volume);
-    h = mvfxHash64(h, hull->centroid, (int32_t)sizeof hull->centroid);
-    return mvfxHash64(h, hull->moments, (int32_t)sizeof hull->moments);
+                   (int64_t)(sizeof hull->loop[0] * (size_t)hull->faceStart[hull->faceCount]));
+    h = mvfxHash64(h, &hull->volume, (int64_t)sizeof hull->volume);
+    h = mvfxHash64(h, hull->centroid, (int64_t)sizeof hull->centroid);
+    return mvfxHash64(h, hull->moments, (int64_t)sizeof hull->moments);
 }
 
 static void TestNearDegenerate(void)

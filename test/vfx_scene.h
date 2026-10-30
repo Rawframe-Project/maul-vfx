@@ -1642,8 +1642,8 @@ static inline uint64_t HashRibbons(mvfxContext* context, mvfxInstanceId id, int3
                                     &ribbonCount) == mvfx_success &&
               pointCount <= POINTS,
           "scene ribbons");
-    hash = mvfxHash64(hash, points, (int32_t)pointCount * SCENE_RECORD_BYTES);
-    return mvfxHash64(hash, ribbons, (int32_t)(ribbonCount * (int64_t)sizeof ribbons[0]));
+    hash = mvfxHash64(hash, points, (int64_t)pointCount * SCENE_RECORD_BYTES);
+    return mvfxHash64(hash, ribbons, ribbonCount * (int64_t)sizeof ribbons[0]);
 }
 
 // Hashes an emitter's quads for a view: their vertices and indices.
@@ -1664,8 +1664,8 @@ static inline uint64_t HashQuads(mvfxContext* context, mvfxInstanceId id, int32_
                   mvfx_success &&
               count <= SCENE_RECORDS,
           "scene quads");
-    hash = mvfxHash64(hash, vertices, (int32_t)(4 * count) * SCENE_RECORD_BYTES);
-    return mvfxHash64(hash, indices, (int32_t)(6 * count * (int64_t)sizeof indices[0]));
+    hash = mvfxHash64(hash, vertices, 4 * (int64_t)count * SCENE_RECORD_BYTES);
+    return mvfxHash64(hash, indices, 6 * count * (int64_t)sizeof indices[0]);
 }
 
 // Hashes an emitter's ribbons expanded into strips for a view.
@@ -1694,8 +1694,8 @@ static inline uint64_t HashTubes(mvfxContext* context, mvfxInstanceId id, int32_
                                    &vertexCount, &indexCount) == mvfx_success &&
               vertexCount <= VERTICES && indexCount <= INDICES,
           "scene tubes");
-    hash = mvfxHash64(hash, vertices, (int32_t)vertexCount * SCENE_RECORD_BYTES);
-    return mvfxHash64(hash, indices, (int32_t)(indexCount * (int64_t)sizeof indices[0]));
+    hash = mvfxHash64(hash, vertices, (int64_t)vertexCount * SCENE_RECORD_BYTES);
+    return mvfxHash64(hash, indices, indexCount * (int64_t)sizeof indices[0]);
 }
 
 static inline uint64_t HashStrips(mvfxContext* context, mvfxInstanceId id, int32_t emitter,
@@ -1720,8 +1720,8 @@ static inline uint64_t HashStrips(mvfxContext* context, mvfxInstanceId id, int32
                                      &indexCount) == mvfx_success &&
               vertexCount <= VERTICES && indexCount <= 3 * VERTICES,
           "scene strips");
-    hash = mvfxHash64(hash, vertices, (int32_t)vertexCount * SCENE_RECORD_BYTES);
-    return mvfxHash64(hash, indices, (int32_t)(indexCount * (int64_t)sizeof indices[0]));
+    hash = mvfxHash64(hash, vertices, (int64_t)vertexCount * SCENE_RECORD_BYTES);
+    return mvfxHash64(hash, indices, indexCount * (int64_t)sizeof indices[0]);
 }
 
 // Hashes an emitter's plexus links for a view, as points and as strips.
@@ -1748,8 +1748,8 @@ static inline uint64_t HashPlexus(mvfxContext* context, mvfxInstanceId id, int32
                                    &linkCount) == mvfx_success &&
               linkCount <= LINKS,
           "scene plexus");
-    hash = mvfxHash64(hash, points, (int32_t)pointCount * SCENE_RECORD_BYTES);
-    hash = mvfxHash64(hash, ribbons, (int32_t)(linkCount * (int64_t)sizeof ribbons[0]));
+    hash = mvfxHash64(hash, points, (int64_t)pointCount * SCENE_RECORD_BYTES);
+    hash = mvfxHash64(hash, ribbons, linkCount * (int64_t)sizeof ribbons[0]);
     memset(points, 0, sizeof points);
     mvfxExpandBuffers strips = {.vertices = points,
                                 .vertexCapacity = 4 * LINKS,
@@ -1760,8 +1760,8 @@ static inline uint64_t HashPlexus(mvfxContext* context, mvfxInstanceId id, int32
     CHECK(mvfxInstance_ExpandPlexus(context, id, emitter, layout, view, &strips, &vertexCount,
                                     &indexCount) == mvfx_success,
           "scene plexus strips");
-    hash = mvfxHash64(hash, points, (int32_t)vertexCount * SCENE_RECORD_BYTES);
-    return mvfxHash64(hash, indices, (int32_t)(indexCount * (int64_t)sizeof indices[0]));
+    hash = mvfxHash64(hash, points, (int64_t)vertexCount * SCENE_RECORD_BYTES);
+    return mvfxHash64(hash, indices, indexCount * (int64_t)sizeof indices[0]);
 }
 
 // Hashes every emitter's records of an instance for a view at (1500, 3,
@@ -1792,7 +1792,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
                                           records, SCENE_RECORDS, &count) == mvfx_success &&
                   count <= SCENE_RECORDS,
               "scene output");
-        hash = mvfxHash64(hash, records, (int32_t)count * SCENE_RECORD_BYTES);
+        hash = mvfxHash64(hash, records, (int64_t)count * SCENE_RECORD_BYTES);
         hash = HashRibbons(context, id, e, layout, &view, scratch, hash);
         hash = HashQuads(context, id, e, layout, &view, scratch, hash);
         hash = HashStrips(context, id, e, layout, &view, scratch, hash);
@@ -1803,7 +1803,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
                       mvfx_success &&
                   count <= SCENE_RECORDS,
               "scene lights");
-        hash = mvfxHash64(hash, lights, (int32_t)(count * (int64_t)sizeof lights[0]));
+        hash = mvfxHash64(hash, lights, count * (int64_t)sizeof lights[0]);
     }
     return hash;
 }
@@ -1826,7 +1826,7 @@ static inline uint64_t HashWater(mvfxContext* context, mvfxInstanceId id,
     memset(samples, 0, sizeof samples);
     CHECK(mvfxInstance_SampleWater(context, id, 0, points, 3, samples) == mvfx_success,
           "scene water sampled");
-    hash = mvfxHash64(hash, samples, (int32_t)sizeof samples);
+    hash = mvfxHash64(hash, samples, (int64_t)sizeof samples);
     static uint16_t normals[64 * 16];
     const mvfxWaterRead read = {.field = mvfx_waterNormalX,
                                 .format = mvfx_formatUnorm16,
@@ -1835,7 +1835,7 @@ static inline uint64_t HashWater(mvfxContext* context, mvfxInstanceId id,
                                 .high = 0.01f};
     CHECK(mvfxInstance_ReadWater(context, id, 1, &read, normals, sizeof normals) == mvfx_success,
           "scene water read");
-    hash = mvfxHash64(hash, normals, (int32_t)sizeof normals);
+    hash = mvfxHash64(hash, normals, (int64_t)sizeof normals);
     // The shallow water's depths and flow along X, as binary32.
     static float depths[2][32 * 16];
     for (int32_t k = 0; k < 2; ++k)
@@ -1847,7 +1847,7 @@ static inline uint64_t HashWater(mvfxContext* context, mvfxInstanceId id,
                   mvfx_success,
               "scene shallow read");
     }
-    return mvfxHash64(hash, depths, (int32_t)sizeof depths);
+    return mvfxHash64(hash, depths, (int64_t)sizeof depths);
 }
 
 static inline uint64_t HashScene(mvfxContext* context)
@@ -1865,8 +1865,8 @@ static inline uint64_t HashScene(mvfxContext* context)
             mvfxBounds bounds = {0};
             CHECK(mvfxInstance_GetBounds(context, id, -1, &bounds) == mvfx_success, "scene bounds");
             hash = mvfxHash64(hash, &bounds.empty, 1);
-            hash = mvfxHash64(hash, bounds.min, (int32_t)sizeof bounds.min);
-            hash = mvfxHash64(hash, bounds.max, (int32_t)sizeof bounds.max);
+            hash = mvfxHash64(hash, bounds.min, (int64_t)sizeof bounds.min);
+            hash = mvfxHash64(hash, bounds.max, (int64_t)sizeof bounds.max);
         }
     }
     // The draw order for a view looking down +x past a plane at x = 1490.
@@ -1878,8 +1878,8 @@ static inline uint64_t HashScene(mvfxContext* context)
           "scene order");
     // The twins' six copies hold more than the buffer: its first 64.
     int64_t kept = count < 64 ? count : 64;
-    hash = mvfxHash64(hash, &count, (int32_t)sizeof count);
-    return mvfxHash64(hash, items, (int32_t)(kept * (int64_t)sizeof items[0]));
+    hash = mvfxHash64(hash, &count, (int64_t)sizeof count);
+    return mvfxHash64(hash, items, kept * (int64_t)sizeof items[0]);
 }
 
 #endif
