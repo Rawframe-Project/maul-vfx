@@ -100,6 +100,10 @@ static const Case s_cases[] = {
     {"a rigid sphere's size over life untied", mvfx_errorInvalid, "emitters[0].overLife.size", 0,
      -1, -1},
     {"a liquid gas with a source", mvfx_errorInvalid, "gases[0].sources", -1, 0, -1},
+    {"a wind's strength below 0", mvfx_errorInvalid, "emitters[0].forces[0].strength.range.min", 0,
+     -1, -1},
+    {"a force's strength past its bound", mvfx_errorLimit,
+     "emitters[0].forces[0].strength.range.max", 0, -1, -1},
 };
 
 // Makes case k's def from valid parts.
@@ -216,6 +220,16 @@ static void Break(Parts* p, int32_t k)
         e[0].overLife.size.size[0].value = 1.0f;
         e[0].overLife.size.size[1].value = 2.0f;
         e[0].overLife.size.size[2].value = 1.0f;
+        break;
+    case 22:
+    case 23:
+        p->forces[0] =
+            (mvfxForce){.kind = k == 22 ? mvfx_forceWind : mvfx_forceConstant,
+                        .strength = {.kind = mvfx_sourceRange,
+                                     .range = {k == 22 ? -1.0f : 0.0f,
+                                               k == 22 ? 1.0f : 2.0f * MVFX_MAX_EXTENT}}};
+        e[0].forces = p->forces;
+        e[0].forceCount = 1;
         break;
     default:
         p->source = (mvfxGasSource){.shape = mvfx_gasBox, .halfExtents = {1, 1, 1}};
