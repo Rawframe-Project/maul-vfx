@@ -402,13 +402,13 @@ static const mvfxInstance* FindSurface(mvfxContext* context, mvfxInstanceId inst
 mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(mvfxContext* context, mvfxInstanceId instance,
                                                    int32_t gas, int64_t* bytesOut)
 {
-    if (bytesOut != nullptr)
-    {
-        *bytesOut = 0;
-    }
     if (mvfxRefusesHostCall(context))
     {
         return mvfx_errorBusy;
+    }
+    if (bytesOut != nullptr)
+    {
+        *bytesOut = 0;
     }
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindSurface(context, instance, gas, &result);
@@ -451,11 +451,16 @@ static bool IsMeshValid(const double origin[3], float level, const mvfxSurfaceMe
     return valid;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_WriteSurfaceMeshWork(
-    mvfxContext* context, mvfxInstanceId instance, int32_t gas, const double origin[3], float level,
-    const mvfxSurfaceMeshBuffers* buffers, int64_t* vertexCountOut, int64_t* indexCountOut)
+static mvfxResult TryWriteSurfaceMesh(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                                      const double origin[3], float level,
+                                      const mvfxSurfaceMeshBuffers* buffers,
+                                      int64_t* vertexCountOut, int64_t* indexCountOut)
 {
-    // The counts are 0 on any failure.
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
+    // The counts are 0 on any other failure.
     if (vertexCountOut != nullptr)
     {
         *vertexCountOut = 0;
@@ -463,10 +468,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteSurfaceMeshWork(
     if (indexCountOut != nullptr)
     {
         *indexCountOut = 0;
-    }
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = FindSurface(context, instance, gas, &result);
@@ -508,6 +509,21 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_WriteSurfaceMeshWork(
     return mvfx_success;
 }
 
+static MVFX_NOINLINE mvfxResult mvfxInstance_WriteSurfaceMeshWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t gas, const double origin[3], float level,
+    const mvfxSurfaceMeshBuffers* buffers, int64_t* vertexCountOut, int64_t* indexCountOut)
+{
+    mvfxResult result = TryWriteSurfaceMesh(context, instance, gas, origin, level, buffers,
+                                            vertexCountOut, indexCountOut);
+    if (result != mvfx_success && result != mvfx_errorBusy && buffers != nullptr)
+    {
+        mvfxClearSpan(buffers->positions, buffers->vertexCapacity, 3 * sizeof(float), 4);
+        mvfxClearSpan(buffers->normals, buffers->vertexCapacity, 3 * sizeof(float), 4);
+        mvfxClearSpan(buffers->indices, buffers->indexCapacity, sizeof(uint32_t), 4);
+    }
+    return result;
+}
+
 mvfxResult mvfxInstance_WriteSurfaceMesh(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                                          const double origin[3], float level,
                                          const mvfxSurfaceMeshBuffers* buffers,
@@ -516,12 +532,6 @@ mvfxResult mvfxInstance_WriteSurfaceMesh(mvfxContext* context, mvfxInstanceId in
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_WriteSurfaceMeshWork(context, instance, gas, origin, level,
                                                           buffers, vertexCountOut, indexCountOut);
-    if (result != mvfx_success && result != mvfx_errorBusy && buffers != nullptr)
-    {
-        mvfxClearSpan(buffers->positions, buffers->vertexCapacity, 3 * sizeof(float), 4);
-        mvfxClearSpan(buffers->normals, buffers->vertexCapacity, 3 * sizeof(float), 4);
-        mvfxClearSpan(buffers->indices, buffers->indexCapacity, sizeof(uint32_t), 4);
-    }
     mvfxFloatEnvLeave(env);
     return result;
 }

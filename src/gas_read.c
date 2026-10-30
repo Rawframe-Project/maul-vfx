@@ -70,10 +70,8 @@ static bool IsReadValid(const mvfxGasRead* read, const mvfxCompiledGas* gas, int
     return pitch[0] >= row && pitch[1] >= layer;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasAsWork(const mvfxContext* context,
-                                                           mvfxInstanceId instance, int32_t gas,
-                                                           const mvfxGasRead* read, void* out,
-                                                           int64_t bytes)
+static mvfxResult TryReadGasAs(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                               const mvfxGasRead* read, void* out, int64_t bytes)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = mvfxFindGas(context, instance, gas, &result);
@@ -118,15 +116,24 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasAsWork(const mvfxContext* co
     return mvfx_success;
 }
 
+static MVFX_NOINLINE mvfxResult mvfxInstance_ReadGasAsWork(const mvfxContext* context,
+                                                           mvfxInstanceId instance, int32_t gas,
+                                                           const mvfxGasRead* read, void* out,
+                                                           int64_t bytes)
+{
+    mvfxResult result = TryReadGasAs(context, instance, gas, read, out, bytes);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, bytes, 1, 1);
+    }
+    return result;
+}
+
 mvfxResult mvfxInstance_ReadGasAs(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                                   const mvfxGasRead* read, void* out, int64_t bytes)
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_ReadGasAsWork(context, instance, gas, read, out, bytes);
-    if (result != mvfx_success)
-    {
-        mvfxClearSpan(out, bytes, 1, 1);
-    }
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -156,10 +163,8 @@ static float SampleAt(const mvfxCompiledGas* gas, const mvfxGasState* state, mvf
     return l.n[k] > 1 ? mvfxGasSample(state->velocity[k][state->current], &l, k, p) : 0.0f;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_SampleGasWork(const mvfxContext* context,
-                                                           mvfxInstanceId instance, int32_t gas,
-                                                           mvfxGasField field, const double* points,
-                                                           int64_t count, float* out)
+static mvfxResult TrySampleGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
+                               mvfxGasField field, const double* points, int64_t count, float* out)
 {
     mvfxResult result = mvfx_success;
     const mvfxInstance* live = mvfxFindGas(context, instance, gas, &result);
@@ -194,6 +199,19 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SampleGasWork(const mvfxContext* co
     return mvfx_success;
 }
 
+static MVFX_NOINLINE mvfxResult mvfxInstance_SampleGasWork(const mvfxContext* context,
+                                                           mvfxInstanceId instance, int32_t gas,
+                                                           mvfxGasField field, const double* points,
+                                                           int64_t count, float* out)
+{
+    mvfxResult result = TrySampleGas(context, instance, gas, field, points, count, out);
+    if (result != mvfx_success)
+    {
+        mvfxClearSpan(out, count, sizeof(float), alignof(float));
+    }
+    return result;
+}
+
 mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                                   mvfxGasField field, const double* points, int64_t count,
                                   float* out)
@@ -201,10 +219,6 @@ mvfxResult mvfxInstance_SampleGas(const mvfxContext* context, mvfxInstanceId ins
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result =
         mvfxInstance_SampleGasWork(context, instance, gas, field, points, count, out);
-    if (result != mvfx_success)
-    {
-        mvfxClearSpan(out, count, sizeof(float), alignof(float));
-    }
     mvfxFloatEnvLeave(env);
     return result;
 }

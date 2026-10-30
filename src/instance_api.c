@@ -253,6 +253,10 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterStatsWork(mvfxContext* co
                                                                  int32_t emitter,
                                                                  mvfxEmitterStats* statsOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     if (statsOut != nullptr)
     {
         *statsOut = (mvfxEmitterStats){0};
@@ -264,10 +268,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterStatsWork(mvfxContext* co
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     const mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -890,16 +890,16 @@ mvfxResult mvfxInstance_SetParameter(mvfxContext* context, mvfxInstanceId instan
 mvfxResult mvfxInstance_GetParameter(mvfxContext* context, mvfxInstanceId instance,
                                      int32_t parameter, float valueOut[4])
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     if (valueOut != nullptr)
     {
         for (int32_t c = 0; c < 4; ++c)
         {
             valueOut[c] = 0.0f;
         }
-    }
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult result = FindParameter(context, instance, parameter, valueOut, &live);
@@ -970,6 +970,10 @@ mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context, mvfxInstanceId instan
 
 mvfxResult mvfxInstance_GetQuality(mvfxContext* context, mvfxInstanceId instance, int32_t* levelOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     if (levelOut != nullptr)
     {
         *levelOut = 0;
@@ -981,10 +985,6 @@ mvfxResult mvfxInstance_GetQuality(mvfxContext* context, mvfxInstanceId instance
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)

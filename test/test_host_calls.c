@@ -233,10 +233,10 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
     return true;
 }
 
-// From a host module, each call that writes the host's buffers, called
-// back in: refused as busy, its counts 0 and its buffers left as they
-// were, since they may be the ones the call in progress fills. The layout
-// is live, so any other refusal would zero them.
+// From a host module, each call that writes outputs, called back in:
+// refused as busy and writing none of them, counts and single values as
+// well as buffers, since any may be one the call in progress fills. The
+// layout is live, so any other refusal would zero them.
 static mvfxLayoutId s_layout;
 static bool s_left;
 
@@ -251,8 +251,8 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     }
     s_target = NULL;
     static const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
+    static const mvfxTubeDef tube = {.sides = 3};
     static const double eye[3] = {0, 0, 0};
-    static const double origin[3] = {0, 0, 0};
     static unsigned char records[64];
     static unsigned char vertices[64];
     static uint32_t indices[6];
@@ -260,6 +260,18 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     static mvfxDrawItem items[1];
     static mvfxRibbon ribbons[1];
     static float positions[3];
+    static mvfxBounds bounds;
+    static mvfxEmitterStats stats;
+    static float values[4];
+    static float center[3];
+    static bool hull;
+    static int32_t level;
+    static int32_t vertexCount;
+    static double remaining;
+    static const mvfxEvent* events;
+    static const mvfxSceneQuery* queries;
+    static int32_t eventCount;
+    static int32_t queryCount;
     memset(records, 0xEE, sizeof records);
     memset(vertices, 0xEE, sizeof vertices);
     memset(indices, 0xEE, sizeof indices);
@@ -267,15 +279,29 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     memset(items, 0xEE, sizeof items);
     memset(ribbons, 0xEE, sizeof ribbons);
     memset(positions, 0xEE, sizeof positions);
+    memset(&bounds, 0xEE, sizeof bounds);
+    memset(&stats, 0xEE, sizeof stats);
+    memset(values, 0xEE, sizeof values);
+    memset(center, 0xEE, sizeof center);
+    memset(&hull, 0xEE, sizeof hull);
+    memset(&level, 0xEE, sizeof level);
+    memset(&vertexCount, 0xEE, sizeof vertexCount);
+    memset(&remaining, 0xEE, sizeof remaining);
+    memset(&eventCount, 0xEE, sizeof eventCount);
+    memset(&queryCount, 0xEE, sizeof queryCount);
+    events = (const mvfxEvent*)records;
+    queries = (const mvfxSceneQuery*)records;
     const mvfxExpandBuffers expand = {
         .vertices = vertices, .vertexCapacity = 4, .indices = indices, .indexCapacity = 6};
     const mvfxRibbonBuffers list = {
         .points = records, .pointCapacity = 4, .ribbons = ribbons, .ribbonCapacity = 1};
     const mvfxSurfaceMeshBuffers mesh = {
         .positions = positions, .vertexCapacity = 1, .indices = indices, .indexCapacity = 6};
-    int64_t n[9] = {7, 7, 7, 7, 7, 7, 7, 7, 7};
+    int64_t n[18];
+    memset(n, 0xEE, sizeof n);
     mvfxInstanceId i = s_instance;
     mvfxLayoutId l = s_layout;
+    const mvfxMeshId m = {1, 1};
     bool busy =
         mvfxInstance_WriteParticles(target, i, 0, l, &view, NULL, 0, records, 4, &n[0]) ==
             mvfx_errorBusy &&
@@ -285,17 +311,38 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
         mvfxInstance_WriteRibbons(target, i, 0, l, &view, &list, &n[4], &n[5]) == mvfx_errorBusy &&
         mvfxInstance_ExpandRibbons(target, i, 0, l, &view, &expand, &n[6], &n[7]) ==
             mvfx_errorBusy &&
-        mvfxInstance_WriteSurfaceMesh(target, i, 0, origin, 0.0f, &mesh, &n[8], &n[8]) ==
-            mvfx_errorBusy;
-    bool counts = true;
-    for (int32_t k = 0; k < 9; ++k)
-    {
-        counts = counts && n[k] == 0;
-    }
-    s_left = busy && counts && Filled(records, sizeof records, 0xEE) &&
+        mvfxInstance_ExpandTubes(target, i, 0, l, &view, &tube, &expand, &n[8], &n[9]) ==
+            mvfx_errorBusy &&
+        mvfxInstance_ExpandSheets(target, i, 0, l, &view, &expand, &n[10], &n[11]) ==
+            mvfx_errorBusy &&
+        mvfxInstance_WritePlexus(target, i, 0, l, &view, &list, &n[12], &n[13]) == mvfx_errorBusy &&
+        mvfxInstance_ExpandPlexus(target, i, 0, l, &view, &expand, &n[14], &n[15]) ==
+            mvfx_errorBusy &&
+        mvfxInstance_WriteSurfaceMesh(target, i, 0, eye, 0.0f, &mesh, &n[16], &n[17]) ==
+            mvfx_errorBusy &&
+        mvfxInstance_GetSortScratchBytes(target, i, 0, &n[0]) == mvfx_errorBusy &&
+        mvfxInstance_GetSurfaceMeshScratchBytes(target, i, 0, &n[1]) == mvfx_errorBusy &&
+        mvfxInstance_GetBounds(target, i, -1, &bounds) == mvfx_errorBusy &&
+        mvfxInstance_GetEmitterStats(target, i, 0, &stats) == mvfx_errorBusy &&
+        mvfxInstance_GetParameter(target, i, 0, values) == mvfx_errorBusy &&
+        mvfxInstance_GetQuality(target, i, &level) == mvfx_errorBusy &&
+        mvfxInstance_GetEvents(target, i, 0, &events, &eventCount) == mvfx_errorBusy &&
+        mvfxInstance_GetSceneQueries(target, i, 0, &queries, &queryCount) == mvfx_errorBusy &&
+        mvfxInstance_Prewarm(target, i, 1.0, 0.1, 4, &remaining) == mvfx_errorBusy &&
+        mvfxMesh_HullCenter(target, m, &hull, center) == mvfx_errorBusy &&
+        mvfxMesh_HullVertexCount(target, m, &vertexCount) == mvfx_errorBusy;
+    s_left = busy && Filled(n, sizeof n, 0xEE) && Filled(records, sizeof records, 0xEE) &&
              Filled(vertices, sizeof vertices, 0xEE) && Filled(indices, sizeof indices, 0xEE) &&
              Filled(lights, sizeof lights, 0xEE) && Filled(items, sizeof items, 0xEE) &&
-             Filled(ribbons, sizeof ribbons, 0xEE) && Filled(positions, sizeof positions, 0xEE);
+             Filled(ribbons, sizeof ribbons, 0xEE) && Filled(positions, sizeof positions, 0xEE) &&
+             Filled(&bounds, sizeof bounds, 0xEE) && Filled(&stats, sizeof stats, 0xEE) &&
+             Filled(values, sizeof values, 0xEE) && Filled(center, sizeof center, 0xEE) &&
+             Filled(&hull, sizeof hull, 0xEE) && Filled(&level, sizeof level, 0xEE) &&
+             Filled(&vertexCount, sizeof vertexCount, 0xEE) &&
+             Filled(&remaining, sizeof remaining, 0xEE) &&
+             Filled(&eventCount, sizeof eventCount, 0xEE) &&
+             Filled(&queryCount, sizeof queryCount, 0xEE) && events == (const mvfxEvent*)records &&
+             queries == (const mvfxSceneQuery*)records;
 }
 
 static const mvfxHostModule s_writeBack = {.stage = mvfx_stageAfterMotion, .function = WriteBack};
@@ -326,7 +373,7 @@ static void TestBusyLeavesBuffers(void)
     s_left = false;
     s_target = context;
     CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success && s_target == NULL && s_left,
-          "a host module's writes back in refused as busy, its counts 0, its buffers left");
+          "a host module's calls back in refused as busy, writing none of their outputs");
     mvfxDestroyContext(context);
 }
 

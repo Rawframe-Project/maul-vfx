@@ -6,7 +6,7 @@
 // for records written into its buffers.
 //
 // What a refused call leaves: every count, size and bounds it gives is 0
-// (empty bounds), whatever it refuses, a NULL context included. Each of
+// (empty bounds), whatever else it refuses, a NULL context included. Each of
 // the host's buffers is zeroed over the span the call is given (its
 // capacity, count or bytes), unless that span is itself refused (a NULL
 // or misaligned buffer, a negative size). Records of a layout (records,
@@ -14,9 +14,9 @@
 // which only the context knows: they are zeroed while the layout is live,
 // and left as they were with a NULL context or a layout that names nothing
 // live, since no clear could know where the buffer ends. A call refused
-// with mvfx_errorBusy, which only host code calling back in meets, leaves
-// every buffer as it was (they may be the ones the call in progress
-// fills) and still gives its counts 0.
+// with mvfx_errorBusy, which only host code calling back in meets, writes
+// none of its outputs, counts and bounds included: any of them may be one
+// the call in progress fills.
 
 #ifndef MAUL_VFX_OUTPUT_H
 #define MAUL_VFX_OUTPUT_H

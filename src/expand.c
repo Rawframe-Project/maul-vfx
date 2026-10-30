@@ -214,10 +214,14 @@ static bool AreBuffersValid(const mvfxExpandBuffers* buffers)
            mvfxIsBufferValid(buffers->scratch, buffers->scratchBytes, 4);
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSpritesWork(
-    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
-    const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* countOut)
+static mvfxResult TryExpandSprites(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                   mvfxLayoutId layout, const mvfxView* view,
+                                   const mvfxExpandBuffers* buffers, int64_t* countOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     if (countOut != nullptr)
     {
         *countOut = 0;
@@ -229,10 +233,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSpritesWork(
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
@@ -270,6 +270,19 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSpritesWork(
     return mvfx_success;
 }
 
+static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSpritesWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* countOut)
+{
+    mvfxResult result =
+        TryExpandSprites(context, instance, emitter, layout, view, buffers, countOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearExpandBuffers(context, layout, buffers);
+    }
+    return result;
+}
+
 mvfxResult mvfxInstance_ExpandSprites(mvfxContext* context, mvfxInstanceId instance,
                                       int32_t emitter, mvfxLayoutId layout, const mvfxView* view,
                                       const mvfxExpandBuffers* buffers, int64_t* countOut)
@@ -277,10 +290,6 @@ mvfxResult mvfxInstance_ExpandSprites(mvfxContext* context, mvfxInstanceId insta
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result =
         mvfxInstance_ExpandSpritesWork(context, instance, emitter, layout, view, buffers, countOut);
-    if (result != mvfx_success && result != mvfx_errorBusy)
-    {
-        mvfxClearExpandBuffers(context, layout, buffers);
-    }
     mvfxFloatEnvLeave(env);
     return result;
 }
@@ -389,11 +398,15 @@ static void WriteSheet(const mvfxRecordSource* source, const mvfxOutputLayout* l
     }
 }
 
-static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSheetsWork(
-    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
-    const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
-    int64_t* indexCountOut)
+static mvfxResult TryExpandSheets(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                  mvfxLayoutId layout, const mvfxView* view,
+                                  const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+                                  int64_t* indexCountOut)
 {
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     if (vertexCountOut != nullptr)
     {
         *vertexCountOut = 0;
@@ -410,10 +423,6 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSheetsWork(
             mvfxCountMisuse(context);
         }
         return mvfx_errorInvalid;
-    }
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
     }
     mvfxInstance* live = nullptr;
     mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
@@ -460,6 +469,20 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSheetsWork(
     return mvfx_success;
 }
 
+static MVFX_NOINLINE mvfxResult mvfxInstance_ExpandSheetsWork(
+    mvfxContext* context, mvfxInstanceId instance, int32_t emitter, mvfxLayoutId layout,
+    const mvfxView* view, const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
+    int64_t* indexCountOut)
+{
+    mvfxResult result = TryExpandSheets(context, instance, emitter, layout, view, buffers,
+                                        vertexCountOut, indexCountOut);
+    if (result != mvfx_success && result != mvfx_errorBusy)
+    {
+        mvfxClearExpandBuffers(context, layout, buffers);
+    }
+    return result;
+}
+
 mvfxResult mvfxInstance_ExpandSheets(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                                      mvfxLayoutId layout, const mvfxView* view,
                                      const mvfxExpandBuffers* buffers, int64_t* vertexCountOut,
@@ -468,10 +491,6 @@ mvfxResult mvfxInstance_ExpandSheets(mvfxContext* context, mvfxInstanceId instan
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_ExpandSheetsWork(context, instance, emitter, layout, view,
                                                       buffers, vertexCountOut, indexCountOut);
-    if (result != mvfx_success && result != mvfx_errorBusy)
-    {
-        mvfxClearExpandBuffers(context, layout, buffers);
-    }
     mvfxFloatEnvLeave(env);
     return result;
 }
