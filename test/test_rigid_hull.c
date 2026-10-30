@@ -756,7 +756,8 @@ static void TestCrest(void)
 static void TestVertexCount(void)
 {
     // A mesh of 100 points on a ball, refused as a hull, counted: 100 for
-    // its artist to bring under the most; arguments refused.
+    // its artist to bring under the most; one of 1,500, past the count;
+    // arguments refused.
     OpenContext();
     static float ball[300];
     for (int32_t i = 0; i < 100; ++i)
@@ -796,7 +797,24 @@ static void TestVertexCount(void)
         mvfxMesh_GetHullCenter(s_scene.context, (mvfxMeshId){0}, &hull, center) ==
             mvfx_errorStale &&
         mvfxContext_GetMisuse(s_scene.context) == misuse;
+    // One of 1,500 points is past what a count holds: refused with a count
+    // of 0 and no misuse, since a model file's mesh may be that big.
+    static float big[3 * 1500];
+    for (int32_t i = 0; i < 1500; ++i)
+    {
+        float z = 1.0f - (2.0f * (float)i + 1.0f) / 1500.0f;
+        float r = sqrtf(1.0f - z * z);
+        float angle = 2.3999632f * (float)i;
+        big[3 * i] = r * cosf(angle);
+        big[3 * i + 1] = r * sinf(angle);
+        big[3 * i + 2] = z;
+    }
+    mvfxMeshId huge = MeshOf(big, 1500);
+    count = 1;
+    bool past = mvfxMesh_GetHullVertexCount(s_scene.context, huge, &count) == mvfx_errorLimit &&
+                count == 0 && mvfxContext_GetMisuse(s_scene.context) == misuse;
     CHECK(counted, "a hull's vertices counted past the most, with no center");
+    CHECK(past, "a hull past what a count holds refused, with a count of 0");
     CHECK(none, "a flat mesh: no hull, no misuse");
     CHECK(refused, "NULL arguments and a stale mesh refused, no misuse counted on a const context");
     mvfxDestroyContext(s_scene.context);
