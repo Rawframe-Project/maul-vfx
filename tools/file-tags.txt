@@ -6,7 +6,8 @@
 # kind (what its bytes are) and, for a field that is not a struct, after
 # "=", its default: the hex of the bytes a file would write for it, then
 # path=hex for each place whose default differs. tools/gen_file.py reads it
-# and checks each default against src/defaults.h. A tag is numbered within
+# and writes the defaults into test/file_pins.h, against which the suite
+# test_file_defaults checks the default functions. A tag is numbered within
 # its struct and never reused: a renamed field keeps its tag; a field
 # removed, or whose wire kind or default changes, has its tag retired
 # ("retired N") and a changed field takes a new one.
@@ -19,7 +20,7 @@ mvfxCurveKey
     5   interpolation  u8   = 00
 
 mvfxCurve
-    1   keys      array mvfxCurveKey  = 00000000
+    1   keys      array mvfxCurveKey  = 0000000000000000
     2   tangents  u8                  = 00
 
 mvfxBurst
@@ -153,8 +154,8 @@ mvfxAlphaKey
     2   alpha  f32  = 00000000
 
 mvfxGradient
-    1   colorKeys  array mvfxColorKey  = 00000000
-    2   alphaKeys  array mvfxAlphaKey  = 00000000
+    1   colorKeys  array mvfxColorKey  = 0000000000000000
+    2   alphaKeys  array mvfxAlphaKey  = 0000000000000000
 
 mvfxColorOverLife
     1   enable      bool           = 00
@@ -230,7 +231,7 @@ mvfxCollider
 
 mvfxHostModule
     1   stage     u8      = 00
-    2   function  module  = 00000000
+    2   function  module  = ffffffff
 
 mvfxEventSpawn
     1   enable           bool  = 00
@@ -260,7 +261,7 @@ mvfxSteerPoint
 mvfxSteerPath
     1   weight     f32           = 00000000
     2   space      u8            = 00
-    3   points     array f32[3]  = 00000000
+    3   points     array f32[3]  = 0000000000000000
     4   closed     bool          = 00
     5   radius     f32           = 00000000
     6   lookahead  f32           = 00000000
@@ -420,7 +421,7 @@ mvfxEmitterDef
     1   capacity           i32                        = 00040000
     2   rate               f32                        = 00008042
     3   rateCurve          mvfxCurve
-    4   bursts             array mvfxBurst            = 00000000
+    4   bursts             array mvfxBurst            = 0000000000000000
     5   startDelay         f32                        = 00000000
     6   duration           f32                        = 00000000
     7   loops              i32                        = 00000000
@@ -432,15 +433,15 @@ mvfxEmitterDef
     13  shape              mvfxShape
     14  velocity           mvfxVelocity
     15  motion             mvfxMotion
-    16  forces             array mvfxForce            = 00000000
+    16  forces             array mvfxForce            = 0000000000000000
     17  gasSplat           mvfxGasSplat
     18  water              mvfxWaterCoupling
     19  velocityModules    mvfxVelocityModules
     20  overLife           mvfxOverLife
-    21  killRules          array mvfxKillRule         = 00000000
+    21  killRules          array mvfxKillRule         = 0000000000000000
     22  collision          mvfxCollision
-    23  colliders          array mvfxCollider         = 00000000
-    24  hostModules        array mvfxHostModule       = 00000000
+    23  colliders          array mvfxCollider         = 0000000000000000
+    24  hostModules        array mvfxHostModule       = 0000000000000000
     25  events             u8                         = 00
     26  eventCapacity      i32                        = 00000000
     27  eventSpawn         mvfxEventSpawn
@@ -471,7 +472,7 @@ mvfxEmitterDef
     52  angularVelocity    mvfxVectorSource
     53  frame              mvfxFrameStart
     54  meshIndex          mvfxFrameStart
-    55  custom             array mvfxCustomAttribute  = 00000000
+    55  custom             array mvfxCustomAttribute  = 0000000000000000
 
 mvfxQualityLevel
     1   capacityScale  f32  = 00000000
@@ -510,7 +511,7 @@ mvfxGasDef
     10  temperatureDecay     f32                  = 00000000
     11  fuelDecay            f32                  = 00000000
     12  velocityDecay        f32                  = 00000000
-    13  sources              array mvfxGasSource  = 00000000
+    13  sources              array mvfxGasSource  = 0000000000000000
     14  closedWalls          u8                   = 00
     15  pressureCycles       i32                  = 04000000
     16  advection            u8                   = 00
@@ -524,9 +525,9 @@ mvfxGasDef
     24  burnHeat             f32                  = 00000000
     25  burnSmoke            f32                  = 00000000
     26  burnExpansion        f32                  = 00000000
-    27  obstacles            array mvfxCollider   = 00000000
+    27  obstacles            array mvfxCollider   = 0000000000000000
     28  hostObstacles        bool                 = 00
-    29  forces               array mvfxForce      = 00000000
+    29  forces               array mvfxForce      = 0000000000000000
     30  surface              mvfxGasSurface
 
 mvfxWaterSource
@@ -550,12 +551,12 @@ mvfxWaterDef
     11  terrain        mvfxCollider
     12  enableTerrain  bool                   = 00
     13  hostTerrain    bool                   = 00
-    14  sources        array mvfxWaterSource  = 00000000
+    14  sources        array mvfxWaterSource  = 0000000000000000
     15  fillLevel      f32                    = 00000000
 
 mvfxEffectDef
-    1   emitters       array mvfxEmitterDef    = 00000000
-    2   parameters     array f32[4]            = 00000000
-    3   qualityLevels  array mvfxQualityLevel  = 00000000
-    4   gases          array mvfxGasDef        = 00000000
-    5   waters         array mvfxWaterDef      = 00000000
+    1   emitters       array mvfxEmitterDef    = 0000000000000000
+    2   parameters     array f32[4]            = 0000000000000000
+    3   qualityLevels  array mvfxQualityLevel  = 0000000000000000
+    4   gases          array mvfxGasDef        = 0000000000000000
+    5   waters         array mvfxWaterDef      = 0000000000000000

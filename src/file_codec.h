@@ -63,6 +63,13 @@ typedef struct mvfxCodec
 void mvfxWriteFields(mvfxCodec* codec, const mvfxFileType* type, const uint8_t* object,
                      const uint8_t* base);
 
+// Puts the payload of a field of the struct at object, whatever it holds:
+// what the writer puts after the field's tag and length, base the
+// struct's default. The pinned defaults' suite checks the registry with
+// it.
+void mvfxPutPayload(mvfxCodec* codec, const mvfxFileField* field, const uint8_t* object,
+                    const uint8_t* base);
+
 // Takes a sequence of a type's fields ending at end into object, which
 // holds the type's default; NULL to check and measure only.
 void mvfxReadFields(mvfxCodec* codec, const mvfxFileType* type, uint8_t* object, size_t end);

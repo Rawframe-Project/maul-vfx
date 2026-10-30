@@ -412,7 +412,7 @@ static void PutArray(mvfxCodec* codec, const mvfxFileField* field, const uint8_t
     uint32_t count = (uint32_t)Load(object + field->at, 4);
     const uint8_t* items = nullptr;
     memcpy((void*)&items, object + field->offset, sizeof items);
-    if (count > field->cap || items == nullptr)
+    if (count > field->cap || (count > 0 && items == nullptr))
     {
         mvfxCodecFault(codec, mvfx_errorInvalid, -1);
         return;
@@ -427,19 +427,10 @@ static void PutArray(mvfxCodec* codec, const mvfxFileField* field, const uint8_t
     PutItems(codec, field->type, items, codec->defaults + field->type->defaultAt, 0, count);
 }
 
-// A field that differs from its default: its tag, its payload's length,
-// the payload and zero bytes to the alignment.
-static void PutField(mvfxCodec* codec, const mvfxFileField* field, const uint8_t* object,
-                     const uint8_t* base)
+void mvfxPutPayload(mvfxCodec* codec, const mvfxFileField* field, const uint8_t* object,
+                    const uint8_t* base)
 {
-    if (FieldIsDefault(field, object, base))
-    {
-        return;
-    }
     const uint8_t* place = object + field->offset;
-    size_t head = codec->at;
-    Put(codec, field->tag, 4);
-    Put(codec, 0, 4);
     switch (field->kind)
     {
     case mvfx_fieldArray:
@@ -470,6 +461,21 @@ static void PutField(mvfxCodec* codec, const mvfxFileField* field, const uint8_t
         PutScalars(codec, field->kind, place, field->count);
         break;
     }
+}
+
+// A field that differs from its default: its tag, its payload's length,
+// the payload and zero bytes to the alignment.
+static void PutField(mvfxCodec* codec, const mvfxFileField* field, const uint8_t* object,
+                     const uint8_t* base)
+{
+    if (FieldIsDefault(field, object, base))
+    {
+        return;
+    }
+    size_t head = codec->at;
+    Put(codec, field->tag, 4);
+    Put(codec, 0, 4);
+    mvfxPutPayload(codec, field, object, base);
     Patch(codec, head + 4, (uint32_t)(codec->at - head - HEAD_BYTES));
     PutPadding(codec);
 }

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Sirac Ozmen
-"""Writes src/file_fields.c: the effect file's table of every def field.
+"""Writes src/file_fields.c, the effect file's table of every def field,
+and test/file_pins.h, the defaults its tag registry pins.
 
 The effect section of an effect file holds an mvfxEffectDef as tagged
 fields: each struct a sequence of its fields that differ from their
@@ -26,16 +27,16 @@ The registry gives each field its tag, its wire kind (what its bytes are:
 "f32", "f32[3]", "mvfxCurve", "array mvfxForce", "grid", "module") and,
 for a field that is not a struct, its default: the hex of the bytes the
 file would write for it, at every place a default holds it but the places
-named apart ("= 00000000 mvfxB.inner.x=0000803f"). The defaults are read
-from src/defaults.h, the initializers the default functions return, float
-literals and operations rounded to binary32 as C rounds them, and any form
-the reader does not take as C does refused rather than guessed; an item of
-an array of another struct defaults to zero bytes. It refuses a field
+named apart ("= 00000000 mvfxB.inner.x=0000803f"). It refuses a field
 without a tag, a tag used twice in a struct, a retired tag used again, an
 entry that names no field (it must be retired), a field whose wire kind is
-no longer its entry's and a field whose default is no longer its entry's:
-a field whose type or default changes gets a new tag, and its old one is
-retired. The output goes through clang-format, as every source does.
+no longer its entry's, and a field without a default, or with one of the
+wrong length or at a place no def holds: a field whose type or default
+changes gets a new tag, and its old one is retired. The defaults' bytes
+themselves C checks: this writes them into test/file_pins.h beside the
+tables, and test_file_defaults writes each field at each place from the
+default functions with the library's own field writer and compares. The
+output goes through clang-format, as every source does.
 
 Usage: gen_file.py [--check | --self-test]. With --check it writes nothing
 and fails when the file differs from what it would write; --self-test
@@ -46,14 +47,13 @@ import hashlib
 import os
 import re
 import shutil
-import struct
 import subprocess
 import sys
-from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "src" / "file_fields.c"
+PINS = ROOT / "test" / "file_pins.h"
 TAGS = ROOT / "tools" / "file-tags.txt"
 HEADERS = sorted((ROOT / "include" / "maul-vfx").glob("*.h"))
 
@@ -327,32 +327,31 @@ def read_registry(text):
     return structs
 
 
-def check_pin(name, field, tag, line, pin, places):
-    """A field's recorded default against its bytes at each place a def's
-    default holds it, places {path: hex}."""
+def check_pin(name, field, line, pin, places):
+    """A field's recorded default against its places, {path: (steps,
+    bytes)}: one for every place, each the hex of its payload's bytes. Its
+    bytes themselves the file_defaults suite checks against the default
+    functions."""
     if pin is None:
-        raise TagError(f"line {line}: {name}.{field} records no default: add "
-                       f"= {max(set(places.values()), key=list(places.values()).count)}")
+        raise TagError(f"line {line}: {name}.{field} records no default")
     common, exceptions = pin
-    for path, value in places.items():
-        want = exceptions.get(path, common)
-        if value != want:
-            raise TagError(f"line {line}: {name}.{field}'s default at {path} is {value}, not "
-                           f"{want}: a changed default gets a new tag, so retire tag {tag} and "
-                           f"give the field a new one (a new place of {name} records its "
-                           f"default as {path}={value})")
+    size = next(iter(places.values()))[1]
+    for value in [common] + list(exceptions.values()):
+        if len(value) != 2 * size:
+            raise TagError(f"line {line}: {name}.{field}'s default {value} is "
+                           f"{len(value) // 2} bytes, not {size}")
     for path in exceptions:
         if path not in places:
             raise TagError(f"line {line}: {name}.{field} records a default at {path}, which no "
                            f"def holds: remove it")
 
 
-def assign_tags(declared, text, pins=None):
+def assign_tags(declared, text, places=None):
     """Each declared struct's fields' tags, {struct: {field: tag}}, from
     the registry's text; declared is {struct: [(field, wire)]} in
-    declaration order. With pins, {(struct, field): {path: hex}}, each
-    field's recorded default is checked against them too. Raises TagError
-    for what the registry may not say."""
+    declaration order. With places, {(struct, field): {path: (steps,
+    bytes)}}, each field that is not a struct must record a default for
+    them. Raises TagError for what the registry may not say."""
     registry = read_registry(text)
     for name in registry:
         if name not in declared:
@@ -377,9 +376,9 @@ def assign_tags(declared, text, pins=None):
             if recorded != wire:
                 raise TagError(f"line {line}: {name}.{field} is {wire}, not {recorded}: retire "
                                f"tag {tag} and give the field a new one")
-            if pins is not None and (name, field) in pins:
-                check_pin(name, field, tag, line, pin, pins[(name, field)])
-            elif pins is not None and pin is not None:
+            if places is not None and (name, field) in places:
+                check_pin(name, field, line, pin, places[(name, field)])
+            elif places is not None and pin is not None:
                 raise TagError(f"line {line}: {name}.{field} is a struct, whose fields record "
                                f"its defaults: remove its own")
             tags[name][field] = tag
@@ -498,232 +497,51 @@ def defaulted(typedefs, structs, order):
     return out
 
 
-DEFAULTS_H = ROOT / "src" / "defaults.h"
-
-# Each scalar's struct format, little-endian.
-FORMATS = {"bool": "B", "uint8_t": "B", "int8_t": "b", "uint16_t": "H", "int16_t": "h",
-           "uint32_t": "I", "int32_t": "i", "uint64_t": "Q", "int64_t": "q"}
+# The bytes of each scalar.
+SIZES = {"bool": 1, "uint8_t": 1, "int8_t": 1, "uint16_t": 2, "int16_t": 2, "uint32_t": 4,
+         "int32_t": 4, "uint64_t": 8, "int64_t": 8, "float": 4, "double": 8}
 
 
-def binary32(value):
-    """The binary32 nearest a value, ties to even, as an exact fraction, as
-    C rounds a float literal and each float operation."""
-    value = Fraction(value)
-    if value == 0:
-        return Fraction(0)
-    sign = -1 if value < 0 else 1
-    value = abs(value)
-    exponent = value.numerator.bit_length() - value.denominator.bit_length()
-    if Fraction(2) ** exponent > value:
-        exponent -= 1
-    if exponent < -126:
-        raise SystemExit(f"{DEFAULTS_H.name}: {float(value)} is below binary32's least normal")
-    unit = Fraction(2) ** (exponent - 23)
-    whole, rest = divmod(value, unit)
-    whole = int(whole)
-    if rest > unit / 2 or (rest == unit / 2 and whole % 2):
-        whole += 1
-    return sign * whole * unit
+def payload_bytes(typedefs, kind, dims, pointer, wire):
+    """The bytes a field's payload takes when it holds a default: its
+    scalars', 4 for each grid, mesh or host module (its name, none), and
+    for an array, which holds no items then, its count and zero word."""
+    many = 1
+    for d in dims:
+        many *= number(d)
+    if wire == "module" or kind in IDS:
+        return 4 * many
+    if pointer:
+        return 8
+    return many * SIZES[scalar(typedefs, kind)]
 
 
-def constants():
-    """The headers' enum constants and defines, by name."""
-    known = dict(DEFINES)
-    for header in HEADERS:
-        text = strip_comments(header.read_text(encoding="utf-8"))
-        for m in re.finditer(r"#define\s+(MVFX_\w+)\s+(0x[0-9A-Fa-f]+|\d+)u?\s*$", text, re.M):
-            known[m.group(1)] = int(m.group(2), 0)
-        for m in re.finditer(r"\b(mvfx_\w+)\s*=\s*([0-9]+)u?\s*[,}]", text):
-            known[m.group(1)] = int(m.group(2))
-    return known
-
-
-class DefaultsError(TagError):
-    """An initializer of src/defaults.h the generator does not read as C
-    does, and where."""
-
-
-# The words src/defaults.h may use, whitespace aside: float literals with
-# their f (a literal without it is a double, which a float rounds twice),
-# integer literals with an optional u, names, and the punctuation of an
-# initializer, a unary minus, parentheses and a float division. Anything
-# else is refused, never skipped: the reader must take every character as
-# C does, or say it cannot.
-WORD = re.compile(r"\s*(?:(?P<float>\d+\.\d*(?:[eE][-+]?\d+)?f|\d+[eE][-+]?\d+f)"
-                  r"|(?P<int>0x[0-9A-Fa-f]+u?|\d+u?)(?![\w.])"
-                  r"|(?P<name>[A-Za-z_]\w*)|(?P<mark>[{}.,=()/-]))")
-
-
-def words_of(text):
-    """The words of an initializer's text, (kind, word), covering all of
-    it."""
-    out = []
-    at = 0
-    while text[at:].strip():
-        m = WORD.match(text, at)
-        if m is None:
-            rest = " ".join(text[at:].split())
-            raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {rest[:24]!r}")
-        out.append((m.lastgroup, m.group(m.lastgroup)))
-        at = m.end()
-    out.append(("end", ""))
-    return out
-
-
-def unary(words, at, known):
-    """A literal, a known name, a negation or a parenthesized quotient: its
-    value, a Fraction for a float and an int for an integer."""
-    kind, word = words[at]
-    if word == "-" and kind == "mark":
-        value, at = unary(words, at + 1, known)
-        return -value, at
-    if word == "(" and kind == "mark":
-        value, at = quotient(words, at + 1, known)
-        if words[at] != ("mark", ")"):
-            raise DefaultsError(f"{DEFAULTS_H.name}: a parenthesis is not closed")
-        return value, at + 1
-    if kind == "float":
-        return binary32(Fraction(word[:-1])), at + 1
-    if kind == "int":
-        return int(word.rstrip("u"), 0), at + 1
-    if kind == "name":
-        if word not in known:
-            raise DefaultsError(f"{DEFAULTS_H.name}: {word} is an unknown name")
-        return known[word], at + 1
-    raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {word!r} as a value")
-
-
-def quotient(words, at, known):
-    """A value, or one float over another, rounded to binary32 as C
-    divides floats. An integer division is refused: C truncates it, and a
-    default written so is a float literal's work."""
-    value, at = unary(words, at, known)
-    if words[at] != ("mark", "/"):
-        return value, at
-    divisor, at = unary(words, at + 1, known)
-    if not (isinstance(value, Fraction) and isinstance(divisor, Fraction)):
-        raise DefaultsError(f"{DEFAULTS_H.name}: an integer division is refused; write the "
-                            f"float literals")
-    if divisor == 0 or words[at] == ("mark", "/"):
-        raise DefaultsError(f"{DEFAULTS_H.name}: a division by 0 or a second one is refused")
-    return binary32(value / divisor), at
-
-
-def initializer(words, at, known):
-    """The initializer at words[at]: [(designator or None, value)] for a
-    braced one, else its value; and where it ends."""
-    if words[at] != ("mark", "{"):
-        value, at = quotient(words, at, known)
-        if words[at] not in (("mark", ","), ("mark", "}")):
-            raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {words[at][1]!r} after a value")
-        return value, at
-    items = []
-    at += 1
-    while words[at] != ("mark", "}"):
-        name = None
-        if words[at] == ("mark", "."):
-            if words[at + 1][0] != "name" or words[at + 2] != ("mark", "="):
-                raise DefaultsError(f"{DEFAULTS_H.name}: a designator is not .name =")
-            name = words[at + 1][1]
-            at += 3
-        value, at = initializer(words, at, known)
-        items.append((name, value))
-        if words[at] == ("mark", ","):
-            at += 1
-        elif words[at] != ("mark", "}"):
-            raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {words[at][1]!r} in a list")
-    return items, at + 1
-
-
-def read_initializer(text, known):
-    """A braced initializer's text, read whole."""
-    words = words_of(text)
-    if words[0] != ("mark", "{"):
-        raise DefaultsError(f"{DEFAULTS_H.name}: a default is a braced initializer")
-    value, at = initializer(words, 0, known)
-    if words[at][0] != "end":
-        raise DefaultsError(f"{DEFAULTS_H.name}: cannot read {words[at][1]!r} after a default")
-    return value
-
-
-def read_defaults():
-    """The initializers of src/defaults.h, by the struct they default."""
-    text = DEFAULTS_H.read_text(encoding="utf-8").replace("\\\n", " ")
-    text = strip_comments(text)
-    known = constants()
-    out = {}
-    for name, macro in DEFAULTS.items():
-        m = re.search(rf"#define\s+{macro}\s+(.*)", text)
-        if m is None:
-            raise DefaultsError(f"{DEFAULTS_H.name} has no {macro}")
-        out[name] = read_initializer(m.group(1), known)
-    return out
-
-
-def scalar_bytes(base, value):
-    """A default's bytes in its field's type, refusing a value C would
-    convert: a float in an integer, a bool other than 0 or 1, an integer a
-    float does not hold exactly."""
-    if base in ("float", "double"):
-        if base == "float" and binary32(value) != value:
-            raise DefaultsError(f"{DEFAULTS_H.name}: {value} is not exactly a binary32")
-        return struct.pack("<f" if base == "float" else "<d", float(value))
-    if isinstance(value, Fraction):
-        raise DefaultsError(f"{DEFAULTS_H.name}: a float literal in a {base} field")
-    if base == "bool" and value not in (0, 1):
-        raise DefaultsError(f"{DEFAULTS_H.name}: a bool of {value}")
-    return struct.pack("<" + FORMATS[base], value)
-
-
-def default_places(typedefs, structs, name, given, path, out):
-    """Each stored field of a struct under its initializer (None for zero
-    bytes): out[(struct, field)][path] is the hex of the bytes the file
-    writes for it. A grid, a mesh or a host module is none (-1), an
-    array no items (a count of 0)."""
-    # A positional item is the struct's next field in declaration order.
-    declared = [field for _, field, _, _ in structs[name]]
-    values = {}
-    for k, (field, value) in enumerate(given or []):
-        if field is None and k > 0 and given[k - 1][0] is not None:
-            raise SystemExit(f"{DEFAULTS_H.name}: {name}'s initializer mixes designators")
-        values[field if field is not None else declared[k]] = value
-    names = {field for _, field, _, _, _ in stored(typedefs, structs, name)}
-    for field in values:
-        if field not in names and not (field == "cookie" and name in COOKIES):
-            raise SystemExit(f"{DEFAULTS_H.name}: {name} has no stored field {field}")
+def default_places(typedefs, structs, name, path, steps, out):
+    """Each stored field of a struct that is not a struct, at each place a
+    default holds it: out[(struct, field)][path] = (steps, bytes), steps
+    the fields and fixed items from the default's root, bytes its
+    payload's."""
     for kind, field, dims, pointer, wire in stored(typedefs, structs, name):
-        value = values.get(field)
         here = f"{path}.{field}"
-        many = 1
-        for d in dims:
-            many *= number(d)
-        base = scalar(typedefs, kind)
-        if base is None and not pointer and wire != "module" and kind not in IDS:
-            items = value if isinstance(value, list) and many > 1 else None
+        if scalar(typedefs, kind) is None and not pointer and wire != "module" and kind not in IDS:
+            many = 1
+            for d in dims:
+                many *= number(d)
             for k in range(many):
-                inner = value if many == 1 else (items[k][1] if items and k < len(items) else None)
                 place = here + (f"[{k}]" if many > 1 else "")
-                default_places(typedefs, structs, kind, inner, place, out)
+                item = k if many > 1 else -1
+                default_places(typedefs, structs, kind, place, steps + [(name, field, item)], out)
             continue
-        if wire == "module" or kind in IDS or pointer:
-            if value is not None:
-                raise SystemExit(f"{DEFAULTS_H.name}: {name}.{field} must default to none")
-            hexed = "ffffffff" * many if not pointer else "00000000"
-        else:
-            listed = [v for _, v in value] if isinstance(value, list) else [value or 0]
-            listed += [0] * (many - len(listed))
-            hexed = b"".join(scalar_bytes(base, v) for v in listed).hex()
-        out.setdefault((name, field), {})[here] = hexed
+        size = payload_bytes(typedefs, kind, dims, pointer, wire)
+        out.setdefault((name, field), {})[here] = (steps + [(name, field, -1)], size)
 
 
-def default_pins(typedefs, structs, order):
-    """Every stored field's default at each place a default holds it:
-    {(struct, field): {path: hex}}, from the roots' and the array items'
-    defaults."""
-    given = read_defaults()
+def all_places(typedefs, structs, order):
+    """Every stored field's places, {(struct, field): {path: (steps,
+    bytes)}}, under the roots' and the array items' defaults."""
     out = {}
     for name in defaulted(typedefs, structs, order):
-        default_places(typedefs, structs, name, given.get(name), name, out)
+        default_places(typedefs, structs, name, name, [], out)
     return out
 
 
@@ -734,12 +552,9 @@ def generate(registry_text=None):
                 for name in order}
     if registry_text is None:
         registry_text = TAGS.read_text(encoding="utf-8")
+    places = all_places(typedefs, structs, order)
     try:
-        pins = default_pins(typedefs, structs, order)
-    except DefaultsError as error:
-        raise SystemExit(str(error)) from error
-    try:
-        tags = assign_tags(declared, registry_text, pins)
+        tags = assign_tags(declared, registry_text, places)
     except TagError as error:
         raise SystemExit(f"{TAGS.name}: {error}") from error
     defaults = defaulted(typedefs, structs, order)
@@ -797,32 +612,148 @@ def generate(registry_text=None):
     for macro, terms in zip(("GRIDS", "MESHES", "MODULES"), sums):
         total = sum(value(t) for t in terms)
         lines += [f"static_assert(MVFX_FILE_MAX_{macro} == {' + '.join(terms)}, \"{total}\");"]
-    return format_c("\n".join(lines) + "\n")
+    pins = pins_header(typedefs, structs, order, tags, read_registry(registry_text), places)
+    return {OUT: format_c("\n".join(lines) + "\n", OUT), PINS: format_c(pins, PINS)}
 
 
-def format_c(text):
+def root_tags(typedefs, structs, tags, root):
+    """The tags from mvfxEffectDef to the first array of a root's items,
+    breadth first; none for mvfxEffectDef."""
+    queue = [("mvfxEffectDef", [])]
+    seen = set()
+    while queue:
+        name, path = queue.pop(0)
+        if name == root:
+            return path
+        if name in seen:
+            continue
+        seen.add(name)
+        for kind, field, _, _, _ in stored(typedefs, structs, name):
+            if scalar(typedefs, kind) is None and kind in structs:
+                queue.append((kind, path + [tags[name][field]]))
+    raise SystemExit(f"no def reaches {root}")
+
+
+def pins_header(typedefs, structs, order, tags, registry, places):
+    """test/file_pins.h: each default the registry pins, at each place,
+    with the tags that reach it and the bytes pinned, for test_file_defaults
+    to check against the default functions."""
+    roots = defaulted(typedefs, structs, order)
+    pins = {}
+    for name, (entries, _) in registry.items():
+        for tag, (field, _, _, pin) in entries.items():
+            if pin is not None:
+                pins[(name, field)] = pin
+    rows = []
+    for (name, field), at in sorted(places.items(), key=lambda item: (order.index(item[0][0]),
+                                                                       tags[item[0][0]][item[0][1]])):
+        common, exceptions = pins[(name, field)]
+        for path, (steps, _) in sorted(at.items()):
+            value = exceptions.get(path, common)
+            walk = ", ".join(f"{{{tags[s][f]}, {k}}}" for s, f, k in steps)
+            escaped = "".join(f"\\x{value[i:i + 2]}" for i in range(0, len(value), 2))
+            rows.append(f'    {{{roots.index(path.split(".")[0])}, "{path}", "{name}.{field}", '
+                        f'{tags[name][field]}, {len(steps)}, {{{walk}}}, "{escaped}", '
+                        f'{len(value) // 2}}},')
+    depth = max(len(steps) for at in places.values() for steps, _ in at.values())
+    reach = [root_tags(typedefs, structs, tags, root) for root in roots]
+    lines = [
+        "// SPDX-License-Identifier: MIT",
+        "// Copyright (c) 2026 Sirac Ozmen",
+        "//",
+        "// Generated by tools/gen_file.py from tools/file-tags.txt: do not edit.",
+        "// Each default the registry pins: every field that is not a struct, at",
+        "// each place a def's default or an array item's holds it, and the bytes",
+        "// a file writes for it there. test_file_defaults checks them against",
+        "// the default functions.",
+        "",
+        "#ifndef MAUL_VFX_TEST_FILE_PINS_H",
+        "#define MAUL_VFX_TEST_FILE_PINS_H",
+        "",
+        '#include "maul-vfx/effect.h"',
+        "",
+        "#include <stdint.h>",
+        "#include <string.h>",
+        "",
+        f"#define FILE_PIN_MAX_STEPS {depth}",
+        f"#define FILE_PIN_MAX_ROOT_TAGS {max(1, max(len(r) for r in reach))}",
+        "",
+        "// A step from a struct to its field of a tag, and to an item of it when",
+        "// it is a fixed list (-1 when it is not).",
+        "typedef struct FilePinStep",
+        "{",
+        "    uint32_t tag;",
+        "    int32_t item;",
+        "} FilePinStep;",
+        "",
+        "// A pinned default: its root, its place, its field and tag, the steps from",
+        "// the root to it, and the bytes the registry pins.",
+        "typedef struct FilePin",
+        "{",
+        "    int32_t root;",
+        "    const char* place;",
+        "    const char* field;",
+        "    uint32_t tag;",
+        "    int32_t stepCount;",
+        "    FilePinStep steps[FILE_PIN_MAX_STEPS];",
+        "    const char* bytes;",
+        "    int32_t byteCount;",
+        "} FilePin;",
+        "",
+        "// A default's root: its struct's name, the tags from mvfxEffectDef to an",
+        "// array of its items (none for mvfxEffectDef), its size, and how its",
+        "// default is made: by its default function, or zero bytes for an item",
+        "// of a struct that has none.",
+        "typedef struct FilePinRoot",
+        "{",
+        "    const char* name;",
+        "    int32_t tagCount;",
+        "    uint32_t tags[FILE_PIN_MAX_ROOT_TAGS];",
+        "    size_t size;",
+        "    void (*fill)(void* out);",
+        "} FilePinRoot;",
+        "",
+    ]
+    for k, root in enumerate(roots):
+        lines += [f"static void FillPinRoot{k}(void* out)", "{"]
+        if root in DEFAULTS:
+            function = "mvfxDefault" + root[4:]
+            lines += [f"    {root} made = {function}();", "    memcpy(out, &made, sizeof made);"]
+        else:
+            lines += [f"    memset(out, 0, sizeof({root}));"]
+        lines += ["}", ""]
+    lines += ["static const FilePinRoot s_filePinRoots[] = {"]
+    for k, (root, path) in enumerate(zip(roots, reach)):
+        listed = ", ".join(str(t) for t in path) or "0"
+        lines += [f'    {{"{root}", {len(path)}, {{{listed}}}, sizeof({root}), FillPinRoot{k}}},']
+    lines += ["};", "", "static const FilePin s_filePins[] = {"] + rows + ["};", "", "#endif", ""]
+    return "\n".join(lines)
+
+
+def format_c(text, path):
     """The text as the family's clang-format writes it (CLANG_FORMAT, or
     clang-format-20, or clang-format)."""
     for tool in (os.environ.get("CLANG_FORMAT"), "clang-format-20", "clang-format"):
         if tool and shutil.which(tool):
-            done = subprocess.run([tool, f"--assume-filename={OUT}"], input=text, text=True,
+            done = subprocess.run([tool, f"--assume-filename={path}"], input=text, text=True,
                                   capture_output=True, check=True, cwd=ROOT)
             return done.stdout
     raise SystemExit("gen_file.py needs clang-format")
 
 
 def self_test():
-    """Each refusal of the registry, on made-up structs."""
+    """Each refusal of the registry, on made-up structs. Whether a pinned
+    default's bytes are the default's is the file_defaults suite's check."""
     declared = {"mvfxA": [("x", "f32"), ("y", "f32[3]")],
                 "mvfxB": [("items", "array mvfxA"), ("inner", "mvfxA")]}
-    pins = {("mvfxA", "x"): {"mvfxA.x": "00000000", "mvfxB.inner.x": "0000803f"},
-            ("mvfxA", "y"): {"mvfxA.y": "00" * 12, "mvfxB.inner.y": "00" * 12},
-            ("mvfxB", "items"): {"mvfxB.items": "00000000"}}
+    places = {("mvfxA", "x"): {"mvfxA.x": ([], 4), "mvfxB.inner.x": ([], 4)},
+              ("mvfxA", "y"): {"mvfxA.y": ([], 12), "mvfxB.inner.y": ([], 12)},
+              ("mvfxB", "items"): {"mvfxB.items": ([], 8)}}
     good = ("mvfxA\n    1 x f32 = 00000000 mvfxB.inner.x=0000803f\n"
             "    2 y f32[3] = 000000000000000000000000\n    retired 3\n"
-            "mvfxB\n    1 items array mvfxA = 00000000\n    2 inner mvfxA\n")
+            "mvfxB\n    1 items array mvfxA = 0000000000000000\n    2 inner mvfxA\n")
     wanted = {"mvfxA": {"x": 1, "y": 2}, "mvfxB": {"items": 1, "inner": 2}}
-    if assign_tags(declared, good, pins) != wanted:
+    if assign_tags(declared, good, places) != wanted:
         print("gen_file.py --self-test: a good registry's tags")
         return 1
     y = "    2 y f32[3] = 000000000000000000000000\n"
@@ -844,66 +775,26 @@ def self_test():
          "mvfxC is in the registry"),
         ("tag 0", good.replace("retired 3", "0 z f32"), "tag 0 is not from 1"),
         ("a line of neither kind", good + "    x f32\n", "not a struct, an entry"),
-        ("a changed default", good.replace("mvfxB.inner.x=0000803f", "mvfxB.inner.x=00000040"),
-         "mvfxA.x's default at mvfxB.inner.x is 0000803f, not 00000040: a changed default gets "
-         "a new tag, so retire tag 1"),
-        ("a changed common default", good.replace("1 x f32 = 00000000", "1 x f32 = 00008040"),
-         "mvfxA.x's default at mvfxA.x is 00000000, not 00008040"),
         ("a default left out", good.replace(" = 000000000000000000000000", ""),
          "mvfxA.y records no default"),
+        ("a default of the wrong length", good.replace("= 00000000 ", "= 000000 "),
+         "mvfxA.x's default 000000 is 3 bytes, not 4"),
+        ("an exception of the wrong length", good.replace("=0000803f", "=0000803f00"),
+         "mvfxA.x's default 0000803f00 is 5 bytes, not 4"),
         ("a default at no place", good.replace("=0000803f", "=0000803f mvfxC.x=00000000"),
          "records a default at mvfxC.x, which no def holds"),
         ("a struct's own default", good.replace("2 inner mvfxA", "2 inner mvfxA = 00"),
          "mvfxB.inner is a struct"),
-        ("a default not in hex", good.replace("1 items array mvfxA = 00000000",
+        ("a default not in hex", good.replace("1 items array mvfxA = 0000000000000000",
                                               "1 items array mvfxA = none"),
          "'none' is not a default in hex"),
     ]
     failed = 0
     for what, text, expected in cases:
         try:
-            assign_tags(declared, text, pins)
+            assign_tags(declared, text, places)
             message = "accepted"
         except TagError as error:
-            message = str(error)
-        if expected not in message:
-            print(f"gen_file.py --self-test: {what}: {message!r} lacks {expected!r}")
-            failed += 1
-    # The defaults' reader: what it reads as C does, and what it refuses
-    # rather than guess at.
-    known = {"MVFX_ONE": 1}
-    read = read_initializer("{.x = -9.81f, .y = (1.0f / 60.0f), .z = {MVFX_ONE, 0x10u}}", known)
-    if read != [("x", -binary32(Fraction("9.81"))), ("y", binary32(binary32(1) / binary32(60))),
-                ("z", [(None, 1), (None, 16)])]:
-        print(f"gen_file.py --self-test: the defaults' reader read {read!r}")
-        failed += 1
-    readings = [
-        ("a bitwise not", "{.x = ~0u}", "cannot read '~0u}'"),
-        ("an integer division", "{.x = 3 / 2}", "an integer division is refused"),
-        ("an unknown name", "{.x = MVFX_TWO}", "MVFX_TWO is an unknown name"),
-        ("a double literal", "{.x = 0.1}", "cannot read '0.1}'"),
-        ("a sum", "{.x = 1.0f + 2.0f}", "cannot read '+ 2.0f}'"),
-        ("a second division", "{.x = 1.0f / 2.0f / 2.0f}", "a second one is refused"),
-        ("a value then a word", "{.x = 1 2}", "cannot read '2' after a value"),
-    ]
-    for what, text, expected in readings:
-        try:
-            read_initializer(text, known)
-            message = "accepted"
-        except DefaultsError as error:
-            message = str(error)
-        if expected not in message:
-            print(f"gen_file.py --self-test: {what}: {message!r} lacks {expected!r}")
-            failed += 1
-    for what, base, value, expected in [("a float in an integer", "int32_t", binary32(1),
-                                         "a float literal in a int32_t field"),
-                                        ("a bool of 2", "bool", 2, "a bool of 2"),
-                                        ("an integer past binary32", "float", 2**24 + 1,
-                                         "is not exactly a binary32")]:
-        try:
-            scalar_bytes(base, value)
-            message = "accepted"
-        except DefaultsError as error:
             message = str(error)
         if expected not in message:
             print(f"gen_file.py --self-test: {what}: {message!r} lacks {expected!r}")
@@ -914,13 +805,15 @@ def self_test():
 def main():
     if "--self-test" in sys.argv[1:]:
         return self_test()
-    text = generate()
+    outputs = generate()
     if "--check" in sys.argv[1:]:
-        if not OUT.exists() or OUT.read_text(encoding="utf-8") != text:
-            print(f"{OUT.relative_to(ROOT)} is stale: run tools/gen_file.py")
-            return 1
-        return 0
-    OUT.write_text(text, encoding="utf-8")
+        stale = [path for path, text in outputs.items()
+                 if not path.exists() or path.read_text(encoding="utf-8") != text]
+        for path in stale:
+            print(f"{path.relative_to(ROOT)} is stale: run tools/gen_file.py")
+        return 1 if stale else 0
+    for path, text in outputs.items():
+        path.write_text(text, encoding="utf-8")
     return 0
 
 
