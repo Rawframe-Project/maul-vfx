@@ -18,14 +18,31 @@
 # is run again whenever a kernel changes, with naga, spirv-val,
 # spirv-cross and dxc on the path.
 #
-# With --check it needs none of them: each committed container must
+# Each directory of containers has a stamp, containers.stamp: the Maul RHI
+# release whose tools cooked them, the flags its DXC compiles passed, and
+# each container's SHA-256. The container format has no place for them,
+# and DXIL compiled without -Gis cannot be told apart by its bytes: DXC
+# without it marks every float operation fast and folds the math, so
+# D3D12 would compute other than the kernels' source and the other APIs.
+# This refuses to cook with a Maul RHI tree other than the release
+# cmake/Rhi.cmake pins, or one whose mrhi_dxil.py passes no -Gis, and to
+# cook some kernels only where the stamp names another release or other
+# flags, so that a move of Maul RHI cooks every kernel again.
+#
+# With --check it needs none of the tools: each committed container must
 # carry a fresh splice of its kernel's sources, byte for byte, so a part
-# or shared file edited without a rebuild fails the gate and CI.
+# or shared file edited without a rebuild fails the gate and CI. It also
+# refuses a stamp of another release than the pin, or without -Gis, a
+# container that is missing, not in its stamp or not the bytes stamped,
+# and a stamped name no kernel gives.
 #
 # usage: gen_kernels.py <a Maul RHI source tree, for its tools/> [NAME ...]
 #        gen_kernels.py --check
 
+import ast
+import hashlib
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -34,6 +51,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KERNELS = os.path.join(ROOT, "rhi", "kernels")
 TEST_KERNELS = os.path.join(ROOT, "test", "kernels")
 INCLUDE = "// include: "
+STAMP = "containers.stamp"
 
 
 def folder(name):
@@ -116,6 +134,117 @@ def kernel_names():
                   if f.endswith(".wgsl"))
 
 
+def pinned_release():
+    """The Maul RHI release the build takes (cmake/Rhi.cmake)."""
+    with open(os.path.join(ROOT, "cmake", "Rhi.cmake"), encoding="utf-8") as file:
+        found = re.search(r"^set\(MAUL_VFX_RHI_VERSION (\S+)\)$", file.read(), re.M)
+    if found is None:
+        sys.exit("cmake/Rhi.cmake sets no MAUL_VFX_RHI_VERSION")
+    return found.group(1)
+
+
+def tree_release(tree):
+    """A Maul RHI tree's release, from its version macros."""
+    with open(os.path.join(tree, "include", "maul-rhi", "base.h"), encoding="utf-8") as file:
+        text = file.read()
+    parts = [re.search(rf"^#define MRHI_VERSION_{part} (\d+)$", text, re.M)
+             for part in ("MAJOR", "MINOR", "PATCH")]
+    return ".".join(part.group(1) for part in parts) if all(parts) else None
+
+
+def dxc_flags(tree):
+    """The DXC_FLAGS a Maul RHI tree's mrhi_dxil.py assigns, read from its
+    source without running it; None when it assigns no tuple of strings."""
+    with open(os.path.join(tree, "tools", "mrhi_dxil.py"), encoding="utf-8") as file:
+        module = ast.parse(file.read())
+    for node in module.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1 and
+                isinstance(node.targets[0], ast.Name) and node.targets[0].id == "DXC_FLAGS"):
+            try:
+                flags = ast.literal_eval(node.value)
+            except ValueError:
+                return None
+            if isinstance(flags, tuple) and all(isinstance(flag, str) for flag in flags):
+                return flags
+            return None
+    return None
+
+
+def directories():
+    """Each directory of containers and the kernels whose containers it
+    holds."""
+    held = {KERNELS: [], TEST_KERNELS: []}
+    for name in kernel_names():
+        held[folder(name)].append(name)
+    return held
+
+
+def read_stamp(directory):
+    """A stamp's release, its DXC flags (a string) and each container's
+    SHA-256 by kernel name; None when it is missing."""
+    path = os.path.join(directory, STAMP)
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as file:
+        text = file.read()
+    release = re.search(r"^maul-rhi (\S+)$", text, re.M)
+    flags = re.search(r"^dxc-flags (.*)$", text, re.M)
+    return (release.group(1) if release else None, flags.group(1) if flags else None,
+            dict(re.findall(r"^container (\S+) ([0-9a-f]{64})$", text, re.M)))
+
+
+def write_stamp(directory, names, cooked, release, flags):
+    """Writes a directory's stamp: the digests of the containers cooked
+    now, and for the others the ones the old stamp holds, so a cook by name
+    vouches for no container it did not make; one the old stamp lacks is
+    left out, and --check refuses it."""
+    old = read_stamp(directory)
+    kept = old[2] if old is not None else {}
+    lines = [
+        "# Written by tools/gen_kernels.py and read by its --check: the Maul RHI",
+        "# release whose tools cooked these containers, the flags its DXC",
+        "# compiles passed, and each container's SHA-256.",
+        f"maul-rhi {release}",
+        f"dxc-flags {' '.join(flags)}",
+    ]
+    for name in sorted(names):
+        data = committed(name) if name in cooked else None
+        digest = hashlib.sha256(data).hexdigest() if data is not None else kept.get(name)
+        if digest is not None:
+            lines.append(f"container {name} {digest}")
+    with open(os.path.join(directory, STAMP), "w", encoding="utf-8", newline="\n") as file:
+        file.write("\n".join(lines) + "\n")
+
+
+def stamp_problems():
+    """What in the containers no longer matches their stamps."""
+    found = []
+    release = pinned_release()
+    for directory, names in directories().items():
+        shown = os.path.relpath(os.path.join(directory, STAMP), ROOT)
+        stamp = read_stamp(directory)
+        if stamp is None:
+            found.append(f"{shown}: missing")
+            continue
+        stamped, flags, hashes = stamp
+        if stamped != release:
+            found.append(f"{shown}: cooked with Maul RHI {stamped or 'of no release'}, "
+                         f"cmake/Rhi.cmake pins {release}")
+        if flags is None or "-Gis" not in flags.split():
+            found.append(f"{shown}: its DXIL was compiled without -Gis")
+        for name in names:
+            data = committed(name)
+            if data is None:
+                found.append(f"{name}_container.h: missing")
+            elif name not in hashes:
+                found.append(f"{name}_container.h: not in {shown}")
+            elif hashes[name] != hashlib.sha256(data).hexdigest():
+                found.append(f"{name}_container.h: not the bytes {shown} names")
+        for name in sorted(set(hashes) - set(names)):
+            found.append(f"{shown}: names {name}, which no kernel gives")
+    return found
+
+
 def committed(name):
     """The bytes of a kernel's committed container, read from its header."""
     path = os.path.join(folder(name), f"{name}_container.h")
@@ -148,6 +277,10 @@ def check():
             stale.append(name)
     if stale:
         sys.exit(f"stale kernel containers (run gen_kernels.py): {' '.join(stale)}")
+    found = stamp_problems()
+    if found:
+        sys.exit("kernel containers their stamps do not vouch for (run gen_kernels.py "
+                 "with the pinned Maul RHI):\n  " + "\n  ".join(found))
 
 
 def main():
@@ -156,8 +289,22 @@ def main():
         return
     if len(sys.argv) < 2:
         sys.exit("usage: gen_kernels.py <a Maul RHI source tree> [NAME ...]")
-    tools = os.path.join(os.path.abspath(sys.argv[1]), "tools")
+    tree = os.path.abspath(sys.argv[1])
+    tools = os.path.join(tree, "tools")
+    release = tree_release(tree)
+    if release != pinned_release():
+        sys.exit(f"{tree} is Maul RHI {release or 'of no release'}; cmake/Rhi.cmake pins "
+                 f"{pinned_release()}")
+    flags = dxc_flags(tree)
+    if flags is None or "-Gis" not in flags:
+        sys.exit(f"{tools}/mrhi_dxil.py compiles DXIL without -Gis: D3D12 would fold the float "
+                 "math the other APIs keep")
     names = sys.argv[2:] or kernel_names()
+    for directory in directories():
+        stamp = read_stamp(directory)
+        if sys.argv[2:] and (stamp is None or stamp[:2] != (release, " ".join(flags))):
+            sys.exit(f"{os.path.relpath(os.path.join(directory, STAMP), ROOT)} names another "
+                     "Maul RHI release or other DXC flags: cook every kernel")
     for name in names:
         with tempfile.TemporaryDirectory() as work:
             data = build(work, tools, name)
@@ -165,6 +312,8 @@ def main():
         with open(path, "w", encoding="utf-8", newline="\n") as file:
             file.write(header(name, data))
         print(f"{os.path.relpath(path, ROOT)}: {len(data)} bytes")
+    for directory, held in directories().items():
+        write_stamp(directory, held, set(names), release, flags)
 
 
 if __name__ == "__main__":
