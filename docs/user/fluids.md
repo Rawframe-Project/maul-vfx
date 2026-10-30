@@ -160,6 +160,8 @@ The program pushes the surface where its bodies meet the water (`mvfxInstance_Pu
 
 An emitter meets a water surface through `water` (`mvfxWaterCoupling`): its particles float with a buoyancy and drift with the water's flow, push the water where they cross it, pour into shallow water, and write a crossing event where they enter, for a splash.
 
+A surface stands at most `MVFX_MAX_WATER_DEPTH` (1e12 of its lengths) from where it rests. Each step holds a wave's height and shallow water's depth within it after the step's pushes, crossings, pours and sources. Pushes of the most depth on an instance at the least scale, or a large particle pouring into small cells, reach the bound, and the water then moves from there.
+
 A stone pushed into still water: the water it displaces lifts the rest, and the hollow spreads out as a ring at the waves' speed.
 
 ```c

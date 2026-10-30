@@ -6,7 +6,9 @@
 // plays, an open wall draining; depths never below 0; a dam break on a
 // dry bed against Ritter's solution; a lake at rest still over a sloped
 // terrain, the effect's or the host's; a leaned terrain's ground; a fall
-// off a cliff as its mirror's; reads and samples of a lake; friction;
+// off a cliff as its mirror's; reads and samples of a lake; depths held
+// at MVFX_MAX_WATER_DEPTH and unit normals over slopes past binary32's
+// squares; friction;
 // pushes at their edges; a stopped instance finishing once still; a
 // step's substeps counted from the state the last step left, a planned
 // instance's from the speed it is told. Depths and flows are read through
@@ -704,6 +706,75 @@ static void TestReads(void)
     Close();
 }
 
+// The unit normals of surface 0's 8 by 8 cells, read and sampled at
+// (x, z): whether each is unit and finite.
+static bool UnitNormals(double x, double z)
+{
+    static float normal[3][64];
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        const mvfxWaterRead read = {.field = (mvfxWaterField)(mvfx_waterNormalX + k),
+                                    .format = mvfx_formatFloat32,
+                                    .size = {8, 8}};
+        CHECK(mvfxInstance_ReadWater(s_context, s_instance, 0, &read, normal[k],
+                                     sizeof normal[k]) == mvfx_success,
+              "normals read");
+    }
+    bool unit = true;
+    for (int32_t i = 0; i < 64; ++i)
+    {
+        double a = (double)normal[0][i];
+        double b = (double)normal[1][i];
+        double c = (double)normal[2][i];
+        unit = unit && fabs(sqrt(a * a + b * b + c * c) - 1.0) < 1e-6;
+    }
+    const double point[3] = {x, 0.0, z};
+    mvfxWaterSample sample;
+    CHECK(mvfxInstance_SampleWater(s_context, s_instance, 0, point, 1, &sample) == mvfx_success,
+          "sampled");
+    return unit && fabsf(sample.normal[0]) < 1e-6f && fabsf(sample.normal[1] - 1.0f) < 1e-6f &&
+           fabsf(sample.normal[2]) < 1e-6f;
+}
+
+static void TestHeld(void)
+{
+    // Depths past MVFX_MAX_WATER_DEPTH, written through the test hooks as
+    // a wave focusing past it within a step could leave them: two columns
+    // of 1e20 over cells of 1e-6. Each cell's normal over them, whose
+    // slope's square passes binary32's largest, reads unit; a sample
+    // between the columns, whose corners' slopes cancel and whose Y
+    // squares below binary32's least normal, is the up axis. A step then
+    // holds every depth within the bound before it moves the water, and
+    // every field stays finite.
+    mvfxWaterDef water = Shallow(8, 8, 1e-6f);
+    CHECK(Open(&water, 1), "opened");
+    Steps(1, 0.0);
+    static float depths[64];
+    for (int32_t i = 0; i < 64; ++i)
+    {
+        depths[i] = i % 8 == 3 || i % 8 == 4 ? 1e20f : 0.0f;
+    }
+    SetDepths(&water, depths);
+    CHECK(UnitNormals(0.0, 0.5e-6), "unit normals over slopes past binary32's squares");
+    Steps(1, 1.0 / 60.0);
+    const float* d = Depths(&water);
+    int32_t wrong = 0;
+    for (int32_t i = 0; i < 64; ++i)
+    {
+        wrong += !(d[i] >= 0.0f && d[i] <= MVFX_MAX_WATER_DEPTH);
+    }
+    for (mvfxWaterField f = mvfx_waterHeight; f <= mvfx_waterDepth; ++f)
+    {
+        const float* v = Read(&water, f);
+        for (int32_t i = 0; i < 64; ++i)
+        {
+            wrong += !isfinite(v[i]);
+        }
+    }
+    CHECK(wrong == 0, "a step holds the depths within MVFX_MAX_WATER_DEPTH, every field finite");
+    Close();
+}
+
 // A basin filled to 0.3, pushed once at its middle and stepped seconds
 // under friction: its cells' largest flow along X after.
 static float Slosh(float friction, double seconds)
@@ -925,6 +996,7 @@ int main(void)
     TestCliff();
     TestColumn();
     TestReads();
+    TestHeld();
     TestFriction();
     TestPushRing();
     TestPushEdges();

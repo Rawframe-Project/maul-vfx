@@ -286,7 +286,8 @@ static void SpillAt(const mvfxCompiledWater* water, float* d, float x, float z, 
 }
 
 // Adds a volume at (x, z) of the surface's frame to the depths of the four
-// cells about it, bilinear.
+// cells about it, bilinear. A large drop over small cells may make a
+// depth infinite, which mvfxPushShallow's hold takes to the bound.
 static void PourAt(const mvfxCompiledWater* water, float* d, float x, float z, float volume)
 {
     int32_t lo[2];
@@ -330,4 +331,9 @@ void mvfxPushShallow(mvfxInstance* instance, int32_t w)
     }
     state->pushCount = 0;
     state->crossingCount = 0;
+    // The step's fill, sources, pushes and pours held.
+    for (int64_t i = 0; i < water->cells; ++i)
+    {
+        d[i] = d[i] > MVFX_MAX_WATER_DEPTH ? MVFX_MAX_WATER_DEPTH : d[i];
+    }
 }

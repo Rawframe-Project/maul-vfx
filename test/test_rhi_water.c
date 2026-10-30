@@ -11,7 +11,9 @@
 // frames dropped; two surfaces; a hitch slowed past the most substeps.
 // Shallow water: a basin filled and pushed; springs on a terrain of the
 // effect's, level and leaning, and on the instance's, two walls open; a
-// clear; frames dropped; a moving instance. Both beside a liquid gas
+// clear; frames dropped; a moving instance. Both at the limits: a pond
+// pushed past MVFX_MAX_WATER_DEPTH, a basin poured into past binary32's
+// range. Both beside a liquid gas
 // splitting the frames; the record read back and reported, a stopped
 // instance finishing; reads in every format over a box with padded rows,
 // the padding kept; the refusals. Samples by query (a far, turned,
@@ -332,6 +334,39 @@ static const mvfxCollider s_tank = {.kind = mvfx_colliderBox,
                                     .inside = true,
                                     .halfExtents = {0.8f, 0.8f, 1.0f},
                                     .rotation = {0, 0, 0, 1}};
+
+static void TestHeld(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Waves of 1e-6 a second over cells of 1e-6, the instance at the least
+    // scale, pushed at the limits every step: each step sinks the middle
+    // by 6.4e13 of the surface's lengths, which the sink holds within
+    // MVFX_MAX_WATER_DEPTH as the core's Displace does.
+    mvfxWaterDef pond = Pond(16, 16, 1e-6f, 1e-6f, 15);
+    pond.center[1] = 0.0f;
+    Ponds(gpu, kernels, &pond, 1,
+          (Run){.scale = MVFX_MIN_SCALE, .pushesAtLimits = true, .steps = 8},
+          "a pond pushed at the limits");
+    // Eight particles a step of radius MVFX_MAX_EXTENT in the world thrown
+    // down into one cell of shallow water of cells of 2^-19, the instance
+    // at a scale of 2^-19: each pours 6e35 over a cell's 3.6e-12, past
+    // binary32's largest, which the spill adds as MVFX_MAX_WATER_DEPTH and
+    // then holds there, as the core's hold takes its infinity.
+    mvfxWaterDef basin = Basin(16, 16, 0x1p-19f, 0x1p-17f);
+    basin.center[1] = 0.0f;
+    mvfxEmitterDef pouring = mvfxDefaultEmitterDef();
+    pouring.capacity = 64;
+    pouring.rate = 480.0f;
+    pouring.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    pouring.shape = (mvfxShape){.kind = mvfx_shapePoint,
+                                .rotation = {0, 0, 0, 1},
+                                .offset = {0x1p-20f, 0x1p-15f, 0x1p-20f}};
+    pouring.velocity = (mvfxVelocity){
+        .mode = mvfx_directionFixed, .direction = {0, -1, 0}, .speed = {0x1p-8f, 0x1p-8f}};
+    pouring.water = (mvfxWaterCoupling){.enabled = true, .radius = MVFX_MAX_EXTENT, .pour = true};
+    Floats(gpu, kernels, pouring, &basin, (Run){.scale = 0x1p-19f, .steps = 8, .least = -1},
+           "a basin poured into past binary32's range");
+    CHECK(WaterPoured() > 1e18, "the basin poured into");
+}
 
 static void TestSplit(Gpu* gpu, mvfxGpu* kernels)
 {
@@ -816,6 +851,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestHitch(gpu, kernels);
     TestShallow(gpu, kernels);
     TestCoupled(gpu, kernels);
+    TestHeld(gpu, kernels);
     TestSplit(gpu, kernels);
     TestFinishing(gpu, kernels);
     TestReads(gpu, kernels);

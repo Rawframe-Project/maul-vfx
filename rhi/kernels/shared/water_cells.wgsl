@@ -5,6 +5,8 @@
 // and each cell's surface, normal and velocity (src/water_api.c's
 // SurfaceAt, NormalAt and VelocityAt).
 
+// include: shared/length.wgsl
+
 // Shallow water's fields: depths, X faces and Z faces, two buffers each,
 // the givers' scales, the ground.
 fn faceAt(axis: u32) -> u32 {
@@ -40,7 +42,8 @@ fn normalAt(x: u32, z: u32) -> vec3<f32> {
     let z1 = select(z, z + 1u, z + 1u < water.size.y);
     let dx = (surfaceAt(x1, z) - surfaceAt(x0, z)) / (f32(x1 - x0) * h);
     let dz = (surfaceAt(x, z1) - surfaceAt(x, z0)) / (f32(z1 - z0) * h);
-    let length = sqrt(dx * dx + 1.0 + dz * dz);
+    // Measured scaled where a slope's square passes binary32's range.
+    let length = lengthOf(vec3<f32>(dx, 1.0, dz));
     return vec3<f32>(-dx / length, 1.0 / length, -dz / length);
 }
 

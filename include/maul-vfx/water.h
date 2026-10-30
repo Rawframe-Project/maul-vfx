@@ -41,6 +41,12 @@ extern "C"
 // The most sources a shallow water surface has.
 #define MVFX_MAX_WATER_SOURCES 8
 
+// The farthest a water surface's cell stands from where it rests: a
+// wave's height from the rest level, shallow water's depth. A step's
+// pushes, crossings, pours and sources are held within it before the step
+// moves the water, so a step's products stay within binary32's range.
+#define MVFX_MAX_WATER_DEPTH 1e12f
+
     // How a water surface moves.
     typedef uint8_t mvfxWaterModel;
     enum

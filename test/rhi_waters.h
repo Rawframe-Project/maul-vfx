@@ -17,7 +17,7 @@
 
 // Gives both instances the pushes of step s on each of the run's
 // surfaces: a few every fourth step of the first 24, one reaching past
-// an edge, one lifting.
+// an edge, one lifting; or, with pushesAtLimits, the most every step.
 void PushWaters(const Run* run, int32_t s);
 
 // Reads each surface's statistics record back after its step and reports

@@ -84,7 +84,7 @@ gas_surface: force gas gas_api instance tasks
 box: direction force instance
 read_format:
 water: allocator collide force refusal
-water_api: box context force fpenv instance instance_api layout read_format refusal water
+water_api: box context direction force fpenv instance instance_api layout read_format refusal water
 water_step: box elementary instance tasks water water_api water_shallow
 water_shallow: elementary instance tasks water water_ground
 water_ground: box collide direction grid instance tasks water water_api

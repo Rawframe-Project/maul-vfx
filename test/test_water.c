@@ -4,9 +4,10 @@
 // Water surfaces of waves: the refusals; a pulse's halves at the wave
 // speed; energy and volume held without damping and lost at its rate
 // with it; a closed wall reflecting and an open one letting waves out;
-// substeps stable at the bound and through a hitch; pushes, reads,
-// samples, info and bounds in a moved, turned and scaled frame; a
-// stopped instance finishing once its water is still.
+// substeps stable at the bound and through a hitch; pushes, and heights
+// held at MVFX_MAX_WATER_DEPTH; reads, samples, info and bounds in a
+// moved, turned and scaled frame; a stopped instance finishing once its
+// water is still.
 
 #include "test_harness.h"
 
@@ -640,6 +641,45 @@ static void TestPushes(void)
     PushRefusals();
 }
 
+static void TestHeld(void)
+{
+    // Waves of 1e-6 a second over cells of 1e-6, the instance at the
+    // least scale: 64 pushes at the most depth, two cells wide, sink its
+    // center by 6.4e13 of the surface's lengths in one step. The step
+    // holds every height within MVFX_MAX_WATER_DEPTH of the rest level,
+    // each field finite.
+    mvfxWaterDef water = Water(16, 16, 1e-6f, 1e-6f);
+    CHECK(Open(&water, 1), "opened");
+    static const double origin[3] = {0.0, 0.0, 0.0};
+    static const float upright[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    CHECK(mvfxInstance_SetTransform(s_context, s_instance, origin, upright, MVFX_MIN_SCALE, true) ==
+              mvfx_success,
+          "scaled");
+    mvfxWaterPush pushes[MVFX_MAX_WATER_PUSHES];
+    for (int32_t p = 0; p < MVFX_MAX_WATER_PUSHES; ++p)
+    {
+        pushes[p] =
+            (mvfxWaterPush){.radius = 2.0f * 1e-6f * MVFX_MIN_SCALE, .depth = MVFX_MAX_EXTENT};
+    }
+    CHECK(mvfxInstance_PushWater(s_context, s_instance, 0, pushes, MVFX_MAX_WATER_PUSHES) ==
+              mvfx_success,
+          "pushed");
+    Steps(1, 1.0 / 60.0);
+    int32_t wrong = 0;
+    for (mvfxWaterField f = mvfx_waterHeight; f <= mvfx_waterDepth; ++f)
+    {
+        float* v = Read(&water, f);
+        for (int32_t i = 0; i < 256; ++i)
+        {
+            wrong += !isfinite(v[i]) ||
+                     (f == mvfx_waterHeight && !(fabsf(v[i]) <= MVFX_MAX_WATER_DEPTH));
+        }
+        free(v);
+    }
+    CHECK(wrong == 0, "the heights held within MVFX_MAX_WATER_DEPTH, every field finite");
+    mvfxDestroyContext(s_context);
+}
+
 // The unit normal at cell (x, z) of heights u, n by m of cell h, from
 // central differences, one-sided at the edges.
 static void NormalOf(const float* u, int32_t n, int32_t m, float h, int32_t x, int32_t z,
@@ -1043,6 +1083,7 @@ int main(void)
     TestOpenAngles();
     TestStability();
     TestPushes();
+    TestHeld();
     TestReads();
     TestSamples();
     TestInfo();
