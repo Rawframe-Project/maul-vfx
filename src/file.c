@@ -287,7 +287,9 @@ static MVFX_NOINLINE mvfxFileResult mvfxWriteEffectWork(const mvfxEffectDef* def
         return Fault(mvfx_errorCapacity, -1);
     }
     *sizeOut = (int64_t)size;
-    if ((int64_t)size > capacity)
+    // No buffer is a capacity of 0, which a file of at least its header
+    // passes.
+    if ((int64_t)size > capacity || bytes == nullptr)
     {
         return Fault(mvfx_errorCapacity, -1);
     }
