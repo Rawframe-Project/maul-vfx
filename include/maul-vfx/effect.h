@@ -270,9 +270,11 @@ extern "C"
         // instance's seconds); a parameter, the parameter's x at the step,
         // times the range's draw. None is a strength of 0. Its ends' larger
         // size times its base's largest is at most MVFX_MAX_EXTENT (wind's
-        // at most MVFX_MAX_DRAG, its min at least 0); a parameter's
-        // strength is held to MVFX_MAX_EXTENT in size (wind's to 0 and
-        // MVFX_MAX_DRAG), not refused.
+        // at most MVFX_MAX_DRAG, its min at least 0). A wind's curve never
+        // goes below 0: a key's value below 0 is refused at that key, a
+        // cubic segment dipping below 0 between keys at its first key's
+        // interpolation. A parameter's strength is held to MVFX_MAX_EXTENT
+        // in size (wind's to 0 and MVFX_MAX_DRAG), not refused.
         mvfxScalarSource strength;
         // The attractor's softening radius, from MVFX_MIN_SOFTENING.
         float softening;

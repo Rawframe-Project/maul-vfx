@@ -185,6 +185,33 @@ mvfxResult mvfxCheckVectorSource(const mvfxFieldPath* at, const mvfxVectorSource
     return mvfx_success;
 }
 
+int32_t mvfxCurveSourceDip(const mvfxScalarSource* source, bool hasDuration)
+{
+    const mvfxCurve* curve = &source->curve;
+    float start = 0.0f;
+    float end = 0.0f;
+    CurveDomain(curve, hasDuration, &start, &end);
+    mvfxCurveTable table;
+    mvfxBakeCurve(curve, start, end, &table);
+    double span = (double)end - (double)start;
+    for (int32_t i = 0; i < MVFX_CURVE_SAMPLES; ++i)
+    {
+        if (!(table.samples[i] < 0.0f))
+        {
+            continue;
+        }
+        // The segment holding the sample: the last key at or before it.
+        double time = (double)start + span * (double)i / (double)(MVFX_CURVE_SAMPLES - 1);
+        int32_t key = 0;
+        while (key + 2 < curve->keyCount && (double)curve->keys[key + 1].time <= time)
+        {
+            ++key;
+        }
+        return key;
+    }
+    return -1;
+}
+
 int32_t mvfxScalarCurves(const mvfxScalarSource* source)
 {
     return source->kind == mvfx_sourceCurve ? 1 : 0;

@@ -755,6 +755,20 @@ static void TestStrengthSources(void)
     CHECK(Is(a[0], 0, 0, 0) && Is(a[1], 1, 0, 0) && Is(a[3], 3, 0, 0) && Is(a[4], 0, 0, 0) &&
               Is(a[5], 1, 0, 0),
           "a curve over the loop's age at each step");
+    // A wind's curve that stays at or above 0, cubic between keys of 0
+    // and 2, is a rate it takes.
+    mvfxCurveKey gusting[2] = {
+        {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationCubic},
+        {.time = 1.0f, .value = 2.0f}};
+    mvfxForce wind = {
+        .kind = mvfx_forceWind,
+        .vector = {1, 0, 0},
+        .strength = {.kind = mvfx_sourceCurve,
+                     .range = {1.0f, 1.0f},
+                     .curve = {.keys = gusting, .keyCount = 2, .tangents = mvfx_tangentsMonotone}}};
+    emitter = Held(&wind, 1);
+    StrengthsOverSteps(&emitter, 1, 2, a);
+    CHECK(a[1][0] > 0.0f, "a wind's curve at or above 0 taken");
 }
 
 static void TestRefusals(void)

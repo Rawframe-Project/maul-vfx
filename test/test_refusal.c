@@ -104,6 +104,10 @@ static const Case s_cases[] = {
      -1, -1},
     {"a force's strength past its bound", mvfx_errorLimit,
      "emitters[0].forces[0].strength.range.max", 0, -1, -1},
+    {"a wind's curve with a key below 0", mvfx_errorInvalid,
+     "emitters[0].forces[0].strength.curve.keys[1].value", 0, -1, -1},
+    {"a wind's cubic curve dipping below 0", mvfx_errorInvalid,
+     "emitters[0].forces[0].strength.curve.keys[0].interpolation", 0, -1, -1},
 };
 
 // Makes case k's def from valid parts.
@@ -228,6 +232,23 @@ static void Break(Parts* p, int32_t k)
                         .strength = {.kind = mvfx_sourceRange,
                                      .range = {k == 22 ? -1.0f : 0.0f,
                                                k == 22 ? 1.0f : 2.0f * MVFX_MAX_EXTENT}}};
+        e[0].forces = p->forces;
+        e[0].forceCount = 1;
+        break;
+    case 24:
+    case 25:
+        // Keys 1 then -1, or two of 0.5 whose tangents dip to -0.5 between.
+        p->keys[0] = (mvfxCurveKey){.time = 0.0f,
+                                    .value = k == 24 ? 1.0f : 0.5f,
+                                    .outTangent = -4.0f,
+                                    .interpolation = k == 24 ? mvfx_interpolationLinear
+                                                             : mvfx_interpolationCubic};
+        p->keys[1] =
+            (mvfxCurveKey){.time = 1.0f, .value = k == 24 ? -1.0f : 0.5f, .inTangent = 4.0f};
+        p->forces[0] = (mvfxForce){.kind = mvfx_forceWind,
+                                   .strength = {.kind = mvfx_sourceCurve,
+                                                .range = {1.0f, 1.0f},
+                                                .curve = {.keys = p->keys, .keyCount = 2}}};
         e[0].forces = p->forces;
         e[0].forceCount = 1;
         break;

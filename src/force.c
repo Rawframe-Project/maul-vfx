@@ -106,8 +106,32 @@ static uint32_t RefusedChoice(const mvfxForce* force)
                : 0;
 }
 
+// A wind's strength curve, a rate, never below 0: refused at its first
+// key of a value below 0, else at the interpolation of the first cubic
+// segment dipping below 0 between keys.
+static mvfxResult CheckWindCurve(const mvfxFieldPath* strength, const mvfxScalarSource* source,
+                                 bool hasDuration)
+{
+    mvfxFieldPath curve = mvfxFieldIn(strength, MVFX_TAG_SCALAR_SOURCE_CURVE, -1);
+    for (int32_t k = 0; k < source->curve.keyCount; ++k)
+    {
+        if (source->curve.keys[k].value < 0.0f)
+        {
+            mvfxFieldPath key = mvfxFieldIn(&curve, MVFX_TAG_CURVE_KEYS, k);
+            return mvfxRefuseField(&key, MVFX_TAG_CURVE_KEY_VALUE, mvfx_errorInvalid);
+        }
+    }
+    int32_t dip = mvfxCurveSourceDip(source, hasDuration);
+    if (dip >= 0)
+    {
+        mvfxFieldPath key = mvfxFieldIn(&curve, MVFX_TAG_CURVE_KEYS, dip);
+        return mvfxRefuseField(&key, MVFX_TAG_CURVE_KEY_INTERPOLATION, mvfx_errorInvalid);
+    }
+    return mvfx_success;
+}
+
 // A force's strength: a source within its cap, and wind's, a rate, never
-// below 0.
+// below 0 but for a parameter's, which is held.
 static mvfxResult CheckStrength(const mvfxFieldPath* at, const mvfxForce* force,
                                 int32_t parameterCount, bool hasDuration)
 {
@@ -118,8 +142,12 @@ static mvfxResult CheckStrength(const mvfxFieldPath* at, const mvfxForce* force,
         mvfxFieldPath range = mvfxFieldIn(&strength, MVFX_TAG_SCALAR_SOURCE_RANGE, -1);
         return mvfxRefuseField(&range, MVFX_TAG_RANGE_MIN, mvfx_errorInvalid);
     }
-    return mvfxCheckScalarSource(&strength, &force->strength, true, hasDuration, parameterCount,
-                                 wind ? MVFX_MAX_DRAG : MVFX_MAX_EXTENT);
+    mvfxResult checked =
+        mvfxCheckScalarSource(&strength, &force->strength, true, hasDuration, parameterCount,
+                              wind ? MVFX_MAX_DRAG : MVFX_MAX_EXTENT);
+    return checked != mvfx_success || !wind || force->strength.kind != mvfx_sourceCurve
+               ? checked
+               : CheckWindCurve(&strength, &force->strength, hasDuration);
 }
 
 mvfxResult mvfxCheckForce(const mvfxFieldPath* at, const mvfxForce* force, int32_t parameterCount,
