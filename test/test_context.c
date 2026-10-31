@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Creating and destroying contexts, and every refusal of a def.
+// Creating and destroying contexts, and every refusal of a def; a NULL
+// context's counts.
 
 #include "test_harness.h"
 
@@ -79,6 +80,13 @@ static void TestDestroyNullDoesNothing(void)
 {
     mvfxDestroyContext(NULL);
     CHECK(true, "destroying NULL returns");
+}
+
+// A NULL context's counts are 0, not a read through it.
+static void TestNullCountsNothing(void)
+{
+    CHECK(mvfxContext_GetMisuse(NULL) == 0, "no misuse for a NULL context");
+    CHECK(mvfxContext_GetParticles(NULL) == 0, "no particles for a NULL context");
 }
 
 static void TestHostAllocatorHoldsEverything(void)
@@ -174,6 +182,7 @@ int main(void)
 {
     TestDefaultDefCreatesAndDestroys();
     TestDestroyNullDoesNothing();
+    TestNullCountsNothing();
     TestHostAllocatorHoldsEverything();
     TestAllocatorFailureIsCapacity();
     TestEachAllocationFailing();

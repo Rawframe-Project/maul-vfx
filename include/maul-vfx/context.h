@@ -138,7 +138,8 @@ extern "C"
     /// arguments against it. Stale ids are not misuse.
     ///
     /// @param context  The context.
-    /// @return The count since the context was created.
+    /// @return The count since the context was created; 0 for a NULL
+    ///         context.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API uint64_t mvfxContext_GetMisuse(const mvfxContext* context);
@@ -148,7 +149,7 @@ extern "C"
     /// levels.
     ///
     /// @param context  The context.
-    /// @return The particles held now.
+    /// @return The particles held now; 0 for a NULL context.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API int64_t mvfxContext_GetParticles(const mvfxContext* context);
