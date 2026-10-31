@@ -34,7 +34,9 @@ bool mvfxTestTearEdges(mvfxContext* context, mvfxInstanceId instance, int32_t em
 // Copies up to capacity of the pairs of an emitter's rigid particles the
 // last step's broadphase found, by their indices among the emitter's
 // particles, into a and b; returns how many there are, or -1 for an id
-// that names no live instance or an emitter out of range.
+// that names no live instance or an emitter out of range. A collision
+// event names the struck body but not the other, and no output lists
+// pairs.
 int32_t mvfxTestRigidPairs(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                            int32_t* a, int32_t* b, int32_t capacity);
 
@@ -42,7 +44,8 @@ int32_t mvfxTestRigidPairs(const mvfxContext* context, mvfxInstanceId instance, 
 // (0 to 2), X fastest, then Y, then Z, as the last step left them;
 // returns how many faces there are, or -1 for an id that names no live
 // instance, a gas or an axis out of range, or an axis the gas keeps no
-// velocity along.
+// velocity along. The public reads give a cell the mean of its two faces
+// or a trilinear sample, never one face.
 int64_t mvfxTestReadGasFaces(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                              int32_t axis, float* out, int64_t capacity);
 
@@ -57,7 +60,9 @@ bool mvfxTestWriteGasFaces(mvfxContext* context, mvfxInstanceId instance, int32_
 // Sets a gas's scalar field (mvfx_gasDensity, mvfx_gasTemperature,
 // mvfx_gasFuel, or a surface's mvfx_gasDistance) at its cells, count of
 // them (its cells). Returns false for an id that names no live instance,
-// a gas out of range, a field it does not keep, or another count.
+// a gas out of range, a field it does not keep, or another count. A
+// step makes them from sources, or a surface's distance from particles;
+// no public call sets them.
 bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                             mvfxGasField field, const float* values, int64_t count);
 
@@ -65,7 +70,8 @@ bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32
 // open cell, else 1 more than the index of the obstacle filling it, as
 // the last step marked them, and returns how many cells it has. Returns
 // -1 for an id that names no live instance, a gas out of range, or a gas
-// without obstacles.
+// without obstacles. The public reads show an obstacle only by its effect
+// on the fields.
 int64_t mvfxTestReadGasSolid(const mvfxContext* context, mvfxInstanceId instance, int32_t gas,
                              uint8_t* out, int64_t capacity);
 
