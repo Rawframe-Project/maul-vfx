@@ -6,6 +6,7 @@
 // integrals of baked curves and their exact inverse, and gradients.
 
 #include "curve.h"
+
 #include "refusal.h"
 
 #include <math.h>
@@ -41,7 +42,9 @@ static uint32_t RefusedKeyField(const mvfxCurve* curve, int32_t i, bool unitDoma
     {
         return MVFX_TAG_CURVE_KEY_OUT_TANGENT;
     }
-    return !mvfxIsKind(key->interpolation, mvfx_interpolationCubic) ? MVFX_TAG_CURVE_KEY_INTERPOLATION : 0;
+    return !mvfxIsKind(key->interpolation, mvfx_interpolationCubic)
+               ? MVFX_TAG_CURVE_KEY_INTERPOLATION
+               : 0;
 }
 
 mvfxResult mvfxCheckCurve(const mvfxFieldPath* at, const mvfxCurve* curve, bool unitDomain)

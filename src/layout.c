@@ -41,7 +41,8 @@ static void ComponentRange(mvfxField field, uint8_t* low, uint8_t* high)
 
 static bool IsFieldValid(const mvfxLayoutField* f, uint32_t stride)
 {
-    if (!mvfxIsKind(f->field, mvfx_recordNeighborVelocity) || !mvfxIsKind(f->format, mvfx_formatUint32))
+    if (!mvfxIsKind(f->field, mvfx_recordNeighborVelocity) ||
+        !mvfxIsKind(f->format, mvfx_formatUint32))
     {
         return false;
     }

@@ -569,7 +569,7 @@ static uint32_t RefusedValue(const mvfxEmitterDef* def, bool* inFrame)
     {
         *inFrame = true;
         return !mvfxIsKind(def->frame.mode, mvfx_frameRandom) ? MVFX_TAG_FRAME_START_MODE
-                                                  : MVFX_TAG_FRAME_START_FIRST;
+                                                              : MVFX_TAG_FRAME_START_FIRST;
     }
     if (def->forceCount < 0 || (def->forceCount > 0 && def->forces == nullptr))
     {
