@@ -431,14 +431,14 @@ static bool AddPoint(Build* b, int32_t first, int32_t eye)
     return true;
 }
 
-// Builds the triangles of the hull of the points; mvfx_errorInvalid when
-// they span no volume, mvfx_errorLimit when they need more faces than a
+// Builds the triangles of the hull of the points; mvfx_errorUnsupported
+// when they span no volume, mvfx_errorLimit when they need more faces than a
 // build keeps.
 static mvfxResult Triangles(Build* b)
 {
     if (!Start(b))
     {
-        return mvfx_errorInvalid;
+        return mvfx_errorUnsupported;
     }
     for (int32_t f = NextFace(b); f >= 0; f = NextFace(b))
     {
@@ -554,7 +554,7 @@ static void OrderCorners(const Build* b, const Gather* g, const double n[3], int
 
 // Adds the face of the triangles of face first's plane: their points in
 // order about the plane's center; mvfx_errorLimit past the most vertices,
-// mvfx_errorInvalid for fewer than three corners.
+// mvfx_errorUnsupported for fewer than three corners.
 static mvfxResult AddFace(const Build* b, Gather* g, int32_t first, bool* taken)
 {
     int32_t corners[MVFX_MAX_HULL_VERTICES];
@@ -584,7 +584,7 @@ static mvfxResult AddFace(const Build* b, Gather* g, int32_t first, bool* taken)
     }
     if (count < 3)
     {
-        return mvfx_errorInvalid;
+        return mvfx_errorUnsupported;
     }
     OrderCorners(b, g, b->faces[first].n, corners, count);
     g->faceStart[g->faceCount] = (uint16_t)g->loopCount;
@@ -712,7 +712,7 @@ static mvfxResult Finish(const Build* b, mvfxHull* out)
     *out = (mvfxHull){.vertexCount = g.vertexCount, .faceCount = g.faceCount};
     if (!MassOf(b, &g, ref, out))
     {
-        return mvfx_errorInvalid;
+        return mvfx_errorUnsupported;
     }
     double c[3] = {(double)out->centroid[0], (double)out->centroid[1], (double)out->centroid[2]};
     for (int32_t v = 0; v < g.vertexCount; ++v)
@@ -763,7 +763,7 @@ static int32_t CountVertices(Build* b)
 mvfxResult mvfxMeasureHull(const float* points, int32_t count, const mvfxAllocator* allocator,
                            mvfxHullMeasure* measure, mvfxHull* out)
 {
-    *measure = (mvfxHullMeasure){.counted = mvfx_success, .built = mvfx_errorInvalid};
+    *measure = (mvfxHullMeasure){.counted = mvfx_success, .built = mvfx_errorUnsupported};
     if (count < 4)
     {
         return mvfx_success;

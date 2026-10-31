@@ -1291,6 +1291,9 @@ extern "C"
     ///         the library's named bounds (`MVFX_MAX_*`, `MVFX_MIN_*`), or a
     ///         rigid hull past MVFX_MAX_HULL_VERTICES, which counts none; the
     ///         first check the def fails decides between the two;
+    ///         `mvfx_errorUnsupported` for a rigid hull whose mesh has no
+    ///         hull, its vertices spanning no volume, which counts none (a
+    ///         model file's vertices may well be flat);
     ///         `mvfx_errorStale` for a mesh shape's mesh that names no live
     ///         mesh, `mvfx_errorInvalid` too for a mesh without the elements
     ///         its mode needs; `mvfx_errorCapacity` when the context holds as
