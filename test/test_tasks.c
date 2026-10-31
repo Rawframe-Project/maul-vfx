@@ -1,172 +1,174 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Running work through the host's task hooks, and the floating-point mode
-// every range runs in.
+// The host's task hooks through the main step: a gas stepped on hosts that
+// split the work in other ways, run the ranges last first or first last,
+// each range under a thread's hostile float setting, and return a handle
+// or NULL, gives the bits it gives serially. Every enqueue hands at least
+// one item in ranges of at least one, finish gets the handle enqueue
+// returned, once, and no NULL handle is waited on.
 
-#include "host_mode.h"
-#include "tasks.h"
+#include "test_fenv.h"
 #include "test_harness.h"
 
-#include <float.h>
-#include <string.h>
+#include "maul-vfx/context.h"
+#include "maul-vfx/effect.h"
+#include "maul-vfx/gas.h"
+#include "maul-vfx/instance.h"
 
-// What each item of a task saw: how often it ran, and the float results
-// computed inside the library's mode.
-#define ITEMS 1000
-typedef struct Visits
+enum
 {
-    int32_t count[ITEMS];
-    float subnormal[ITEMS];
-    float rounded[ITEMS];
-} Visits;
+    SIDE = 32,
+    STEPS = 20
+};
 
-// volatile keeps the compiler from folding the arithmetic at build time,
-// which would not see the thread's mode.
-static volatile float s_smallest = FLT_MIN;
-static volatile float s_half = 0.5f;
-static volatile float s_one = 1.0f;
-static volatile float s_third = 1.0f / 3.0f;
-
-static void Visit(int32_t startIndex, int32_t endIndex, void* taskContext)
+// A host's task system: it runs the ranges on the calling thread as a
+// worker would, under the hostile setting, giving the thread its own back
+// after.
+typedef struct Host
 {
-    Visits* visits = taskContext;
-    for (int32_t i = startIndex; i < endIndex; ++i)
-    {
-        visits->count[i] += 1;
-        visits->subnormal[i] = s_smallest * s_half;
-        visits->rounded[i] = s_one - s_third;
-    }
-}
-
-// A host task system that cuts the work into ranges of minRange items and
-// runs them last first, as a scheduler might.
-typedef struct ReverseHost
-{
+    // Ranges last first, else first last.
+    bool reverse;
+    // Each range minRange items and then 0, 1 or 2 more, else minRange.
+    bool uneven;
+    // Returns NULL, as a host that ran every range before returning may.
+    bool returnNull;
     int32_t enqueued;
     int32_t finished;
-    int32_t ranges;
-    int32_t shortestNotLast;
-    bool returnNull;
-} ReverseHost;
+    // Enqueues of no items or ranges under one, and finishes of another
+    // handle than the last enqueue's.
+    int32_t wrong;
+    // The handle the last enqueue returned, until it is finished.
+    void* pending;
+} Host;
 
-static void* ReverseEnqueue(mvfxTaskFunction* task, int32_t itemCount, int32_t minRange,
-                            void* taskContext, void* userContext)
+static char s_handles[8];
+
+// Cuts [0, itemCount) into the host's ranges: their starts, in order.
+static int32_t Cut(const Host* host, int32_t itemCount, int32_t minRange, int32_t* starts,
+                   int32_t most)
 {
-    ReverseHost* host = userContext;
-    host->enqueued += 1;
-    host->shortestNotLast = itemCount;
-    int32_t rangeCount = (itemCount + minRange - 1) / minRange;
-    for (int32_t r = rangeCount - 1; r >= 0; --r)
+    int32_t count = 0;
+    for (int32_t start = 0; start < itemCount && count < most; ++count)
     {
-        int32_t start = r * minRange;
-        int32_t end = start + minRange < itemCount ? start + minRange : itemCount;
-        if (r != rangeCount - 1 && end - start < host->shortestNotLast)
-        {
-            host->shortestNotLast = end - start;
-        }
-        task(start, end, taskContext);
-        host->ranges += 1;
+        starts[count] = start;
+        start += minRange + (host->uneven ? count % 3 : 0);
     }
-    return host->returnNull ? NULL : host;
+    return count;
 }
 
-static void ReverseFinish(void* userTask, void* userContext)
+static void* Enqueue(mvfxTaskFunction* task, int32_t itemCount, int32_t minRange, void* taskContext,
+                     void* userContext)
 {
-    ReverseHost* host = userContext;
-    CHECK(userTask == host, "finish gets the handle enqueue returned");
+    Host* host = userContext;
+    if (itemCount < 1 || minRange < 1)
+    {
+        host->wrong += 1;
+        return NULL;
+    }
+    enum
+    {
+        MOST = 4096
+    };
+    static int32_t starts[MOST];
+    int32_t count = Cut(host, itemCount, minRange, starts, MOST);
+    TestFloatSetting thread = TestFloatGet();
+    for (int32_t k = 0; k < count; ++k)
+    {
+        int32_t r = host->reverse ? count - 1 - k : k;
+        int32_t end = r + 1 < count ? starts[r + 1] : itemCount;
+        TestFloatSet(TestFloatHostile());
+        task(starts[r], end, taskContext);
+        TestFloatSet(thread);
+    }
+    host->pending = host->returnNull ? NULL : &s_handles[host->enqueued % 8];
+    host->enqueued += 1;
+    return host->pending;
+}
+
+static void Finish(void* userTask, void* userContext)
+{
+    Host* host = userContext;
+    host->wrong += userTask == NULL || userTask != host->pending ? 1 : 0;
+    host->pending = NULL;
     host->finished += 1;
 }
 
-static bool EachItemOnce(const Visits* visits, int32_t itemCount)
+// A hash of a burning smoke gas's density and temperature after every
+// step, stepped on host's hooks, or serially for NULL.
+static uint64_t Run(Host* host)
 {
-    for (int32_t i = 0; i < itemCount; ++i)
+    static const mvfxGasSource source = {.shape = mvfx_gasBox,
+                                         .center = {-0.6f, -1.0f, 0.0f},
+                                         .halfExtents = {0.3f, 0.2f, 1.0f},
+                                         .density = 1.0f,
+                                         .temperature = 3.0f,
+                                         .fuel = 1.0f};
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.size[0] = SIDE;
+    gas.size[1] = SIDE;
+    gas.space = mvfx_gasWorld;
+    gas.sources = &source;
+    gas.sourceCount = 1;
+    gas.heatLift = 0.7f;
+    gas.vorticity = 1.5f;
+    gas.advection = mvfx_gasMacCormack;
+    gas.ignitionTemperature = 1.0f;
+    gas.burnRate = 2.0f;
+    gas.burnHeat = 3.0f;
+    gas.burnExpansion = 0.3f;
+    gas.densityDecay = 0.1f;
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    if (host != NULL)
     {
-        if (visits->count[i] != 1)
-        {
-            return false;
-        }
+        contextDef.enqueueTask = Enqueue;
+        contextDef.finishTask = Finish;
+        contextDef.userTaskContext = host;
     }
-    return true;
-}
-
-static void TestSerialRunsEveryItemOnce(void)
-{
-    static Visits visits;
-    memset(&visits, 0, sizeof visits);
-    mvfxTasks tasks = {0};
-    mvfxRunTasks(&tasks, Visit, ITEMS, 16, &visits);
-    CHECK(EachItemOnce(&visits, ITEMS), "serial: each item once");
-}
-
-static void TestHostRangesRunEveryItemOnce(void)
-{
-    static Visits visits;
-    memset(&visits, 0, sizeof visits);
-    ReverseHost host = {0};
-    mvfxTasks tasks = {ReverseEnqueue, ReverseFinish, &host};
-    mvfxRunTasks(&tasks, Visit, ITEMS, 64, &visits);
-    CHECK(EachItemOnce(&visits, ITEMS), "host: each item once");
-    CHECK(host.enqueued == 1 && host.finished == 1, "one enqueue, one finish");
-    CHECK(host.ranges == (ITEMS + 63) / 64, "cut into ranges of minRange");
-    CHECK(host.shortestNotLast == 64, "no range but the last is short");
-}
-
-static void TestNullHandleIsNotFinished(void)
-{
-    static Visits visits;
-    memset(&visits, 0, sizeof visits);
-    ReverseHost host = {.returnNull = true};
-    mvfxTasks tasks = {ReverseEnqueue, ReverseFinish, &host};
-    mvfxRunTasks(&tasks, Visit, ITEMS, 100, &visits);
-    CHECK(EachItemOnce(&visits, ITEMS), "each item once");
-    CHECK(host.finished == 0, "a NULL handle is not waited on");
-}
-
-static void TestSmallOrEmptyWorkStaysOnTheCaller(void)
-{
-    static Visits visits;
-    memset(&visits, 0, sizeof visits);
-    ReverseHost host = {0};
-    mvfxTasks tasks = {ReverseEnqueue, ReverseFinish, &host};
-    mvfxRunTasks(&tasks, Visit, 10, 64, &visits);
-    CHECK(EachItemOnce(&visits, 10), "small work done");
-    CHECK(host.enqueued == 0, "no more than minRange items are not handed out");
-    mvfxRunTasks(&tasks, Visit, 0, 64, &visits);
-    mvfxRunTasks(&tasks, Visit, -5, 64, &visits);
-    CHECK(host.enqueued == 0 && visits.count[0] == 1, "no items, no work");
-}
-
-static void TestRangesRunInTheLibrarysMode(void)
-{
-    static Visits visits;
-    memset(&visits, 0, sizeof visits);
-#if HOST_MODE_SETTABLE
-    uint64_t saved = SetHostMode();
-    uint64_t hostMode = ReadHostMode();
-#endif
-    ReverseHost host = {0};
-    mvfxTasks tasks = {ReverseEnqueue, ReverseFinish, &host};
-    mvfxRunTasks(&tasks, Visit, ITEMS, 128, &visits);
-#if HOST_MODE_SETTABLE
-    CHECK(ReadHostMode() == hostMode, "the host's mode is restored");
-    RestoreHostMode(saved);
-#endif
-    float expectedRounded = 1.0f - 1.0f / 3.0f;
-    for (int32_t i = 0; i < ITEMS; ++i)
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.gases = &gas;
+    def.gasCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    uint64_t hash = 0;
+    static float density[SIDE * SIDE];
+    static float temperature[SIDE * SIDE];
+    for (int32_t s = 0; s < STEPS; ++s)
     {
-        CHECK(visits.subnormal[i] == FLT_MIN * 0.5f && visits.subnormal[i] != 0.0f,
-              "subnormals kept");
-        CHECK(visits.rounded[i] == expectedRounded, "rounded to nearest");
+        CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success, "step");
+        CHECK(mvfxInstance_ReadGas(context, instance, 0, mvfx_gasDensity, density, SIDE * SIDE) ==
+                      mvfx_success &&
+                  mvfxInstance_ReadGas(context, instance, 0, mvfx_gasTemperature, temperature,
+                                       SIDE * SIDE) == mvfx_success,
+              "read");
+        hash = mvfxHash64(hash, density, sizeof density);
+        hash = mvfxHash64(hash, temperature, sizeof temperature);
     }
+    mvfxDestroyContext(context);
+    return hash;
+}
+
+static void TestHosts(void)
+{
+    uint64_t serial = Run(NULL);
+    Host reverse = {.reverse = true};
+    CHECK(Run(&reverse) == serial, "ranges last first, under a hostile setting: the serial bits");
+    CHECK(reverse.enqueued > 0 && reverse.finished == reverse.enqueued && reverse.wrong == 0,
+          "each handle finished once");
+    Host uneven = {.uneven = true, .returnNull = true};
+    CHECK(Run(&uneven) == serial, "uneven ranges first last: the serial bits");
+    CHECK(uneven.enqueued > 0 && uneven.finished == 0 && uneven.wrong == 0,
+          "no NULL handle finished");
 }
 
 int main(void)
 {
-    TestSerialRunsEveryItemOnce();
-    TestHostRangesRunEveryItemOnce();
-    TestNullHandleIsNotFinished();
-    TestSmallOrEmptyWorkStaysOnTheCaller();
-    TestRangesRunInTheLibrarysMode();
+    TestHosts();
     return s_failures == 0 ? 0 : 1;
 }

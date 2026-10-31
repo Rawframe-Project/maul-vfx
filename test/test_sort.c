@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Sorting: ordered keys across every kind of float; the radix sort
-// against a stable insertion sort on many sizes and key shapes (bytes
-// that never vary, so passes are skipped, and an odd number of passes);
-// records back to front and front to back by distance and by depth with
-// ties in the pool's order, youngest first, none; a local emitter sorted
-// in the world; a buffer too small; the scratch query, scratch too small
-// or misaligned; the view's checks and the def's.
+// Sorting: records back to front and front to back by distance and by
+// depth with ties in the pool's order, youngest first, none; depths of
+// every sign and size, subnormal ones too, in their order; many counts
+// of particles against a stable sort of their depths, in key shapes
+// whose bytes vary in some places only (any, a few values, one byte, the
+// high two, none); a local emitter sorted in the world; a buffer too
+// small; the scratch query, scratch too small or misaligned; the view's
+// checks and the def's.
 
-#include "sort.h"
 #include "test_harness.h"
 
 #include "maul-vfx/output.h"
@@ -17,85 +17,11 @@
 #include <math.h>
 #include <string.h>
 
-static void TestKeys(void)
+// The most particles a scene places.
+enum
 {
-    const float values[11] = {-INFINITY, -2.0f, -1.0f, -0x1p-149f, -0.0f,   0.0f,
-                              0x1p-149f, 1.0f,  2.0f,  3e38f,      INFINITY};
-    bool increasing = true;
-    for (int32_t i = 1; i < 11; ++i)
-    {
-        uint32_t before = mvfxOrderedKey(values[i - 1]);
-        uint32_t after = mvfxOrderedKey(values[i]);
-        increasing = increasing && (i == 5 ? before == after : before < after);
-    }
-    CHECK(increasing, "keys order as their values; -0 as +0");
-}
-
-static uint32_t s_state = 0x12345678u;
-
-static uint32_t Next(void)
-{
-    s_state ^= s_state << 13u;
-    s_state ^= s_state >> 17u;
-    s_state ^= s_state << 5u;
-    return s_state;
-}
-
-// Sorts by insertion, stable, as the reference.
-static void Reference(uint32_t* keys, uint32_t* indices, int32_t count)
-{
-    for (int32_t i = 1; i < count; ++i)
-    {
-        uint32_t key = keys[i];
-        uint32_t index = indices[i];
-        int32_t j = i - 1;
-        while (j >= 0 && keys[j] > key)
-        {
-            keys[j + 1] = keys[j];
-            indices[j + 1] = indices[j];
-            --j;
-        }
-        keys[j + 1] = key;
-        indices[j + 1] = index;
-    }
-}
-
-static void TestRadix(void)
-{
-    enum
-    {
-        MOST = 1000
-    };
-    static uint32_t keys[MOST];
-    static uint32_t indices[MOST];
-    static uint32_t wantKeys[MOST];
-    static uint32_t wantIndices[MOST];
-    static uint32_t temporaryKeys[MOST];
-    static uint32_t temporaryIndices[MOST];
-    // Key shapes: any bits; few values (ties); one byte varying (three
-    // passes skipped, one done: an odd count); two high bytes; all equal.
-    const uint32_t masks[5] = {0xFFFFFFFFu, 0x00000003u, 0x0000FF00u, 0xFFFF0000u, 0};
-    const int32_t sizes[5] = {0, 1, 2, 37, MOST};
-    int32_t agreed = 0;
-    for (int32_t m = 0; m < 5; ++m)
-    {
-        for (int32_t z = 0; z < 5; ++z)
-        {
-            int32_t count = sizes[z];
-            for (int32_t i = 0; i < count; ++i)
-            {
-                keys[i] = wantKeys[i] = (Next() & masks[m]) | 0x10u;
-                indices[i] = wantIndices[i] = (uint32_t)i;
-            }
-            Reference(wantKeys, wantIndices, count);
-            mvfxRadixSort(keys, indices, temporaryKeys, temporaryIndices, count);
-            bool same = memcmp(keys, wantKeys, (size_t)count * 4) == 0 &&
-                        memcmp(indices, wantIndices, (size_t)count * 4) == 0;
-            agreed += same ? 1 : 0;
-        }
-    }
-    CHECK(agreed == 25, "as the stable reference, every shape and size");
-}
+    MOST = 1000
+};
 
 typedef struct Scene
 {
@@ -140,25 +66,34 @@ static mvfxEmitterDef Sorted(mvfxSortMode mode, mvfxSortMeasure measure)
     return emitter;
 }
 
-// Places particles at the given points (serials 0, 1, ...) and steps.
+// Places particles at the given points (serials 0, 1, ...), if any, and
+// steps.
 static void Place(Scene* scene, const double* points, int32_t count)
 {
     mvfxSpawnRequest request = {.count = count, .positions = points};
-    CHECK(mvfxInstance_Spawn(scene->context, scene->instance, 0, &request) == mvfx_success,
+    CHECK(count == 0 ||
+              mvfxInstance_Spawn(scene->context, scene->instance, 0, &request) == mvfx_success,
           "placed");
     CHECK(mvfxContext_StepTicks(scene->context, 1) == mvfx_success, "step");
 }
 
-// The serials the records come in, as digits: 3102 for serials 3, 1, 0, 2.
-static int32_t Order(Scene* scene, const mvfxView* view, int32_t capacity)
+// Writes the records' serials, count of them, in the view's order.
+static int64_t Serials(Scene* scene, const mvfxView* view, uint32_t* serials, int32_t capacity)
 {
-    static uint32_t scratch[8 * 4];
-    uint32_t serials[8] = {0};
+    static uint32_t scratch[MOST * 4];
     int64_t count = 0;
     CHECK(mvfxInstance_WriteParticles(scene->context, scene->instance, 0, scene->layout, view,
                                       scratch, sizeof scratch, serials, capacity,
                                       &count) == mvfx_success,
           "written");
+    return count;
+}
+
+// The serials the records come in, as digits: 3102 for serials 3, 1, 0, 2.
+static int32_t Order(Scene* scene, const mvfxView* view, int32_t capacity)
+{
+    uint32_t serials[8] = {0};
+    int64_t count = Serials(scene, view, serials, capacity);
     int32_t digits = 0;
     for (int64_t i = 0; i < count && i < capacity; ++i)
     {
@@ -195,6 +130,129 @@ static void TestModes(void)
     static const mvfxView there = {.eye = {6, 0, 0}, .origin = {100, 0, 0}};
     CHECK(OrderOf(mvfx_sortBackToFront, mvfx_sortByDistance, &there) == 123,
           "from the view's eye, not its origin");
+}
+
+// Depths of every sign and size, subnormal ones among them, placed out of
+// order along Z: front to back by depth along +Z gives them in their order.
+static void TestDepths(void)
+{
+    static const float depths[10] = {-1e5f, -2.0f,     -1.0f,     -0x1p-126f, -0x1p-149f,
+                                     0.0f,  0x1p-149f, 0x1p-126f, 1.0f,       1e5f};
+    // The depths' indices in the order the particles are placed.
+    static const int32_t placed[10] = {7, 2, 9, 0, 5, 4, 8, 1, 6, 3};
+    double points[30] = {0};
+    for (int32_t i = 0; i < 10; ++i)
+    {
+        points[3 * i + 2] = (double)depths[placed[i]];
+    }
+    mvfxEmitterDef emitter = Sorted(mvfx_sortFrontToBack, mvfx_sortByDepth);
+    emitter.capacity = 10;
+    emitter.hostSpawnCapacity = 10;
+    Scene scene = NewScene(&emitter);
+    Place(&scene, points, 10);
+    static const mvfxView view = {.forward = {0, 0, 1}};
+    uint32_t serials[10] = {0};
+    bool ordered = Serials(&scene, &view, serials, 10) == 10;
+    for (int32_t i = 0; i < 10 && ordered; ++i)
+    {
+        ordered = serials[i] < 10 && placed[serials[i]] == i;
+    }
+    CHECK(ordered, "depths of every sign and size in their order");
+    mvfxDestroyContext(scene.context);
+}
+
+static uint32_t s_state = 0x12345678u;
+
+static uint32_t Next(void)
+{
+    s_state ^= s_state << 13u;
+    s_state ^= s_state >> 17u;
+    s_state ^= s_state << 5u;
+    return s_state;
+}
+
+// A depth of a shape: any float of some size and either sign; one of four
+// values; one varying in its second byte only; one varying in its two
+// high bytes only; always the same.
+static float Depth(int32_t shape)
+{
+    uint32_t bits = 0;
+    switch (shape)
+    {
+    case 0:
+        return (float)(int32_t)Next() * 0x1p-20f;
+    case 1:
+        return (float)(Next() & 3u);
+    case 2:
+        bits = 0x3F800000u | ((Next() & 0xFFu) << 8u);
+        break;
+    case 3:
+        bits = 0x3F800000u + ((Next() & 0x3FFu) << 16u) + (Next() & 0x80000000u);
+        break;
+    default:
+        return 5.0f;
+    }
+    float depth = 0.0f;
+    memcpy(&depth, &bits, sizeof depth);
+    return depth;
+}
+
+// The pool's indices sorted by depth, front to back or back to front,
+// equal depths in the pool's order: by insertion, as the reference.
+static void Reference(const float* depths, uint32_t* order, int32_t count, bool backToFront)
+{
+    for (int32_t i = 0; i < count; ++i)
+    {
+        uint32_t index = (uint32_t)i;
+        int32_t j = i - 1;
+        while (j >= 0 &&
+               (backToFront ? depths[order[j]] < depths[index] : depths[order[j]] > depths[index]))
+        {
+            order[j + 1] = order[j];
+            --j;
+        }
+        order[j + 1] = index;
+    }
+}
+
+// Each count of particles in each shape, both ways: the records in the
+// reference's order.
+static void TestStable(void)
+{
+    static double points[MOST * 3];
+    static float depths[MOST];
+    static uint32_t want[MOST];
+    static uint32_t serials[MOST];
+    static const mvfxView view = {.forward = {0, 0, 1}};
+    const int32_t counts[5] = {0, 1, 2, 37, MOST};
+    int32_t agreed = 0;
+    for (int32_t way = 0; way < 2; ++way)
+    {
+        for (int32_t shape = 0; shape < 5; ++shape)
+        {
+            for (int32_t c = 0; c < 5; ++c)
+            {
+                int32_t count = counts[c];
+                for (int32_t i = 0; i < count; ++i)
+                {
+                    depths[i] = Depth(shape);
+                    points[3 * i + 2] = (double)depths[i];
+                }
+                Reference(depths, want, count, way == 1);
+                mvfxEmitterDef emitter = Sorted(
+                    way == 1 ? mvfx_sortBackToFront : mvfx_sortFrontToBack, mvfx_sortByDepth);
+                emitter.capacity = MOST;
+                emitter.hostSpawnCapacity = MOST;
+                Scene scene = NewScene(&emitter);
+                Place(&scene, points, count);
+                bool same = Serials(&scene, &view, serials, MOST) == count &&
+                            memcmp(serials, want, (size_t)count * sizeof *want) == 0;
+                agreed += same ? 1 : 0;
+                mvfxDestroyContext(scene.context);
+            }
+        }
+    }
+    CHECK(agreed == 50, "as the stable reference, every shape and count, both ways");
 }
 
 static void TestLocalAndCapacity(void)
@@ -316,9 +374,9 @@ static void TestChecks(void)
 
 int main(void)
 {
-    TestKeys();
-    TestRadix();
     TestModes();
+    TestDepths();
+    TestStable();
     TestLocalAndCapacity();
     TestScratch();
     TestChecks();
