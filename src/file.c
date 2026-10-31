@@ -10,6 +10,7 @@
 #include "field_path.h"
 #include "file_codec.h"
 #include "fpenv.h"
+#include "refusal.h"
 
 #include <string.h>
 
@@ -125,7 +126,8 @@ static mvfxResult CheckAssets(const mvfxEffectAsset* assets, int32_t count)
     for (int32_t a = 0; a < count; ++a)
     {
         const mvfxEffectAsset* asset = &assets[a];
-        if (asset->kind >= MVFX_ASSET_KINDS || asset->name == nullptr || asset->nameLength < 1)
+        if (!mvfxIsKind(asset->kind, MVFX_ASSET_KINDS - 1) || asset->name == nullptr ||
+            asset->nameLength < 1)
         {
             return mvfx_errorInvalid;
         }

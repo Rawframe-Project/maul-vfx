@@ -209,7 +209,8 @@ static mvfxResult CheckUnit(const mvfxFieldPath* emitter, const mvfxEmitterDef* 
     }
     mvfxFieldPath at = mvfxFieldIn(emitter, MVFX_TAG_EMITTER_DEF_UNIT, -1);
     bool sheet = unit->kind == mvfx_unitSheet;
-    if (def->beam.enable || (sheet && def->ribbon.ids != mvfx_ribbonNone))
+    if (!mvfxIsKind(unit->kind, mvfx_unitSheet) || def->beam.enable ||
+        (sheet && def->ribbon.ids != mvfx_ribbonNone))
     {
         return mvfxRefuseField(&at, MVFX_TAG_UNIT_DEF_KIND, mvfx_errorInvalid);
     }
