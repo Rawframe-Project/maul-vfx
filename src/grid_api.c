@@ -77,8 +77,10 @@ mvfxResult mvfxDestroyGrid(mvfxContext* context, mvfxGridId grid)
     {
         return mvfx_errorBusy;
     }
-    mvfxReleaseGrid(live, &context->allocator);
+    // The slot freed first: the allocator's free, host code, may look the
+    // id up, and finds it gone rather than a released block.
     mvfxFreeSlot(&context->grids, grid.index1);
+    mvfxReleaseGrid(live, &context->allocator);
     return mvfx_success;
 }
 

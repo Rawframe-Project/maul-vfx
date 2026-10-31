@@ -451,8 +451,10 @@ mvfxResult mvfxDestroyEffect(mvfxContext* context, mvfxEffectId effect)
         }
     }
     HoldGrids(compiled, -1);
-    mvfxReleaseEffect(compiled, &context->allocator);
+    // The slot freed first: the allocator's free, host code, may look the
+    // id up, and finds it gone rather than a released block.
     mvfxFreeSlot(&context->effects, effect.index1);
+    mvfxReleaseEffect(compiled, &context->allocator);
     return mvfx_success;
 }
 

@@ -27,9 +27,12 @@ bool mvfxInitSlots(mvfxSlots* slots, const mvfxAllocator* allocator, uint32_t ca
 
 void mvfxReleaseSlots(mvfxSlots* slots, const mvfxAllocator* allocator)
 {
-    mvfxRelease(allocator, slots->slots, (size_t)slots->capacity * sizeof(mvfxSlot),
-                alignof(mvfxSlot));
+    // Emptied before its memory goes: an id looked up meanwhile is out of
+    // range.
+    mvfxSlots table = *slots;
     *slots = (mvfxSlots){0};
+    mvfxRelease(allocator, table.slots, (size_t)table.capacity * sizeof(mvfxSlot),
+                alignof(mvfxSlot));
 }
 
 uint32_t mvfxTakeSlot(mvfxSlots* slots, void* object, uint32_t* generationOut)

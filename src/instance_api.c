@@ -238,8 +238,10 @@ mvfxResult mvfxDestroyInstance(mvfxContext* context, mvfxInstanceId instance)
     }
     HoldHostGrids(live, -1);
     context->particlesHeld -= live->particles;
-    mvfxReleaseInstance(live, &context->allocator);
+    // The slot freed first: the allocator's free, host code, may look the
+    // id up, and finds it gone rather than a released block.
     mvfxFreeSlot(&context->instances, instance.index1);
+    mvfxReleaseInstance(live, &context->allocator);
     return mvfx_success;
 }
 
