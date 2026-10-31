@@ -164,7 +164,7 @@ void mvfxFindSelfContacts(mvfxInstance* instance, int32_t emitter, double second
     mvfxBuildNeighborGrid(&state->selfGrid, x, nullptr, state->count, reach);
     for (int32_t i = 0; i < state->count; ++i)
     {
-        state->selfContactsCapped += Gather(instance, emitter, i, x, reach, thickness) ? 0u : 1u;
+        state->selfContactsDropped += Gather(instance, emitter, i, x, reach, thickness) ? 0u : 1u;
     }
 }
 

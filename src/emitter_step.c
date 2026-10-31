@@ -321,7 +321,7 @@ static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
     // Those a host module's values killed apart (mvfxRunHostModules).
     int32_t gone = state->count - kept;
     int32_t values = state->valuesMarked < gone ? state->valuesMarked : gone;
-    state->valuesKilled = mvfxSaturatingAdd(state->valuesKilled, (uint64_t)values);
+    state->valueKillCount = mvfxSaturatingAdd(state->valueKillCount, (uint64_t)values);
     state->killed = mvfxSaturatingAdd(state->killed, (uint64_t)(gone - values));
     state->valuesMarked = 0;
     state->count = kept;

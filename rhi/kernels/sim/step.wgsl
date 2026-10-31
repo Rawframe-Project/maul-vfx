@@ -189,12 +189,12 @@ fn reduce(@builtin(local_invocation_index) local: u32,
     }
 }
 
-// The statistics record's word counting units' tears (MVFX_GPU_TORN).
+// The statistics record's word counting units' tears (MVFX_GPU_TEAR_COUNT).
 const STATISTICS_TORN: u32 = 50u;
 
 // The statistics record's words counting rigid bodies' contacts dropped
 // past the most and their polytope searches stopped at their cap
-// (MVFX_GPU_RIGID_CAPPED, MVFX_GPU_RIGID_SEARCHES).
+// (MVFX_GPU_RIGID_CONTACTS_DROPPED, MVFX_GPU_RIGID_SEARCH_STOP_COUNT).
 const STATISTICS_RIGID_CAPPED: u32 = 52u;
 const STATISTICS_RIGID_SEARCHES: u32 = 53u;
 

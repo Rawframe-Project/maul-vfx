@@ -251,7 +251,7 @@ static void TestFullAndStopped(void)
     const mvfxEvent* born = Events(&scene, 1, &births);
     mvfxEmitterStats stats = {0};
     CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success &&
-              Read(&scene, 1) == 1 && stats.refused == 1 && births == 1 && first < last &&
+              Read(&scene, 1) == 1 && stats.birthsDropped == 1 && births == 1 && first < last &&
               born[0].tick == first && born[0].serial == s_particles[0].serial,
           "the earlier death's, the later refused");
     mvfxDestroyContext(scene.context);
@@ -309,7 +309,7 @@ static void TestRoomAndStatus(void)
     Step(&scene, MVFX_TICKS_PER_SECOND - 1);
     mvfxEmitterStats stats = {0};
     CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success &&
-              stats.live == 1 && stats.refused == 2 && stats.owed == 3,
+              stats.live == 1 && stats.birthsDropped == 2 && stats.owed == 3,
           "three serials, two refused");
     mvfxDestroyContext(scene.context);
 
@@ -333,7 +333,7 @@ static void TestRoomAndStatus(void)
     int32_t births = 0;
     const mvfxEvent* born = Events(&scene, 1, &births);
     CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success &&
-              stats.live == 1 && stats.refused == 0 && stats.owed == 2 && births == 1 &&
+              stats.live == 1 && stats.birthsDropped == 0 && stats.owed == 2 && births == 1 &&
               born[0].tick == late && Read(&scene, 1) == 1 &&
               s_particles[0].serial == born[0].serial,
           "room again after a death within the step");
@@ -534,7 +534,7 @@ static void TestDrawnByEvent(void)
         twins = twins && found;
         shifted = shifted || few->serial != (uint32_t)j;
     }
-    CHECK(counts[1] > 10 && stats[1].refused > 0 && shifted && twins,
+    CHECK(counts[1] > 10 && stats[1].birthsDropped > 0 && shifted && twins,
           "an event's births the same whatever other events gave");
 }
 

@@ -748,7 +748,7 @@ fn substepRest(first: u32, local: u32, s: u32, scale: f32) {
         solveSets(first, local, scale, 0.0, share);
     }
     if (local == 0u && params.unitTears.x != NONE) {
-        // Its tears' tally, which offsets sums (MVFX_GPU_TORN), in its
+        // Its tears' tally, which offsets sums (MVFX_GPU_TEAR_COUNT), in its
         // first point's alive word of the other buffer, free until the
         // scatter.
         moved[params.words.alive * c + first] += atomicExchange(&unitTore, 0u);

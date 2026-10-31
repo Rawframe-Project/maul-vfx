@@ -500,8 +500,8 @@ fn joinFates(fate: ptr<function, Fate>, moved: Fate) {
 }
 
 // A body's step's drops past the most and its searches stopped at their
-// cap in a word, as offsets sums them (MVFX_GPU_RIGID_CAPPED and
-// MVFX_GPU_RIGID_SEARCHES): the drops in the low 24 bits, the searches
+// cap in a word, as offsets sums them (MVFX_GPU_RIGID_CONTACTS_DROPPED and
+// MVFX_GPU_RIGID_SEARCH_STOP_COUNT): the drops in the low 24 bits, the searches
 // in the high 8, each held at its most.
 fn rigidCounts(fate: Fate) -> u32 {
     return min(fate.capped, 0xFFFFFFu) | (min(fate.searches, 0xFFu) << 24u);
@@ -511,7 +511,7 @@ fn rigidCounts(fate: Fate) -> u32 {
 // (as the core's HoldSpeeds), the ended (marked by update) skipped; its
 // first strike noted for its event, and the contacts it dropped past the
 // most in its alive word of the other buffer, free until the scatter,
-// which offsets sums (MVFX_GPU_RIGID_CAPPED).
+// which offsets sums (MVFX_GPU_RIGID_CONTACTS_DROPPED).
 @compute @workgroup_size(64, 1, 1)
 fn rigid(@builtin(global_invocation_id) id: vec3<u32>) {
     let c = params.counts.x;

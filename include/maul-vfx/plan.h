@@ -339,13 +339,13 @@ extern "C"
         // The births owed, in tick order. Past the plan's room (the
         // capacity's births at one tick, twice the capacity in a plan; in
         // units for an emitter of units, a birth a unit) a birth is refused
-        // here, still owed; refused counts them. For an
+        // here, still owed; birthsDropped counts them. For an
         // emitter that spawns from events they are its own and the host's
         // only: the simulation builds the births events give and numbers
         // them all (mvfxPlannedBirth).
         const mvfxPlannedBirth* births;
         int32_t birthCount;
-        uint64_t refused;
+        uint64_t birthsDropped;
         // The host's particles its births name, staying as the births do.
         const mvfxPlannedHostBirth* hostBirths;
         int32_t hostBirthCount;
@@ -1335,7 +1335,7 @@ extern "C"
     /// @param tick         The tick of the step's end the report is of, at
     ///                     most the instance's clock.
     /// @param reach        The reach then, finite and at least 0.
-    /// @param facesHeld    The faces held over the step's substeps (0 for
+    /// @param heldFaceCount    The faces held over the step's substeps (0 for
     ///                     waves).
     /// @param volumePoured The volume poured over the step, in the world's
     ///                     lengths cubed, finite and at least 0 (0 for
@@ -1348,11 +1348,9 @@ extern "C"
     ///         instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterCounts(mvfxContext* context,
-                                                                   mvfxInstanceId instance,
-                                                                   int32_t water, int64_t tick,
-                                                                   float reach, uint64_t facesHeld,
-                                                                   double volumePoured);
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterCounts(
+        mvfxContext* context, mvfxInstanceId instance, int32_t water, int64_t tick, float reach,
+        uint64_t heldFaceCount, double volumePoured);
 
 #ifdef __cplusplus
 }

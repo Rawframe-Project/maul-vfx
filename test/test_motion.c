@@ -237,7 +237,7 @@ static void TestDistance(void)
     CHECK(mvfxContext_StepTicks(jump.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "step");
     CHECK(mvfxInstance_GetEmitterStats(jump.context, jump.instance, 0, &stats) == mvfx_success,
           "stats");
-    CHECK(stats.owed == 100 && stats.refused == 92 && stats.live == 8, "the excess refused");
+    CHECK(stats.owed == 100 && stats.birthsDropped == 92 && stats.live == 8, "the excess refused");
     CHECK(Read(&jump) == 8 && fabsf(s_particles[0].position[0] - 93.0f) <= 1e-3f,
           "the last eight born");
     mvfxDestroyContext(jump.context);
@@ -266,8 +266,8 @@ static void TestHugeJumps(void)
         CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 0, &stats) ==
                   mvfx_success,
               "stats");
-        CHECK(stats.live == (delayed != 0 ? 0 : 8) && stats.refused >= ((uint64_t)1 << 62u) &&
-                  stats.refused <= stats.owed,
+        CHECK(stats.live == (delayed != 0 ? 0 : 8) && stats.birthsDropped >= ((uint64_t)1 << 62u) &&
+                  stats.birthsDropped <= stats.owed,
               "the capacity taken, the rest refused");
         uint64_t owed = stats.owed;
         // Back across: a second jump's refusals would wrap the counts.

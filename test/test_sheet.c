@@ -194,7 +194,7 @@ static void TestBirths(void)
     CHECK(placed && Stats().owed == 2 && Stats().live == 24, "sheets born row after row");
     Spawn(3, roots);
     Steps(1, 1);
-    CHECK(Stats().live == 48 && Stats().refused == 1, "the capacity in sheets");
+    CHECK(Stats().live == 48 && Stats().birthsDropped == 1, "the capacity in sheets");
     mvfxDestroyContext(s_scene.context);
 }
 

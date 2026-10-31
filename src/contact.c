@@ -246,7 +246,7 @@ void mvfxSolveContacts(mvfxInstance* instance, int32_t emitter)
         uint64_t capped = 0;
         Project(&pass, state->count, moved, &capped);
         // Counted once a step, in the first pass.
-        state->contactsCapped += n == 0 ? capped : 0u;
+        state->contactsDropped += n == 0 ? capped : 0u;
         for (int32_t k = 0; k < 3; ++k)
         {
             memcpy(x[k], moved[k], (size_t)state->count * sizeof(float));

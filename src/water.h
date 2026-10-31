@@ -101,8 +101,8 @@ typedef struct mvfxWaterState
     mvfxPlannedWaterPush planPushes[MVFX_MAX_WATER_PUSHES];
     bool planHasTerrain;
     mvfxPlannedCollider planTerrain;
-    uint64_t stepsSlowed;
-    uint64_t facesHeld;
+    uint64_t slowedStepCount;
+    uint64_t heldFaceCount;
     double volumePoured;
 } mvfxWaterState;
 

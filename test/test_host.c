@@ -227,7 +227,8 @@ static void TestEdges(void)
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &one) == mvfx_success, "queued");
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
-    CHECK(stats.live == 0 && stats.owed == 1 && stats.refused == 0, "lived and ended in the step");
+    CHECK(stats.live == 0 && stats.owed == 1 && stats.birthsDropped == 0,
+          "lived and ended in the step");
     mvfxDestroyContext(scene.context);
 }
 
@@ -252,7 +253,7 @@ static void TestQueueAndRoom(void)
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &two) == mvfx_success, "two");
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
-    CHECK(stats.live == 2 && stats.owed == 4 && stats.refused == 2, "a full emitter refuses");
+    CHECK(stats.live == 2 && stats.owed == 4 && stats.birthsDropped == 2, "a full emitter refuses");
 
     // Stopped, the host's still come; a restart empties the queue.
     CHECK(mvfxInstance_Stop(scene.context, scene.instance, mvfx_stopAndClear) == mvfx_success,
@@ -322,8 +323,8 @@ static bool SameParticles(const Scene* a, const Scene* b)
     return count > 0 && count <= 64 &&
            ReadParticles(b->context, b->instance, 0, second, 64) == count &&
            memcmp(first, second, (size_t)count * sizeof first[0]) == 0 &&
-           statsA.owed == statsB.owed && statsA.refused == statsB.refused &&
-           statsA.killed == statsB.killed;
+           statsA.owed == statsB.owed && statsA.birthsDropped == statsB.birthsDropped &&
+           statsA.killCount == statsB.killCount;
 }
 
 static void TestPrewarm(void)

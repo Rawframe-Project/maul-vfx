@@ -55,7 +55,7 @@ static void TestSpawnAndDeathAtExactTicks(void)
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
     CHECK(stats.owed == 64, "owed at one second");
-    CHECK(stats.live == 64 && stats.refused == 0, "all alive");
+    CHECK(stats.live == 64 && stats.birthsDropped == 0, "all alive");
     CHECK(mvfxContext_StepTicks(scene.context, 16383) == mvfx_success, "a tick short");
     stats = Stats(&scene);
     CHECK(stats.owed == 64 && stats.live == 64, "nothing born or ended a tick early");
@@ -71,7 +71,7 @@ static void TestCapacityRefuses(void)
     CHECK(mvfxContext_Step(scene.context, 1.0) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
     CHECK(stats.owed == 100, "owed");
-    CHECK(stats.live == 10 && stats.refused == 90, "the capacity refuses the rest, counted");
+    CHECK(stats.live == 10 && stats.birthsDropped == 90, "the capacity refuses the rest, counted");
     mvfxDestroyContext(scene.context);
 }
 
@@ -83,7 +83,7 @@ static void TestBornAndEndedWithinAStep(void)
     CHECK(mvfxContext_Step(scene.context, 0.5) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
     CHECK(stats.owed == 500, "owed");
-    CHECK(stats.live <= 2 && stats.refused == 0, "only the newest live; none refused");
+    CHECK(stats.live <= 2 && stats.birthsDropped == 0, "only the newest live; none refused");
     mvfxDestroyContext(scene.context);
 }
 
@@ -116,10 +116,10 @@ static void TestSplitsReachTheSameCounts(void)
         }
         mvfxEmitterStats a = Stats(&whole);
         mvfxEmitterStats b = Stats(&split);
-        CHECK(a.owed == b.owed && a.live == b.live && a.refused == b.refused,
+        CHECK(a.owed == b.owed && a.live == b.live && a.birthsDropped == b.birthsDropped,
               "the same counts after the same ticks");
     }
-    CHECK(Stats(&whole).refused > 0, "the capacity was reached");
+    CHECK(Stats(&whole).birthsDropped > 0, "the capacity was reached");
     mvfxDestroyContext(whole.context);
     mvfxDestroyContext(split.context);
 }
@@ -142,8 +142,8 @@ static void TestOneStepEqualsTickByTick(void)
     }
     mvfxEmitterStats a = Stats(&whole);
     mvfxEmitterStats b = Stats(&ticks);
-    CHECK(a.refused > 0, "births were refused");
-    CHECK(a.owed == b.owed && a.live == b.live && a.refused == b.refused,
+    CHECK(a.birthsDropped > 0, "births were refused");
+    CHECK(a.owed == b.owed && a.live == b.live && a.birthsDropped == b.birthsDropped,
           "one step reaches what single ticks reach");
     mvfxDestroyContext(whole.context);
     mvfxDestroyContext(ticks.context);
@@ -160,7 +160,7 @@ static void TestDeathFreesItsTickForABirth(void)
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
     CHECK(stats.owed == 128, "owed at two seconds");
-    CHECK(stats.refused == 0, "deaths come before births on a tick");
+    CHECK(stats.birthsDropped == 0, "deaths come before births on a tick");
     CHECK(stats.live == 32, "the one ending now is gone");
     mvfxDestroyContext(scene.context);
 }

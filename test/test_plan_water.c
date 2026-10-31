@@ -198,7 +198,7 @@ static void TestWaves(void)
         CHECK(plan.slowed == (k == 1), "a second's step slowed");
     }
     // The planned twin counts its slowed step as the CPU twin does.
-    CHECK(Info(s_planned).stepsSlowed == 1 && Info(s_cpu).stepsSlowed == 1,
+    CHECK(Info(s_planned).slowedStepCount == 1 && Info(s_cpu).slowedStepCount == 1,
           "the steps slowed counted on both");
     mvfxDestroyContext(s_context);
 }
@@ -287,7 +287,7 @@ static void TestShallow(void)
     }
     CHECK(wrong == 0, "each step's plan as water.h counts it from the speed reported");
     CHECK(split > 0 && slowed == 5, "some steps split, those past the most slowed");
-    CHECK(Info(s_planned).stepsSlowed == slowed, "the steps slowed counted from the plans");
+    CHECK(Info(s_planned).slowedStepCount == slowed, "the steps slowed counted from the plans");
     mvfxDestroyContext(s_context);
 }
 
@@ -618,13 +618,13 @@ static void TestCounts(void)
                    mvfxInstance_SetWaterCounts(s_context, s_planned, 0, STEP_TICKS, 0.9f, 9, 9.0) ==
                        mvfx_success &&
                    mvfxInstance_GetWaterInfo(s_context, s_planned, 0, &info) == mvfx_success &&
-                   info.facesHeld == 7 && info.volumePoured == 0.75;
+                   info.heldFaceCount == 7 && info.volumePoured == 0.75;
     CHECK(counted, "each tick's report counted once");
     CHECK(mvfxInstance_Stop(s_context, s_planned, mvfx_stopAndClear) == mvfx_success &&
               mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 2 * STEP_TICKS, 1.0f, 5, 1.0) ==
                   mvfx_success &&
               mvfxInstance_GetWaterInfo(s_context, s_planned, 0, &info) == mvfx_success &&
-              info.facesHeld == 0 && info.volumePoured == 0.0,
+              info.heldFaceCount == 0 && info.volumePoured == 0.0,
           "a clear empties them, the reports before it ignored");
     uint64_t misuse = mvfxContext_GetMisuse(s_context);
     bool refused =

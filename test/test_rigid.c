@@ -354,7 +354,7 @@ static void TestStrikes(void)
     emitter.collision.killOnCollision = true;
     Open(&emitter, place, still);
     Steps(60);
-    CHECK(Stats().live == 0 && Stats().killed == 1, "killed by a strike");
+    CHECK(Stats().live == 0 && Stats().killCount == 1, "killed by a strike");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -368,7 +368,7 @@ static void TestCapped(void)
     static const float still[3] = {0, 0, 0};
     Open(&emitter, place, still);
     Steps(1);
-    CHECK(Stats().rigidContactsCapped >= 8u, "capped and counted");
+    CHECK(Stats().rigidContactsDropped >= 8u, "capped and counted");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -1672,7 +1672,7 @@ static void TestTiedSizes(void)
     // A host module that sets Y apart from X kills the body.
     s_untie = true;
     Sized(&sphere, 1, NULL, even, true);
-    CHECK(Stats().valuesKilled == 1 && Stats().live == SIZED - 1,
+    CHECK(Stats().valueKillCount == 1 && Stats().live == SIZED - 1,
           "a host module's size unlike X kills its body");
     mvfxDestroyContext(s_scene.context);
 }
@@ -1745,13 +1745,13 @@ static void TestSpinBound(void)
     CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &request) == mvfx_success,
           "spawned");
     Steps(2);
-    CHECK(Stats().valuesKilled == 4 && Stats().live == 3,
+    CHECK(Stats().valueKillCount == 4 && Stats().live == 3,
           "a body's spin held to what its own step gives it, not to the spin cap");
     // Those kept stay finite as their steps turn them.
     Steps(8);
     TestParticle kept[SPUN];
     int32_t count = ReadParticles(s_scene.context, s_scene.instance, 0, kept, SPUN);
-    bool finite = count == 3 && Stats().valuesKilled == 4;
+    bool finite = count == 3 && Stats().valueKillCount == 4;
     for (int32_t i = 0; i < count; ++i)
     {
         for (int32_t k = 0; k < 4; ++k)
@@ -1792,7 +1792,7 @@ static void TestSpinBound(void)
     CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &three) == mvfx_success,
           "spawned");
     Steps(2);
-    CHECK(Stats().valuesKilled == 1 && Stats().live == 2,
+    CHECK(Stats().valueKillCount == 1 && Stats().live == 2,
           "a turned body's momentum taken in its own frame");
     mvfxDestroyContext(s_scene.context);
     // A body of no volume has no inertia, and its step does not turn it:
@@ -1819,7 +1819,7 @@ static void TestSpinBound(void)
     CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, 0, &flat) == mvfx_success,
           "spawned");
     Steps(2);
-    CHECK(Stats().valuesKilled == 1 && Stats().live == 1,
+    CHECK(Stats().valueKillCount == 1 && Stats().live == 1,
           "a body of no volume held to the spin cap on each axis");
     mvfxDestroyContext(s_scene.context);
 }
@@ -1954,10 +1954,10 @@ static void TestHeldSpeed(void)
           "spawned");
     s_sinking = false;
     Steps(1);
-    CHECK(AreHeld(1e3f) && Stats().valuesKilled == 0, "a body born in the floor held");
+    CHECK(AreHeld(1e3f) && Stats().valueKillCount == 0, "a body born in the floor held");
     s_sinking = true;
     Steps(1);
-    CHECK(AreHeld(1e3f) && Stats().valuesKilled == 0, "a body sunk in the floor held");
+    CHECK(AreHeld(1e3f) && Stats().valueKillCount == 0, "a body sunk in the floor held");
     mvfxDestroyContext(s_scene.context);
 }
 

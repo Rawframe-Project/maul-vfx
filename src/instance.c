@@ -679,21 +679,21 @@ static void ResetEmitter(mvfxInstance* instance, int32_t e)
     state->rate = (mvfxRateCursor){0};
     state->hostCount = 0;
     state->killed = 0;
-    state->valuesKilled = 0;
+    state->valueKillCount = 0;
     state->valuesMarked = 0;
     state->queryCount = 0;
     state->queriesDropped = 0;
     state->eventCount = 0;
     state->eventStepFirst = 0;
     state->eventsDropped = 0;
-    state->neighborsCapped = 0;
-    state->contactsCapped = 0;
+    state->neighborsDropped = 0;
+    state->contactsDropped = 0;
     state->plexus.linkCount = 0;
     state->linksDropped = 0;
     state->torn = 0;
-    state->selfContactsCapped = 0;
-    state->rigidContactsCapped = 0;
-    state->rigidSearchesCapped = 0;
+    state->selfContactsDropped = 0;
+    state->rigidContactsDropped = 0;
+    state->rigidSearchStopCount = 0;
     state->hasBounds = false;
     state->ribbonCounter = 0;
     state->beamStrike = instance->effect->emitters[e].delay;
@@ -812,16 +812,16 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->count, (int64_t)sizeof state->count);
         hash = mvfxHash64(hash, &state->owed, (int64_t)sizeof state->owed);
         hash = mvfxHash64(hash, &state->refused, (int64_t)sizeof state->refused);
-        hash = mvfxHash64(hash, &state->neighborsCapped, (int64_t)sizeof state->neighborsCapped);
-        hash = mvfxHash64(hash, &state->contactsCapped, (int64_t)sizeof state->contactsCapped);
+        hash = mvfxHash64(hash, &state->neighborsDropped, (int64_t)sizeof state->neighborsDropped);
+        hash = mvfxHash64(hash, &state->contactsDropped, (int64_t)sizeof state->contactsDropped);
         hash = mvfxHash64(hash, &state->linksDropped, (int64_t)sizeof state->linksDropped);
         hash = mvfxHash64(hash, &state->torn, (int64_t)sizeof state->torn);
-        hash =
-            mvfxHash64(hash, &state->selfContactsCapped, (int64_t)sizeof state->selfContactsCapped);
-        hash = mvfxHash64(hash, &state->rigidContactsCapped,
-                          (int64_t)sizeof state->rigidContactsCapped);
-        hash = mvfxHash64(hash, &state->rigidSearchesCapped,
-                          (int64_t)sizeof state->rigidSearchesCapped);
+        hash = mvfxHash64(hash, &state->selfContactsDropped,
+                          (int64_t)sizeof state->selfContactsDropped);
+        hash = mvfxHash64(hash, &state->rigidContactsDropped,
+                          (int64_t)sizeof state->rigidContactsDropped);
+        hash = mvfxHash64(hash, &state->rigidSearchStopCount,
+                          (int64_t)sizeof state->rigidSearchStopCount);
         hash = mvfxHash64(hash, &state->plexus.linkCount, (int64_t)sizeof state->plexus.linkCount);
         if (state->plexus.linkCount > 0)
         {
@@ -868,8 +868,8 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         int64_t cells = instance->effect->waters[w].cells * (int64_t)sizeof(float);
         hash = mvfxHash64(hash, water->heights[water->current], cells);
         hash = mvfxHash64(hash, water->rates, cells);
-        hash = mvfxHash64(hash, &water->stepsSlowed, (int64_t)sizeof water->stepsSlowed);
-        hash = mvfxHash64(hash, &water->facesHeld, (int64_t)sizeof water->facesHeld);
+        hash = mvfxHash64(hash, &water->slowedStepCount, (int64_t)sizeof water->slowedStepCount);
+        hash = mvfxHash64(hash, &water->heldFaceCount, (int64_t)sizeof water->heldFaceCount);
         hash = mvfxHash64(hash, &water->volumePoured, (int64_t)sizeof water->volumePoured);
         // Crossings wait only within a context's step: their count.
         hash = mvfxHash64(hash, &water->crossingCount, (int64_t)sizeof water->crossingCount);

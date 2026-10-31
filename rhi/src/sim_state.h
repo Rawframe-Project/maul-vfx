@@ -223,7 +223,7 @@ typedef struct Emitter
     // the record).
     bool ribbons;
     bool pinsHead;
-    // Whether its units tear (MVFX_GPU_TORN).
+    // Whether its units tear (MVFX_GPU_TEAR_COUNT).
     bool tears;
     // Whether it is a beam, its points placed after the step.
     bool beam;

@@ -85,7 +85,7 @@ static void AddPair(const mvfxRigidSolve* s, int32_t a, int32_t b, const mvfxBod
     {
         if (state->rigidPairCount >= room)
         {
-            state->rigidContactsCapped += (uint64_t)(list->count - i);
+            state->rigidContactsDropped += (uint64_t)(list->count - i);
             return;
         }
         const mvfxBodyContact* from = &list->items[i];
@@ -272,8 +272,8 @@ static void PairsOf(const mvfxRigidSolve* s, int32_t a, const Levels* levels)
         mvfxBodyShape shapeHigh = ShapeAt(s, high, &poseHigh);
         mvfxBodyContacts list = {.count = 0};
         mvfxGatherPairContacts(&poseLow, &shapeLow, &poseHigh, &shapeHigh, &list);
-        state->rigidContactsCapped += (uint64_t)list.capped;
-        state->rigidSearchesCapped += (uint64_t)list.searchesCapped;
+        state->rigidContactsDropped += (uint64_t)list.capped;
+        state->rigidSearchStopCount += (uint64_t)list.searchesCapped;
         AddPair(s, low, high, &list);
     }
 }

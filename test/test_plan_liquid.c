@@ -434,7 +434,7 @@ static void TestPlanRoom(void)
         CHECK(mvfxInstance_GetEmitterStepPlan(context, planned, 1, k, &plan) == mvfx_success,
               "a step's plan");
         written += plan.birthCount;
-        refused += plan.refused;
+        refused += plan.birthsDropped;
     }
     CHECK(count == MVFX_MAX_LIQUID_SUBSTEPS && written == 12 && refused == 16 * 6 - 12,
           "a plan's births past its room refused");

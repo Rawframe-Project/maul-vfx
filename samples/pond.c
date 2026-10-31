@@ -149,7 +149,7 @@ int main(void)
     }
     mvfxWaterInfo info;
     ok = ok && mvfxInstance_GetWaterInfo(context, instance, 0, &info) == mvfx_success &&
-         info.stepsSlowed == 0;
+         info.slowedStepCount == 0;
     mvfxDestroyContext(context);
     printf("the boat bobbed from %+.4f to %+.4f\n", lowest, highest);
     // Each leaf floats with its center at the surface, within its radius;

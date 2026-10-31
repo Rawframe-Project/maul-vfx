@@ -174,7 +174,7 @@ static void TestAfterMotion(void)
     CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 1, &stats) == mvfx_success,
           "stats");
     CHECK(seen.calls == 1 && seen.count == 3 && !seen.killNull && stats.live == 2 &&
-              stats.killed == 1,
+              stats.killCount == 1,
           "the births seen and one killed");
     CHECK(seen.colorNull && seen.customNull, "NULL for what is not stored");
     CHECK(seen.emitter == 1 && seen.module == 0 && seen.startTick == 0 && seen.endTick == 1000 &&

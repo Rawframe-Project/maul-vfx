@@ -264,7 +264,7 @@ void mvfxStepWater(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
     }
     float h = water->def.cellSize;
     float c = water->def.waveSpeed;
-    state->stepsSlowed += slowed ? 1u : 0u;
+    state->slowedStepCount += slowed ? 1u : 0u;
     Waves waves = {.n = water->def.size,
                    .stiffness = dt * c * c / (h * h),
                    .decay = mvfxExp(-water->def.damping * dt),

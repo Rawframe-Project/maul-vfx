@@ -112,7 +112,8 @@ int main(void)
             mvfxEmitterStats sparks;
             ok = mvfxInstance_GetEmitterStats(context, instance, 0, &rockets) == mvfx_success &&
                  mvfxInstance_GetEmitterStats(context, instance, 1, &sparks) == mvfx_success &&
-                 rockets.eventsDropped == 0 && sparks.eventsDropped == 0 && sparks.refused == 0;
+                 rockets.eventsDropped == 0 && sparks.eventsDropped == 0 &&
+                 sparks.birthsDropped == 0;
             printf("%d s: %d rockets and %d sparks alive; %lld rockets burst so far, the "
                    "highest at %.1f, into %lld sparks\n",
                    step / 60, rockets.live, sparks.live, (long long)deaths, highest,

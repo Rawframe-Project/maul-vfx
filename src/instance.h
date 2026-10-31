@@ -168,7 +168,7 @@ typedef struct mvfxEmitterState
     uint64_t killed;
     // The particles killed for a value a host module left them, and those
     // of this step's marks not yet taken out.
-    uint64_t valuesKilled;
+    uint64_t valueKillCount;
     int32_t valuesMarked;
     // Its colliders as resolved for the step (the effect's, then the
     // instance's when it takes them).
@@ -193,10 +193,10 @@ typedef struct mvfxEmitterState
     uint64_t eventsDropped;
     // Its grid (for an emitter queried), and the queries that were capped.
     mvfxNeighborGrid grid;
-    uint64_t neighborsCapped;
+    uint64_t neighborsDropped;
     // Its contacts' room, and the particles whose contacts were capped.
     mvfxContactRoom contacts;
-    uint64_t contactsCapped;
+    uint64_t contactsDropped;
     // Its plexus links, and those dropped.
     mvfxPlexusRoom plexus;
     uint64_t linksDropped;
@@ -271,9 +271,9 @@ typedef struct mvfxEmitterState
     float* selfMoves;
     int32_t* selfPairs;
     int32_t* selfCounts;
-    uint64_t selfContactsCapped;
-    uint64_t rigidContactsCapped;
-    uint64_t rigidSearchesCapped;
+    uint64_t selfContactsDropped;
+    uint64_t rigidContactsDropped;
+    uint64_t rigidSearchStopCount;
     // Its liquid's room.
     mvfxLiquidRoom liquid;
     // The id of its current ribbon by the counter: breaks advance it.

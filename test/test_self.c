@@ -298,12 +298,12 @@ static void TestCapped(void)
     emitter.unit.selfContacts = 1;
     Open(&emitter, places, 2);
     Steps(2);
-    CHECK(Stats().selfContactsCapped > 0, "capped");
+    CHECK(Stats().selfContactsDropped > 0, "capped");
     mvfxDestroyContext(s_scene.context);
     emitter.unit.selfContacts = MVFX_MAX_NEIGHBORS;
     Open(&emitter, places, 2);
     Steps(2);
-    CHECK(Stats().selfContactsCapped == 0, "not capped");
+    CHECK(Stats().selfContactsDropped == 0, "not capped");
     mvfxDestroyContext(s_scene.context);
 }
 

@@ -572,8 +572,8 @@ static void TestModules(void)
             int32_t live = Read(&scene, 0);
             bool kept = s_leave == 9;
             bool own = s_leave == 10;
-            CHECK(live == (kept ? 2 : 1) && stats.valuesKilled == (kept || own ? 0u : 1u) &&
-                      stats.killed == (own ? 1u : 0u),
+            CHECK(live == (kept ? 2 : 1) && stats.valueKillCount == (kept || own ? 0u : 1u) &&
+                      stats.killCount == (own ? 1u : 0u),
                   stage == 0 ? "before motion: killed and counted apart"
                              : "after motion: killed and counted apart");
             if (stage == mvfx_stageBeforeMotion && s_leave == 1)
@@ -644,7 +644,7 @@ static void TestModulePlaces(void)
         finite =
             finite && isfinite(records[i][0]) && isfinite(records[i][1]) && isfinite(records[i][2]);
     }
-    CHECK(stats.valuesKilled == 1u && count == 1 && finite &&
+    CHECK(stats.valueKillCount == 1u && count == 1 && finite &&
               records[0][0] == MVFX_MAX_PLACE * MVFX_MAX_SCALE,
           "a module's place past it killed, the records finite");
     mvfxDestroyContext(scene.context);

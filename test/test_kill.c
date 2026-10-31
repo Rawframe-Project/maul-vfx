@@ -77,7 +77,7 @@ static bool Survives(const mvfxKillRule* rules, int32_t count, double x, double 
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
     bool alive = stats.live == 1;
-    CHECK(stats.killed == (alive ? 0u : 1u) && stats.owed == 1, "counted");
+    CHECK(stats.killCount == (alive ? 0u : 1u) && stats.owed == 1, "counted");
     mvfxDestroyContext(scene.context);
     return alive;
 }
@@ -147,7 +147,7 @@ static void TestAttractorAndSpaces(void)
     Place(&scene, -50, 7, 0, 100, 0, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
-    CHECK(stats.live == 1 && stats.killed == 1, "through the attractor's kill radius");
+    CHECK(stats.live == 1 && stats.killCount == 1, "through the attractor's kill radius");
     mvfxDestroyContext(scene.context);
 
     // A sphere of radius 1 at the emitter's (1, 0, 0), under an instance at
@@ -168,7 +168,7 @@ static void TestAttractorAndSpaces(void)
     Place(&scene, 102.5, 2, 0, 0, 0, 0);
     CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
     stats = Stats(&scene);
-    CHECK(stats.live == 1 && stats.killed == 1, "a rule in the emitter's space");
+    CHECK(stats.live == 1 && stats.killCount == 1, "a rule in the emitter's space");
     mvfxDestroyContext(scene.context);
 }
 
@@ -260,7 +260,7 @@ static void TestBirthsAndOrder(void)
     Scene scene = NewScene(&emitter);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
     mvfxEmitterStats stats = Stats(&scene);
-    CHECK(stats.owed == 1 && stats.live == 0 && stats.killed == 1, "killed at its birth");
+    CHECK(stats.owed == 1 && stats.live == 0 && stats.killCount == 1, "killed at its birth");
     mvfxDestroyContext(scene.context);
 
     // Three placed, the middle one past a plane: the others keep their
@@ -277,7 +277,7 @@ static void TestBirthsAndOrder(void)
               particles[0].serial == 0 && particles[1].serial == 2,
           "the others' order kept");
     CHECK(mvfxInstance_Restart(scene.context, scene.instance) == mvfx_success &&
-              Stats(&scene).killed == 0,
+              Stats(&scene).killCount == 0,
           "a restart clears the count");
     mvfxDestroyContext(scene.context);
 }

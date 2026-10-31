@@ -565,7 +565,7 @@ extern "C"
         // found once a step, those within the thickness plus twice the
         // farthest a point goes in the step at its speed and gravity, at most
         // selfContacts of them (1 to MVFX_MAX_NEIGHBORS; a point with more is
-        // counted, mvfxEmitterStats.selfContactsCapped); in each substep
+        // counted, mvfxEmitterStats.selfContactsDropped); in each substep
         // after the constraints, each pair closer than the thickness is
         // parted and its sliding over the substep slowed by up to
         // selfFriction (0 to 1) times its overlap, all pairs from the same
@@ -605,7 +605,7 @@ extern "C"
     // shape's extent along it, so a host may draw a mesh scaled by the size:
     // an axis a shape does not set is X, as the emitter's size and size
     // over life say. A spawn request's size that differs there is refused;
-    // a host module that writes one kills the particle (valuesKilled). A
+    // a host module that writes one kills the particle (valueKillCount). A
     // birth takes X's draw for those axes, and a size the effect does not
     // fix, a parameter's or an event's inherited one, takes X for them,
     // their own values ignored.
@@ -655,7 +655,7 @@ extern "C"
     // substep), the event its first of a step; its restitution, friction,
     // rest speed and radius are not read. A body takes at most
     // MVFX_MAX_RIGID_CONTACTS contacts a substep, the shallowest past them
-    // dropped and counted (mvfxEmitterStats.rigidContactsCapped).
+    // dropped and counted (mvfxEmitterStats.rigidContactsDropped).
     typedef struct mvfxRigidDef
     {
         // Rigid bodies are plain particles: never units (mvfxUnitDef) or a
@@ -685,7 +685,7 @@ extern "C"
         // pair met as a body meets a sphere or a box (two capsules by their
         // cores) and solved with both bodies' masses from their densities;
         // those past the pool dropped and counted
-        // (mvfxEmitterStats.rigidContactsCapped). A body born in a step
+        // (mvfxEmitterStats.rigidContactsDropped). A body born in a step
         // meets the others from its next. Mass ratios show: at rest a body
         // under one N times heavier sinks about N / 50 mm into what holds
         // it (0.5 mm at 27); the heavier landing presses it further for the
@@ -740,7 +740,7 @@ extern "C"
     // the liquid from the next. Lengths are in the particles' space (a
     // world-space emitter's scale with its instance). A particle counts at
     // most maxNeighbors neighbors in the grid's order, those past it
-    // counted (mvfxEmitterStats.neighborsCapped, once a step).
+    // counted (mvfxEmitterStats.neighborsDropped, once a step).
     // mvfxDefaultEmitterDef sets a spacing of 0.1, a kernel of 2, a
     // relaxation of 0.01, viscosity of 0.01 and 64 neighbors.
     // How a liquid moves.

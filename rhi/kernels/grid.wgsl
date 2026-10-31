@@ -37,7 +37,7 @@ const GRID_OWN: u32 = 4u;
 const GRID_STEERS: u32 = 8u;
 
 // The statistics record's word counting the caps since the instance's
-// last clear (MVFX_GPU_NEIGHBORS_CAPPED).
+// last clear (MVFX_GPU_NEIGHBORS_DROPPED).
 const STATISTICS_CAPPED: u32 = 46u;
 
 struct Grid {

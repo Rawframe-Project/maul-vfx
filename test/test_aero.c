@@ -348,7 +348,7 @@ static void TestTorn(void)
     int64_t indexCount = -1;
     CHECK(mvfxInstance_GetEmitterStats(s_scene.context, s_scene.instance, 0, &stats) ==
                   mvfx_success &&
-              stats.torn > 0 &&
+              stats.tearCount > 0 &&
               mvfxInstance_ExpandSheets(s_scene.context, s_scene.instance, 0, s_scene.layout,
                                         &s_view, &buffers, &vertexCount,
                                         &indexCount) == mvfx_success &&

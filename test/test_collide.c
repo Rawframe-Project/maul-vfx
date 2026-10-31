@@ -248,7 +248,7 @@ static void TestLifeAndCount(void)
     mvfxEmitterStats stats = {0};
     CHECK(mvfxInstance_GetEmitterStats(scene.context, scene.instance, 0, &stats) == mvfx_success,
           "stats");
-    CHECK(stats.live == 1 && stats.killed == 1, "killed by a collision");
+    CHECK(stats.live == 1 && stats.killCount == 1, "killed by a collision");
     mvfxDestroyContext(scene.context);
 
     // Half its life left a collision: its inverse life doubles.

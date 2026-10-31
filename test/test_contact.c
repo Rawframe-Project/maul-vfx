@@ -181,7 +181,7 @@ static uint64_t Capped(void)
 {
     mvfxEmitterStats stats = {0};
     CHECK(mvfxInstance_GetEmitterStats(s_context, s_instance, 0, &stats) == mvfx_success, "stats");
-    return stats.contactsCapped;
+    return stats.contactsDropped;
 }
 
 // The largest overlap of any pair in double, as a share of the radii's sum.

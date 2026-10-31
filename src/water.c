@@ -264,7 +264,7 @@ void mvfxClearWater(mvfxWaterState* state, const mvfxCompiledWater* water)
     state->reportedTick = -1;
     state->countedTick = -1;
     state->planPushCount = 0;
-    state->stepsSlowed = 0;
-    state->facesHeld = 0;
+    state->slowedStepCount = 0;
+    state->heldFaceCount = 0;
     state->volumePoured = 0.0;
 }
