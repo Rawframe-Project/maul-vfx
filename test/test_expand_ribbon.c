@@ -204,6 +204,22 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
     return true;
 }
 
+static void TestPastTheCount(void)
+{
+    // A strip of six vertices and twelve indices into room for twenty-four
+    // and forty-eight: the vertices and indices past them untouched.
+    mvfxEmitterDef emitter = Ribbon(mvfx_ribbonOne);
+    Scene scene = NewScene(&emitter);
+    static const double places[9] = {0, 0, 0, 1, 0, 0, 2, 0, 0};
+    Spawn(&scene, places, 3);
+    Written w = Expand(&scene, 24, 48, 128);
+    CHECK(w.result == mvfx_success && w.vertexCount == 6 && w.indexCount == 12 &&
+              Filled(&w.vertices[6], 18 * sizeof w.vertices[0], 0xEE) &&
+              Filled(&w.indices[12], 36 * sizeof w.indices[0], 0xEE),
+          "the vertices and indices past the counts untouched");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Ribbon(mvfx_ribbonOne);
@@ -304,6 +320,7 @@ int main(void)
     TestStrip();
     TestTessellatedAndFits();
     TestWidthBetween();
+    TestPastTheCount();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }

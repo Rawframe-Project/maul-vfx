@@ -307,6 +307,32 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
     return true;
 }
 
+static void TestPastTheCount(void)
+{
+    // Five emitters to draw into room for eight: the three past them
+    // untouched.
+    mvfxContext* context = NewContext();
+    mvfxEmitterDef emitters[2] = {Held(0.5f), Held(0.5f)};
+    mvfxEffectId effect = NewEffect(context, emitters, 2);
+    mvfxInstanceId a = NewInstance(context, effect);
+    mvfxInstanceId b = NewInstance(context, effect);
+    mvfxInstanceId c = NewInstance(context, effect);
+    Place(context, a, 0, 10, 0, 0);
+    Place(context, a, 1, 5, 0, 0);
+    Place(context, b, 0, 20, 0, 0);
+    Place(context, b, 1, 30, 0, 0);
+    Place(context, c, 0, 0, 10, 0);
+    CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success, "step");
+    static const double eye[3] = {0, 0, 0};
+    mvfxDrawItem items[8];
+    memset(items, 0xEE, sizeof items);
+    int64_t count = 0;
+    CHECK(mvfxContext_OrderEmitters(context, eye, NULL, items, 8, &count) == mvfx_success &&
+              count == 5 && Filled(&items[5], 3 * sizeof items[0], 0xEE),
+          "the items past the count untouched");
+    mvfxDestroyContext(context);
+}
+
 static void TestRefusals(void)
 {
     mvfxContext* context = NewContext();
@@ -412,6 +438,7 @@ int main(void)
     TestFixed();
     TestOrder();
     TestTies();
+    TestPastTheCount();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }

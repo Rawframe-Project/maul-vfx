@@ -175,6 +175,27 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
     return true;
 }
 
+static void TestPastTheCount(void)
+{
+    // The density as float32 in rows of 40 bytes, 32 of them values: the
+    // 8 bytes after each row's values and the bytes past the last row
+    // untouched.
+    Open(s_origin, s_unturned);
+    static _Alignas(16) uint8_t out[256];
+    memset(out, 0xEE, sizeof out);
+    mvfxGasRead read = Whole(mvfx_gasDensity, mvfx_formatFloat32);
+    read.rowBytes = 40;
+    bool untouched =
+        mvfxInstance_ReadGasAs(s_context, s_instance, 0, &read, out, sizeof out) == mvfx_success;
+    for (int32_t row = 0; row < 6; ++row)
+    {
+        untouched = untouched && Filled(&out[40 * row + 32], 8, 0xEE);
+    }
+    CHECK(untouched && Filled(&out[5 * 40 + 32], sizeof out - (5 * 40 + 32), 0xEE),
+          "the bytes between rows and past the last untouched");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestRefusals(void)
 {
     // A uint32 format; a box past the gas; a range not above its low for a
@@ -276,6 +297,7 @@ int main(void)
     TestFormats();
     TestBox();
     TestVelocity();
+    TestPastTheCount();
     TestRefusals();
     TestSample();
     return s_failures;

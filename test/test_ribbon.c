@@ -381,6 +381,22 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
     return true;
 }
 
+static void TestPastTheCount(void)
+{
+    // Three points and one ribbon into room for sixteen and four: the
+    // points and ribbons past them untouched.
+    mvfxEmitterDef emitter = Ribbon(mvfx_ribbonOne);
+    Scene scene = NewScene(&emitter, 1);
+    static const double points[9] = {0, 0, 0, 3, 0, 0, 7, 0, 0};
+    Spawn(&scene, 0, points, 3);
+    Written w = Write(&scene, 0, 16, 4);
+    CHECK(w.result == mvfx_success && w.pointCount == 3 && w.ribbonCount == 1 &&
+              Filled(&w.points[3], 13 * sizeof w.points[0], 0xEE) &&
+              Filled(&w.ribbons[1], 3 * sizeof w.ribbons[0], 0xEE),
+          "the points and ribbons past the counts untouched");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Ribbon(mvfx_ribbonOne);
@@ -488,6 +504,7 @@ int main(void)
     TestLocal();
     TestParticleRecord();
     TestChecks();
+    TestPastTheCount();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }

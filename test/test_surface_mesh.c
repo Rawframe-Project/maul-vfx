@@ -666,6 +666,26 @@ static bool WritesWithin(const uint32_t* full, int64_t vertices, int64_t indices
     return right && fit > 0;
 }
 
+static void TestPastTheCount(void)
+{
+    // A lone particle's sphere into the full buffers: the positions,
+    // normals and indices past its counts untouched.
+    CHECK(Open(24, 24, 0.05f, 0.25f, mvfx_gasSurface), "opened");
+    Spawn((const double[3]){0.013, -0.021, 0.007}, 1);
+    memset(s_positions, 0xEE, sizeof s_positions);
+    memset(s_normals, 0xEE, sizeof s_normals);
+    memset(s_indices, 0xEE, sizeof s_indices);
+    int64_t vertices = 0;
+    int64_t indices = 0;
+    Mesh(s_origin, &vertices, &indices);
+    size_t past = (size_t)(VERTICES - vertices) * 3 * sizeof(float);
+    CHECK(vertices > 0 && indices > 0 && Filled(&s_positions[3 * vertices], past, 0xEE) &&
+              Filled(&s_normals[3 * vertices], past, 0xEE) &&
+              Filled(&s_indices[indices], (size_t)(INDICES - indices) * sizeof s_indices[0], 0xEE),
+          "the positions, normals and indices past the counts untouched");
+    mvfxDestroyContext(s_context);
+}
+
 static void TestCapacity(void)
 {
     // A sphere into 50 vertices and 60 indices; into exactly the vertices
@@ -853,6 +873,7 @@ int main(void)
     TestRandomFields();
     TestTies();
     TestCapacity();
+    TestPastTheCount();
     TestDecider();
     TestAtLevel();
     TestBits();
