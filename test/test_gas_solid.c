@@ -37,7 +37,7 @@ enum
 };
 
 // The gas's solid cells and its faces along each axis, as read last.
-static uint8_t s_solid[MOST];
+static _Alignas(16) uint8_t s_solid[MOST];
 static float s_faces[3][MOST];
 
 // Opens an instance of an effect of one gas.

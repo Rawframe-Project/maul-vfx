@@ -24,7 +24,7 @@ static void Write(mvfxFormat format, int32_t components, const float values[4],
 
 static void TestNotFinite(void)
 {
-    unsigned char b[16];
+    _Alignas(16) unsigned char b[16];
     uint16_t h[4];
     const float odd[4] = {INFINITY, -INFINITY, NAN, -NAN};
     Write(mvfx_formatFloat16, 4, odd, b);

@@ -95,7 +95,7 @@ static bool EffectFile(void)
     // Its size first, then the bytes.
     int64_t size = 0;
     mvfxFileResult sized = mvfxWriteEffect(&def, NULL, 0, NULL, 0, &size, NULL);
-    static unsigned char file[4096];
+    static _Alignas(16) unsigned char file[4096];
     if (sized.result != mvfx_errorCapacity || size > (int64_t)sizeof file ||
         mvfxWriteEffect(&def, NULL, 0, file, size, &size, NULL).result != mvfx_success)
     {

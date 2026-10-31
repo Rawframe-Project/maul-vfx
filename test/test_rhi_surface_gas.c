@@ -221,8 +221,8 @@ static void TestFinishing(Gpu* gpu, mvfxGpu* kernels)
 }
 
 // The bytes of a read on each path.
-static uint8_t s_cpuBytes[1 << 16];
-static uint8_t s_gpuBytes[1 << 16];
+static _Alignas(16) uint8_t s_cpuBytes[1 << 16];
+static _Alignas(16) uint8_t s_gpuBytes[1 << 16];
 
 // Writes a read of gas 0 through mvfxGpuSim_AddGasRead into a buffer of
 // bytes and reads it back into out.
@@ -386,7 +386,7 @@ typedef struct Mesh
 static Mesh s_cpuMesh;
 static Mesh s_gpuMesh;
 static float s_field[MESH_CELLS];
-static unsigned char s_meshScratch[1 << 16];
+static _Alignas(16) unsigned char s_meshScratch[1 << 16];
 
 // The device's distances read back whole and written into the CPU
 // instance's state, so both paths mesh the same values.

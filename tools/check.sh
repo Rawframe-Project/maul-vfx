@@ -84,6 +84,8 @@ source_checks() {
     python3 tools/check_guide.py
     python3 tools/check_test_hygiene.py --self-test
     python3 tools/check_test_hygiene.py
+    python3 tools/check_test_buffers.py --self-test
+    python3 tools/check_test_buffers.py
     step "generated files"
     python3 tools/gen_file.py --self-test
     python3 tools/gen_file.py --check

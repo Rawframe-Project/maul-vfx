@@ -1651,7 +1651,7 @@ static inline uint64_t HashRibbons(mvfxContext* context, mvfxInstanceId id, int3
     {
         POINTS = SCENE_RECORDS * MVFX_MAX_RIBBON_PIECES
     };
-    static unsigned char points[POINTS * SCENE_RECORD_BYTES];
+    static _Alignas(16) unsigned char points[POINTS * SCENE_RECORD_BYTES];
     static mvfxRibbon ribbons[SCENE_RECORDS];
     mvfxRibbonBuffers buffers = {.points = points,
                                  .pointCapacity = POINTS,
@@ -1674,7 +1674,7 @@ static inline uint64_t HashQuads(mvfxContext* context, mvfxInstanceId id, int32_
                                  mvfxLayoutId layout, const mvfxView* view, uint32_t* scratch,
                                  uint64_t hash)
 {
-    static unsigned char vertices[4 * SCENE_RECORDS * SCENE_RECORD_BYTES];
+    static _Alignas(16) unsigned char vertices[4 * SCENE_RECORDS * SCENE_RECORD_BYTES];
     static uint32_t indices[6 * SCENE_RECORDS];
     mvfxExpandBuffers buffers = {.vertices = vertices,
                                  .vertexCapacity = 4 * SCENE_RECORDS,
@@ -1702,7 +1702,7 @@ static inline uint64_t HashTubes(mvfxContext* context, mvfxInstanceId id, int32_
         VERTICES = 4 * SCENE_RECORDS * MVFX_MAX_RIBBON_PIECES + 10 * SCENE_RECORDS,
         INDICES = 18 * SCENE_RECORDS * MVFX_MAX_RIBBON_PIECES + 18 * SCENE_RECORDS
     };
-    static unsigned char vertices[VERTICES * SCENE_RECORD_BYTES];
+    static _Alignas(16) unsigned char vertices[VERTICES * SCENE_RECORD_BYTES];
     static uint32_t indices[INDICES];
     mvfxExpandBuffers buffers = {.vertices = vertices,
                                  .vertexCapacity = VERTICES,
@@ -1729,7 +1729,7 @@ static inline uint64_t HashStrips(mvfxContext* context, mvfxInstanceId id, int32
     {
         VERTICES = 2 * SCENE_RECORDS * MVFX_MAX_RIBBON_PIECES
     };
-    static unsigned char vertices[VERTICES * SCENE_RECORD_BYTES];
+    static _Alignas(16) unsigned char vertices[VERTICES * SCENE_RECORD_BYTES];
     static uint32_t indices[3 * VERTICES];
     mvfxExpandBuffers buffers = {.vertices = vertices,
                                  .vertexCapacity = VERTICES,
@@ -1755,7 +1755,7 @@ static inline uint64_t HashPlexus(mvfxContext* context, mvfxInstanceId id, int32
     {
         LINKS = 64
     };
-    static unsigned char points[4 * LINKS * SCENE_RECORD_BYTES];
+    static _Alignas(16) unsigned char points[4 * LINKS * SCENE_RECORD_BYTES];
     static mvfxRibbon ribbons[LINKS];
     static uint32_t indices[6 * LINKS];
     mvfxRibbonBuffers buffers = {
@@ -1806,7 +1806,7 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
                                   .eye = {12.0, 1.0, 2.0},
                                   .forward = {0.25f, -0.125f, -1.0f},
                                   .up = {0.0f, 1.0f, 0.25f}};
-    static unsigned char records[SCENE_RECORDS * SCENE_RECORD_BYTES];
+    static _Alignas(16) unsigned char records[SCENE_RECORDS * SCENE_RECORD_BYTES];
     static uint32_t scratch[SCENE_RECORDS * 4];
     for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
     {

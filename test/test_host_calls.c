@@ -305,8 +305,8 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     static const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
     static const mvfxTubeDef tube = {.sides = 3};
     static const double eye[3] = {0, 0, 0};
-    static unsigned char records[64];
-    static unsigned char vertices[64];
+    static _Alignas(16) unsigned char records[64];
+    static _Alignas(16) unsigned char vertices[64];
     static uint32_t indices[6];
     static mvfxLight lights[1];
     static mvfxDrawItem items[1];

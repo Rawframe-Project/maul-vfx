@@ -701,7 +701,7 @@ static void NormalOf(const float* u, int32_t n, int32_t m, float h, int32_t x, i
 // float32 read mapped, the padding untouched.
 static bool IsUnormBox(const float* all, mvfxWaterField field, float low, float high)
 {
-    unsigned char out[5 * 7];
+    _Alignas(16) unsigned char out[5 * 7];
     memset(out, 0xAB, sizeof out);
     const mvfxWaterRead read = {.field = field,
                                 .format = mvfx_formatUnorm8,
@@ -749,7 +749,7 @@ static void ReadRefusals(void)
     bad[7].high = 0.0f;
     bad[8].low = NAN;
     bad[9].high = INFINITY;
-    unsigned char out[16 * 8];
+    _Alignas(16) unsigned char out[16 * 8];
     uint64_t misuse = mvfxContext_GetMisuse(s_context);
     for (int32_t b = 0; b < 10; ++b)
     {

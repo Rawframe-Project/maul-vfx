@@ -38,6 +38,7 @@ The macOS, Windows and web cells run in CI only, `windows-d3d12` among them. The
 | The kernel containers carry their sources | `tools/gen_kernels.py --check` |
 | The effect fixtures' JSON and binary forms agree | `tools/effect_json.py --check test/fixtures` |
 | No sleep, wall clock, retry or unexplained skip in a test, and every test labeled | `tools/check_test_hygiene.py`: its self-test, the tree, and each configured build's tests (`--ctest`) |
+| Every byte array in a test states its alignment (`_Alignas(16)`), so a buffer the library checks for alignment never passes by where it lands | `tools/check_test_buffers.py` and its self-test |
 | Allowed Markdown files, em dash, record numbers, links | the organization's `docs_check.py` |
 
 Each tool's header comment and message state its rule and why.
