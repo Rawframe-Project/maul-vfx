@@ -269,6 +269,7 @@ if(MAUL_VFX_BUILD_TESTS)
     maul_add_test(mesh)
     maul_add_test(mesh_internal WHITEBOX)
     maul_add_test(negatives)
+    maul_add_test(not_misuse)
     maul_add_test(noise WHITEBOX)
     maul_add_test(output)
     maul_add_test(over_life)
@@ -407,6 +408,9 @@ if(MAUL_VFX_BUILD_TESTS)
         # Host code calling back into a simulation, refused.
         maul_add_test(rhi_host_calls)
         target_link_libraries(test_rhi_host_calls PRIVATE maul-vfx-rhi)
+        # The calls that take a context, given a NULL one.
+        maul_add_test(rhi_not_misuse)
+        target_link_libraries(test_rhi_not_misuse PRIVATE maul-vfx-rhi)
         # The guide's GPU part blocks on a device.
         maul_add_test(guide_rhi)
         target_link_libraries(test_guide_rhi PRIVATE maul-vfx-rhi)

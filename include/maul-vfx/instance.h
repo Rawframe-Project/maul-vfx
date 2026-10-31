@@ -322,13 +322,15 @@ extern "C"
     ///                      MVFX_MAX_STEP_SECONDS, one tick at least.
     /// @param maxSteps      At least 1.
     /// @param remainingOut  Receives the span left, exactly as ticks; 0 on
-    ///                      failure; may be NULL.
+    ///                      any failure but mvfx_errorBusy, which leaves it;
+    ///                      may be NULL.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorUnsupported` for a planned
     ///         instance; `mvfx_errorInvalid` for a NULL context or a value
     ///         out of range; `mvfx_errorLimit` for a step past
     ///         MVFX_MAX_STEP_SECONDS. Either counts as misuse when the
-    ///         context is given.
+    ///         context is given. `mvfx_errorBusy` from the context's host
+    ///         code, counted as misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_Prewarm(mvfxContext* context,
