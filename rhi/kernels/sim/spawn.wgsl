@@ -10,7 +10,7 @@
 // spawnSort orders them by tick, keeping their order at a tick (a radix
 // sort in one workgroup over the bytes the latest tick has); spawnScan
 // gives each its births' first place in that order, keeps the first
-// spawnRule[1].x and counts the rest refused, and moves the serials the
+// spawnRule[1].x and counts the rest dropped, and moves the serials the
 // emitter's event births took on; spawnMerge writes the step's births as
 // the core numbers them: the host's, then the plan's own and the kept
 // event births by tick (events first at a tick), each with its serial,
@@ -18,7 +18,7 @@
 // velocity drawn at its serial, past the births' room none.
 
 // The spawn region's words: the events kept, their births, those kept
-// and refused; the serials event births took before the step (two
+// and dropped; the serials event births took before the step (two
 // words); the step's births and those past the room; the source's events
 // written and the first of its step's (after a split frame's steps
 // before), the latest tick kept, which set holds the order; the source's
@@ -275,7 +275,7 @@ fn sortedSet() -> u32 {
 }
 
 // Spawn scan, one workgroup: each kept event's first birth in the sorted
-// order, the births kept and refused, the serials before the step, the
+// order, the births kept and dropped, the serials before the step, the
 // statistics' serials moved on, the step's births within the room.
 @compute @workgroup_size(256, 1, 1)
 fn spawnScan(@builtin(local_invocation_index) local: u32) {
