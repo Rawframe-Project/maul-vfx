@@ -380,16 +380,32 @@ if(MAUL_VFX_BUILD_TESTS)
             if(NOT mvfx_agility)
                 message(FATAL_ERROR "MAUL_VFX_D3D12_AGILITY holds no DLL: ${MAUL_VFX_D3D12_AGILITY}")
             endif()
-            target_sources(test_rhi_kernels PRIVATE "${mvfx_d3d12_debug}")
-            target_include_directories(test_rhi_kernels PRIVATE "${maul-rhi_SOURCE_DIR}/test")
-            target_include_directories(test_rhi_kernels SYSTEM PRIVATE
-                "${maul-rhi_SOURCE_DIR}/directx")
+            # Probe for #65 (not to merge): the pinned Maul RHI's export
+            # moved to the Agility SDK 1.620, on rhi_kernels and rhi_sim,
+            # and the redistributable WARP beside the tests.
+            file(READ "${mvfx_d3d12_debug}" mvfx_d3d12_debug_text)
+            string(REPLACE "D3D12SDKVersion = 619;" "D3D12SDKVersion = 620;"
+                   mvfx_d3d12_debug_text "${mvfx_d3d12_debug_text}")
+            file(WRITE "${CMAKE_BINARY_DIR}/d3d12_debug_620.c" "${mvfx_d3d12_debug_text}")
+            set(MAUL_VFX_D3D12_WARP "" CACHE FILEPATH "Probe: a d3d10warp.dll put beside the tests")
+            foreach(probe test_rhi_kernels test_rhi_sim)
+                target_sources(${probe} PRIVATE "${CMAKE_BINARY_DIR}/d3d12_debug_620.c"
+                               "${PROJECT_SOURCE_DIR}/test/warp_probe.c")
+                target_include_directories(${probe} PRIVATE "${maul-rhi_SOURCE_DIR}/test")
+                target_include_directories(${probe} SYSTEM PRIVATE "${maul-rhi_SOURCE_DIR}/directx")
+                target_link_libraries(${probe} PRIVATE d3d12 dxgi version)
+            endforeach()
             target_compile_definitions(test_rhi_kernels PRIVATE MVFX_RHI_D3D12_DEBUG)
-            target_link_libraries(test_rhi_kernels PRIVATE d3d12 dxgi)
+            set(mvfx_warp_copy "")
+            if(MAUL_VFX_D3D12_WARP)
+                set(mvfx_warp_copy COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${MAUL_VFX_D3D12_WARP}" $<TARGET_FILE_DIR:test_rhi_kernels>)
+            endif()
             add_custom_target(maul_vfx_agility ALL
                 COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:test_rhi_kernels>/D3D12
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different ${mvfx_agility}
                         $<TARGET_FILE_DIR:test_rhi_kernels>/D3D12
+                ${mvfx_warp_copy}
                 VERBATIM)
         endif()
         # A mesh's region and the element its thresholds choose, beside the
