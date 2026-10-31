@@ -360,6 +360,22 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
     return true;
 }
 
+static void TestPastTheCount(void)
+{
+    // Two quads, eight vertices and twelve indices, into room for four
+    // quads: the vertices and indices past them untouched.
+    mvfxEmitterDef emitter = Sprites(mvfx_billboardCamera);
+    Scene scene = NewScene(&emitter);
+    static const double places[6] = {1, 2, 3, 5, 5, 5};
+    Spawn(&scene, places, NULL, 2);
+    Written w = Expand(&scene, &s_view, 16, 24);
+    CHECK(w.result == mvfx_success && w.count == 2 &&
+              Filled(&w.vertices[8], 8 * sizeof w.vertices[0], 0xEE) &&
+              Filled(&w.indices[12], 12 * sizeof w.indices[0], 0xEE),
+          "the vertices and indices past the count untouched");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Sprites(mvfx_billboardCamera);
@@ -443,6 +459,7 @@ int main(void)
     TestTurned();
     TestSortedAndLocal();
     TestChecks();
+    TestPastTheCount();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }

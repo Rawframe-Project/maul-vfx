@@ -274,10 +274,43 @@ static void TestChainAndMisuse(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void TestPastTheCount(void)
+{
+    // Four rings of six sides, twenty-eight vertices and a hundred and
+    // eight indices, into room for more: the vertices and indices past
+    // them untouched.
+    static const double places[12] = {0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0};
+    mvfxEmitterDef emitter = Trail();
+    Open(&emitter, places, 4);
+    memset(s_scene.vertices, 0xEE, sizeof s_scene.vertices);
+    memset(s_scene.indices, 0xEE, sizeof s_scene.indices);
+    CHECK(Expand(6, false, MOST, 4 * MOST) == mvfx_success && s_scene.vertexCount == 28 &&
+              s_scene.indexCount == 108 &&
+              Filled(&s_scene.vertices[28], (MOST - 28) * sizeof s_scene.vertices[0], 0xEE) &&
+              Filled(&s_scene.indices[108], (4 * MOST - 108) * sizeof s_scene.indices[0], 0xEE),
+          "the vertices and indices past the counts untouched");
+    mvfxDestroyContext(s_scene.context);
+}
+
 int main(void)
 {
     TestStraight();
     TestCurved();
     TestChainAndMisuse();
+    TestPastTheCount();
     return s_failures == 0 ? 0 : 1;
 }

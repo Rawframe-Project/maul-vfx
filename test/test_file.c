@@ -112,6 +112,20 @@ static int64_t Write(const Def* def, uint8_t* bytes)
 // Memory for read defs, aligned to 16.
 static _Alignas(16) uint8_t s_memory[1 << 16];
 
+// Whether every byte of a buffer is value.
+static bool Filled(const void* buffer, size_t size, unsigned char value)
+{
+    const unsigned char* bytes = buffer;
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (bytes[i] != value)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static mvfxFileResult Read(const uint8_t* bytes, int64_t size, mvfxEffectDef* def)
 {
     int64_t needed = 0;
@@ -1174,12 +1188,21 @@ static void TestMemory(void)
           "read in exactly");
     CHECK((const uint8_t*)read.emitters == s_memory && s_memory[needed] == 0xAB,
           "the memory from its start, not past its end");
+    // More room than it needs: every byte past what it needs untouched.
+    memset(s_memory, 0xAB, sizeof s_memory);
+    CHECK(Refused(mvfxReadEffect(bytes, size, s_assets, 4, s_memory, sizeof s_memory, &again, &read,
+                                 NULL),
+                  mvfx_success, -1) &&
+              again == needed && Filled(&s_memory[needed], sizeof s_memory - (size_t)needed, 0xAB),
+          "more room: every byte past what it needs untouched");
     _Alignas(16) uint8_t written[4096];
+    memset(written, 0xEE, sizeof written);
     int64_t rewritten = 0;
     CHECK(Refused(mvfxWriteEffect(&read, s_assets, 4, written, 4096, &rewritten, NULL),
                   mvfx_success, -1) &&
-              rewritten == size && memcmp(bytes, written, (size_t)size) == 0,
-          "the same bytes again");
+              rewritten == size && memcmp(bytes, written, (size_t)size) == 0 &&
+              Filled(&written[rewritten], sizeof written - (size_t)rewritten, 0xEE),
+          "the same bytes again, every byte past them untouched");
     // Memory over the bytes, at their start or their last 16 bytes, is
     // refused; memory right after them is not.
     static _Alignas(16) uint8_t both[8192];

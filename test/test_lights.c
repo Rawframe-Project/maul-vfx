@@ -252,6 +252,24 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
     return true;
 }
 
+static void TestPastTheCount(void)
+{
+    // Three lights into room for six: the three past them untouched.
+    mvfxEmitterDef emitter = Lit();
+    Scene scene = NewScene(&emitter, 1);
+    Spawn(&scene, 8);
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    static const mvfxView view = {.origin = {0, 0, 0}};
+    mvfxLight lights[6];
+    memset(lights, 0xEE, sizeof lights);
+    int64_t count = 0;
+    CHECK(mvfxInstance_WriteLights(scene.context, scene.instance, 0, &view, lights, 6, &count) ==
+                  mvfx_success &&
+              count == 3 && Filled(&lights[3], 3 * sizeof lights[0], 0xEE),
+          "the lights past the count untouched");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestRefusals(void)
 {
     mvfxEmitterDef emitter = Lit();
@@ -298,6 +316,7 @@ int main(void)
     TestLocal();
     TestUnlit();
     TestChecks();
+    TestPastTheCount();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }

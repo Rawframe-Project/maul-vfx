@@ -405,6 +405,34 @@ static void TestMesh(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestPastTheCount(void)
+{
+    // Two sheets, 24 vertices and 72 indices, into room for more: the
+    // vertices and indices past them untouched.
+    mvfxEmitterDef emitter = Sheet(4, 3);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.unit.pinFirstRow = false;
+    Open(&emitter, 1.0f);
+    static const double roots[6] = {0, 0, 0, 0, 3, 0};
+    Spawn(2, roots);
+    Steps(2, MVFX_TICKS_PER_SECOND / 60);
+    static Record vertices[32];
+    static uint32_t indices[96];
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    mvfxExpandBuffers buffers = {
+        .vertices = vertices, .vertexCapacity = 32, .indices = indices, .indexCapacity = 96};
+    int64_t vertexCount = 0;
+    int64_t indexCount = 0;
+    CHECK(mvfxInstance_ExpandSheets(s_scene.context, s_scene.instance, 0, s_scene.layout, &s_view,
+                                    &buffers, &vertexCount, &indexCount) == mvfx_success &&
+              vertexCount == 24 && indexCount == 72 &&
+              Filled(&vertices[24], 8 * sizeof vertices[0], 0xEE) &&
+              Filled(&indices[72], 24 * sizeof indices[0], 0xEE),
+          "the vertices and indices past the counts untouched");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -525,6 +553,7 @@ int main(void)
     TestScale();
     TestSkewed();
     TestMesh();
+    TestPastTheCount();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }

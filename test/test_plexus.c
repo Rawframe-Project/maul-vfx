@@ -298,6 +298,44 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
     return true;
 }
 
+static void TestPastTheCount(void)
+{
+    // One link: two points and one ribbon into room for eight and four,
+    // then four vertices and six indices into room for eight and twelve;
+    // what lies past them untouched.
+    static const double pair[6] = {0, 0, 0, 0.5, 0, 0};
+    mvfxEmitterDef emitter = Emitter(1.0f);
+    Scene scene = Run(&emitter, pair, 2);
+    static Record points[8];
+    static mvfxRibbon ribbons[4];
+    memset(points, 0xEE, sizeof points);
+    memset(ribbons, 0xEE, sizeof ribbons);
+    mvfxRibbonBuffers links = {
+        .points = points, .pointCapacity = 8, .ribbons = ribbons, .ribbonCapacity = 4};
+    int64_t pointCount = 0;
+    int64_t linkCount = 0;
+    CHECK(mvfxInstance_WritePlexus(scene.context, scene.instance, 0, scene.layout, &s_view, &links,
+                                   &pointCount, &linkCount) == mvfx_success &&
+              pointCount == 2 && linkCount == 1 && Filled(&points[2], 6 * sizeof points[0], 0xEE) &&
+              Filled(&ribbons[1], 3 * sizeof ribbons[0], 0xEE),
+          "the points and links past the counts untouched");
+    static Record vertices[8];
+    static uint32_t indices[12];
+    memset(vertices, 0xEE, sizeof vertices);
+    memset(indices, 0xEE, sizeof indices);
+    mvfxExpandBuffers strips = {
+        .vertices = vertices, .vertexCapacity = 8, .indices = indices, .indexCapacity = 12};
+    int64_t vertexCount = 0;
+    int64_t indexCount = 0;
+    CHECK(mvfxInstance_ExpandPlexus(scene.context, scene.instance, 0, scene.layout, &s_view,
+                                    &strips, &vertexCount, &indexCount) == mvfx_success &&
+              vertexCount == 4 && indexCount == 6 &&
+              Filled(&vertices[4], 4 * sizeof vertices[0], 0xEE) &&
+              Filled(&indices[6], 6 * sizeof indices[0], 0xEE),
+          "the vertices and indices past the counts untouched");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestChecks(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -420,6 +458,7 @@ int main(void)
     TestCaps();
     TestPoints();
     TestOwnSettings();
+    TestPastTheCount();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }
