@@ -90,6 +90,8 @@ jobs:
           python3 tools/check_test_hygiene.py
           python3 tools/check_test_buffers.py --self-test
           python3 tools/check_test_buffers.py
+          python3 tools/check_overlap.py --self-test
+          python3 tools/check_overlap.py
           cmake --preset linux-clang-20 -B out/hygiene >/dev/null
           cmake --preset linux-clang-20 -B out/hygiene-rhi -DMAUL_VFX_RHI=ON >/dev/null
           python3 tools/check_test_hygiene.py --ctest out/hygiene --ctest out/hygiene-rhi
