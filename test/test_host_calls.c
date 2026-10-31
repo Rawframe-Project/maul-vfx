@@ -93,7 +93,9 @@ static void CallBack(Callback from)
 // While destructions run, the context and the ids the allocator's free
 // reads after each block it returns but the context's own: each reading
 // call answers from a live object or finds its id gone, and never reads
-// a block already returned. How many times it read.
+// a block already returned. How many times it read; how many times the
+// mesh's hull read back stale, and how many times it read back neither
+// whole nor stale.
 static const mvfxContext* s_reader;
 static mvfxMeshId s_readMesh;
 static mvfxGridId s_readGrid;
@@ -101,6 +103,8 @@ static mvfxLayoutId s_readLayout;
 static mvfxEffectId s_readEffect;
 static mvfxInstanceId s_readInstance;
 static int32_t s_reads;
+static int32_t s_hullsStale;
+static int32_t s_hullsWrong;
 
 static void Read(const void* freed)
 {
@@ -119,6 +123,19 @@ static void Read(const void* freed)
     (void)mvfxLayout_GetView(reader, s_readLayout, &layout);
     (void)mvfxEffect_GetEmitterView(reader, s_readEffect, 0, &emitter);
     (void)mvfxInstance_GetEmitterMesh(reader, s_readInstance, 0, &spawning);
+    bool hull = false;
+    float center[3];
+    int32_t vertices = 0;
+    mvfxResult centered = mvfxMesh_GetHullCenter(reader, s_readMesh, &hull, center);
+    mvfxResult counted = mvfxMesh_GetHullVertexCount(reader, s_readMesh, &vertices);
+    if (centered == mvfx_errorStale && counted == mvfx_errorStale)
+    {
+        s_hullsStale += 1;
+    }
+    else if (centered != mvfx_success || counted != mvfx_success || !hull || vertices != 4)
+    {
+        s_hullsWrong += 1;
+    }
     s_reads += 1;
 }
 
@@ -509,9 +526,12 @@ static void TestFreedAfterItsId(void)
     // returns: each destruction frees its object's slot before its
     // memory, and the context each table before its memory, so a reading
     // call finds the id gone rather than a returned block (AddressSanitizer
-    // reports one).
+    // reports one). The mesh's hull, kept in its block, reads back whole
+    // until the mesh's slot is freed and stale from then on.
     mvfxContext* context = OpenObjects();
     s_reads = 0;
+    s_hullsStale = 0;
+    s_hullsWrong = 0;
     s_reader = context;
     bool destroyed = mvfxDestroyInstance(context, s_readInstance) == mvfx_success &&
                      mvfxDestroyEffect(context, s_readEffect) == mvfx_success &&
@@ -523,6 +543,8 @@ static void TestFreedAfterItsId(void)
     CHECK(destroyed && s_reads >= 5 &&
               mvfxMesh_GetView(context, s_readMesh, &view) == mvfx_errorStale,
           "each object destroyed, its id read as it went");
+    CHECK(s_hullsStale > 0 && s_hullsWrong == 0,
+          "the mesh's hull read whole while it lived, stale once destroyed");
     mvfxDestroyContext(context);
     context = OpenObjects();
     s_reads = 0;
