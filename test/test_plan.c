@@ -1500,7 +1500,9 @@ static bool SameKillRule(const mvfxPlannedKillRule* p, const mvfxKillRule* def, 
     FramePoint(f, def->center, center);
     FrameVector(f, def->normal, 1.0, normal);
     FrameTurn(f, def->rotation, turn);
-    double ticks = ceil((double)def->minimumAge * (double)MVFX_TICKS_PER_SECOND);
+    double ticks = def->kind == mvfx_killSlower
+                       ? ceil((double)def->minimumAge * (double)MVFX_TICKS_PER_SECOND)
+                       : 0.0;
     bool same = p->kind == def->kind && Near(p->radius, (double)def->radius * sigma) &&
                 Near(p->speed, (double)def->speed * sigma) &&
                 p->minimumAgeTicks == (uint64_t)ticks && p->collisions == def->collisions &&
@@ -1603,6 +1605,31 @@ static void TestModulesAndKills(void)
               m->orbitRate.value == 2.0f && view.rotationSpeed.value == 1.0f &&
               view.rotationSpeed.curve == NULL,
           "the view's velocity modules");
+    mvfxDestroyContext(context);
+}
+
+static void TestKillAgeOnlyWhereRead(void)
+{
+    // Only a rule that kills the slower reads its least age, so the other
+    // kinds leave it unchecked: a sphere's not a number or past every
+    // tick count is accepted, and the plan gives it 0 ticks.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Emitter(16);
+    const mvfxKillRule rules[2] = {
+        {.kind = mvfx_killInsideSphere, .radius = 1, .minimumAge = NAN},
+        {.kind = mvfx_killOutsideSphere, .radius = 1, .minimumAge = 1e30f}};
+    emitter.killRules = rules;
+    emitter.killRuleCount = 2;
+    mvfxEffectId effect = Effect(context, &emitter);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+    static mvfxEmitterPlan plan;
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
+    CHECK(plan.killRuleCount == 2 && plan.killRules[0].minimumAgeTicks == 0 &&
+              plan.killRules[1].minimumAgeTicks == 0,
+          "an age no kind reads planned as 0 ticks");
     mvfxDestroyContext(context);
 }
 
@@ -1840,6 +1867,7 @@ int main(void)
     TestForces();
     TestColliders();
     TestModulesAndKills();
+    TestKillAgeOnlyWhereRead();
     TestOverLifeView();
     TestDepth();
     return s_failures == 0 ? 0 : 1;
