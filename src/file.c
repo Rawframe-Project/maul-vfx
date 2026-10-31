@@ -722,6 +722,15 @@ static mvfxFileResult ReadEffect(const void* bytes, int64_t size, const mvfxEffe
     {
         return Fault(mvfx_errorInvalid, -1);
     }
+    // The def is laid in memory while the bytes are read: memory over the
+    // bytes would change them under the read.
+    uintptr_t from = (uintptr_t)bytes;
+    uintptr_t into = (uintptr_t)memory;
+    if (size > 0 && capacity > 0 && into < from + (uintptr_t)size &&
+        from < into + (uintptr_t)capacity)
+    {
+        return Fault(mvfx_errorInvalid, -1);
+    }
     mvfxResult assetsValid = CheckAssets(assets, assetCount);
     if (assetsValid != mvfx_success)
     {
