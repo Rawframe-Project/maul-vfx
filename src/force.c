@@ -32,7 +32,7 @@ static mvfxResult CheckFalloff(const mvfxFieldPath* at, const mvfxFalloff* fallo
     {
         return mvfx_success;
     }
-    if (falloff->kind > mvfx_falloffCone)
+    if (!mvfxIsKind(falloff->kind, mvfx_falloffCone))
     {
         return mvfxRefuseField(at, MVFX_TAG_FALLOFF_KIND, mvfx_errorInvalid);
     }
@@ -77,7 +77,7 @@ static mvfxResult CheckBox(const mvfxFieldPath* at, const mvfxForce* force)
     {
         return mvfxRefuseField(at, MVFX_TAG_FORCE_BOX_ROTATION, mvfx_errorInvalid);
     }
-    if (force->border > mvfx_borderRepeat)
+    if (!mvfxIsKind(force->border, mvfx_borderRepeat))
     {
         return mvfxRefuseField(at, MVFX_TAG_FORCE_BORDER, mvfx_errorInvalid);
     }
@@ -89,15 +89,15 @@ static mvfxResult CheckBox(const mvfxFieldPath* at, const mvfxForce* force)
 static uint32_t RefusedChoice(const mvfxForce* force)
 {
     // A gas past MVFX_MAX_GASES is an index naming no gas, not a count.
-    if (force->kind > mvfx_forceGas)
+    if (!mvfxIsKind(force->kind, mvfx_forceGas))
     {
         return MVFX_TAG_FORCE_KIND;
     }
-    if (force->space > mvfx_spaceLocal)
+    if (!mvfxIsKind(force->space, mvfx_spaceLocal))
     {
         return MVFX_TAG_FORCE_SPACE;
     }
-    if (force->fieldMode > mvfx_fieldVelocity)
+    if (!mvfxIsKind(force->fieldMode, mvfx_fieldVelocity))
     {
         return MVFX_TAG_FORCE_FIELD_MODE;
     }

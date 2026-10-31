@@ -33,7 +33,7 @@ extern "C"
     } mvfxGridId;
 
     // How a grid keeps its values.
-    typedef uint8_t mvfxGridFormat;
+    typedef int32_t mvfxGridFormat;
     enum
     {
         // As binary32.

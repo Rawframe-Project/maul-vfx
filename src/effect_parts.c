@@ -23,7 +23,7 @@ static bool IsWithin(float x, float low, float high)
 static mvfxResult CheckSteerPoint(const mvfxFieldPath* at, const mvfxSteerPoint* point,
                                   int32_t parameterCount)
 {
-    if (point->space > mvfx_spaceLocal)
+    if (!mvfxIsKind(point->space, mvfx_spaceLocal))
     {
         return mvfxRefuseField(at, MVFX_TAG_STEER_POINT_SPACE, mvfx_errorInvalid);
     }
@@ -56,7 +56,7 @@ static mvfxResult CheckSteerPath(const mvfxFieldPath* at, const mvfxSteerPath* p
     {
         return mvfxRefuseField(at, MVFX_TAG_STEER_PATH_POINTS, mvfx_errorInvalid);
     }
-    if (path->space > mvfx_spaceLocal)
+    if (!mvfxIsKind(path->space, mvfx_spaceLocal))
     {
         return mvfxRefuseField(at, MVFX_TAG_STEER_PATH_SPACE, mvfx_errorInvalid);
     }
@@ -209,7 +209,8 @@ static mvfxResult CheckUnit(const mvfxFieldPath* emitter, const mvfxEmitterDef* 
     }
     mvfxFieldPath at = mvfxFieldIn(emitter, MVFX_TAG_EMITTER_DEF_UNIT, -1);
     bool sheet = unit->kind == mvfx_unitSheet;
-    if (def->beam.enable || (sheet && def->ribbon.ids != mvfx_ribbonNone))
+    if (!mvfxIsKind(unit->kind, mvfx_unitSheet) || def->beam.enable ||
+        (sheet && def->ribbon.ids != mvfx_ribbonNone))
     {
         return mvfxRefuseField(&at, MVFX_TAG_UNIT_DEF_KIND, mvfx_errorInvalid);
     }
@@ -396,7 +397,7 @@ static uint32_t UntiedSize(const mvfxEmitterDef* def)
 static uint32_t RefusedRigidField(const mvfxEmitterDef* def)
 {
     const mvfxRigidDef* rigid = &def->rigid;
-    if (rigid->shape > mvfx_rigidHull)
+    if (!mvfxIsKind(rigid->shape, mvfx_rigidHull))
     {
         return MVFX_TAG_RIGID_DEF_SHAPE;
     }
@@ -523,7 +524,7 @@ static uint32_t RefusedLiquidField(const mvfxEmitterDef* def)
     {
         return MVFX_TAG_LIQUID_DEF_VISCOSITY;
     }
-    if (liquid->solver > mvfx_liquidGrid)
+    if (!mvfxIsKind(liquid->solver, mvfx_liquidGrid))
     {
         return MVFX_TAG_LIQUID_DEF_SOLVER;
     }

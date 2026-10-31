@@ -52,7 +52,7 @@ static mvfxResult CheckSource(const mvfxFieldPath* at, const mvfxWaterSource* so
 static mvfxResult CheckShallow(const mvfxFieldPath* at, const mvfxWaterDef* def)
 {
     mvfxFieldPath terrain = mvfxFieldIn(at, MVFX_TAG_WATER_DEF_TERRAIN, -1);
-    if (def->model > mvfx_waterShallow)
+    if (!mvfxIsKind(def->model, mvfx_waterShallow))
     {
         return mvfxRefuseField(at, MVFX_TAG_WATER_DEF_MODEL, mvfx_errorInvalid);
     }
@@ -64,7 +64,7 @@ static mvfxResult CheckShallow(const mvfxFieldPath* at, const mvfxWaterDef* def)
     {
         return mvfxRefuseField(&terrain, MVFX_TAG_COLLIDER_KIND, mvfx_errorInvalid);
     }
-    if (def->enableTerrain && def->terrain.space > 1)
+    if (def->enableTerrain && !mvfxIsKind(def->terrain.space, mvfx_spaceLocal))
     {
         return mvfxRefuseField(&terrain, MVFX_TAG_COLLIDER_SPACE, mvfx_errorInvalid);
     }

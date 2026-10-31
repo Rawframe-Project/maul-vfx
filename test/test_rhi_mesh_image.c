@@ -6,12 +6,15 @@
 // sampler chooses, for random draws and for the draws on each side of
 // every threshold, on triangles of uneven areas with some of none, for
 // the vertices, and for a mesh of no area at all; the header, the
-// vertices and the elements as laid out. No device needed.
+// vertices and the elements as laid out; the bytes a mesh takes for a mode
+// out of range, a negative one too, refused. No device needed.
 
 #include "mesh.h"
 #include "mesh_image.h"
 #include "random.h"
 #include "test_harness.h"
+
+#include "maul-vfx-rhi/sim.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -199,10 +202,48 @@ static void TestPassingDraw(void)
           "a bound of 0 and one past every target");
 }
 
+static void TestModes(void)
+{
+    // Each mode's bytes, and -1, the least integer and one past the last
+    // refused as invalid with no bytes.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const float corner[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1};
+    static const uint32_t faces[3] = {0, 1, 2};
+    mvfxMeshDef def = mvfxDefaultMeshDef();
+    def.positions = corner;
+    def.vertexCount = 4;
+    def.triangles = faces;
+    def.triangleCount = 1;
+    mvfxMeshId mesh = {0};
+    CHECK(mvfxCreateMesh(context, &def, &mesh) == mvfx_success, "mesh");
+    bool each = true;
+    for (mvfxMeshMode mode = mvfx_meshVertices; mode <= mvfx_meshSurface; ++mode)
+    {
+        int64_t bytes = 0;
+        each =
+            each && mvfxMesh_GetGpuBytes(context, mesh, mode, &bytes) == mvfx_success && bytes > 0;
+    }
+    CHECK(each, "each mode's bytes");
+    static const mvfxMeshMode wrong[3] = {-1, INT32_MIN, mvfx_meshVolume + 1};
+    bool refused = true;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        int64_t bytes = 7;
+        refused = refused &&
+                  mvfxMesh_GetGpuBytes(context, mesh, wrong[k], &bytes) == mvfx_errorInvalid &&
+                  bytes == 0;
+    }
+    CHECK(refused, "a mode out of range, a negative one too: no bytes");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestTriangles();
     TestVerticesAndNone();
     TestPassingDraw();
+    TestModes();
     return s_failures == 0 ? 0 : 1;
 }

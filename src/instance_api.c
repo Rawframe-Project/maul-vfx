@@ -98,7 +98,7 @@ static uint32_t SeedFromOrdinal(uint64_t ordinal)
 // mvfx_errorLimit for an interval past MVFX_MAX_OFFSCREEN_INTERVAL.
 static mvfxResult CheckOffscreen(mvfxOffscreen offscreen, int32_t interval)
 {
-    if (offscreen > mvfx_offscreenPause)
+    if (!mvfxIsKind(offscreen, mvfx_offscreenPause))
     {
         return mvfx_errorInvalid;
     }

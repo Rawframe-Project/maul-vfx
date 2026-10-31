@@ -23,8 +23,8 @@ static bool IsWithin(float x, float low, float high)
 mvfxResult mvfxCheckVelocity(const mvfxFieldPath* at, const mvfxVelocity* velocity)
 {
     mvfxFieldPath speed = mvfxFieldIn(at, MVFX_TAG_VELOCITY_SPEED, -1);
-    mvfxResult checked = mvfxRefuseField(at, MVFX_TAG_VELOCITY_MODE,
-                                         mvfxRequire(velocity->mode <= mvfx_directionFixed));
+    mvfxResult checked = mvfxRefuseField(
+        at, MVFX_TAG_VELOCITY_MODE, mvfxRequire(mvfxIsKind(velocity->mode, mvfx_directionFixed)));
     checked = checked != mvfx_success
                   ? checked
                   : mvfxRefuseField(at, MVFX_TAG_VELOCITY_CONE_ANGLE,

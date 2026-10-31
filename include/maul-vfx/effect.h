@@ -90,16 +90,6 @@ extern "C"
         float probability;
     } mvfxBurst;
 
-    // Where an emitter's particles live.
-    typedef uint8_t mvfxSimulationSpace;
-    enum
-    {
-        // In the world: they stay where they were born as the instance moves.
-        mvfx_spaceWorld = 0,
-        // In the instance's space: they move, turn and scale with it.
-        mvfx_spaceLocal = 1,
-    };
-
 // The most particles an emitter may spawn a unit of distance.
 #define MVFX_MAX_DISTANCE_RATE 1e4f
 
@@ -122,7 +112,7 @@ extern "C"
     // The region a force acts in, weighting it from 1 at its heart to 0 at
     // its edge by (1 - share)^exponent, the share how far toward the edge a
     // particle is.
-    typedef uint8_t mvfxFalloffKind;
+    typedef int32_t mvfxFalloffKind;
     enum
     {
         // Everywhere, a weight of 1.
@@ -157,7 +147,7 @@ extern "C"
     // What a force does. Each acceleration is held over a step, taken where
     // a particle is at the step's start (or its birth); wind is exact, as
     // drag is.
-    typedef uint8_t mvfxForceKind;
+    typedef int32_t mvfxForceKind;
     enum
     {
         // A constant acceleration: vector times strength.
@@ -188,7 +178,7 @@ extern "C"
     };
 
     // Where a vector field reads past its box.
-    typedef uint8_t mvfxGridBorder;
+    typedef int32_t mvfxGridBorder;
     enum
     {
         // Nothing: no force outside the box.
@@ -201,7 +191,7 @@ extern "C"
     };
 
     // How a field (turbulence, a vector field) acts.
-    typedef uint8_t mvfxFieldMode;
+    typedef int32_t mvfxFieldMode;
     enum
     {
         // As an acceleration: strength times the field.
@@ -334,7 +324,7 @@ extern "C"
     // rate and its repeating bursts spawn a second, at most, may not exceed
     // MVFX_MAX_SPAWN_RATE each.
     // The order an emitter's records are written in for a view.
-    typedef uint8_t mvfxSortMode;
+    typedef int32_t mvfxSortMode;
     enum
     {
         // The pool's: oldest first.
@@ -348,7 +338,7 @@ extern "C"
     };
 
     // What back to front and front to back measure.
-    typedef uint8_t mvfxSortMeasure;
+    typedef int32_t mvfxSortMeasure;
     enum
     {
         // The distance from the view's eye.
@@ -359,7 +349,7 @@ extern "C"
 
     // Which ribbon a particle joins: a ribbon is the run of an emitter's
     // live particles with one ribbon id, oldest first.
-    typedef uint8_t mvfxRibbonIds;
+    typedef int32_t mvfxRibbonIds;
     enum
     {
         // Not drawn as ribbons.
@@ -383,7 +373,7 @@ extern "C"
     };
 
     // A ribbon's texture coordinate along it.
-    typedef uint8_t mvfxRibbonTexture;
+    typedef int32_t mvfxRibbonTexture;
     enum
     {
         // Its normalized length: the texture stretched once over it.
@@ -396,7 +386,7 @@ extern "C"
     };
 
     // Which way a ribbon faces.
-    typedef uint8_t mvfxRibbonFacing;
+    typedef int32_t mvfxRibbonFacing;
     enum
     {
         // Toward the view's eye, about its tangent.
@@ -458,7 +448,7 @@ extern "C"
 #define MVFX_MAX_ATTACH_FRAMES 4096
 
     // What one birth of an emitter is.
-    typedef uint8_t mvfxUnitKind;
+    typedef int32_t mvfxUnitKind;
     enum
     {
         // A particle.
@@ -479,7 +469,7 @@ extern "C"
     // in that frame then, so they move as it moves and turn as it turns,
     // eased from where it was at a step's start to where it is at its end
     // over the substeps.
-    typedef uint8_t mvfxAttachKind;
+    typedef int32_t mvfxAttachKind;
     enum
     {
         // Their birth places in the particles' space (a local emitter's move
@@ -619,7 +609,7 @@ extern "C"
     // birth takes X's draw for those axes, and a size the effect does not
     // fix, a parameter's or an event's inherited one, takes X for them,
     // their own values ignored.
-    typedef uint8_t mvfxRigidShape;
+    typedef int32_t mvfxRigidShape;
     enum
     {
         // A sphere of diameter size X; Y and Z are X.
@@ -754,7 +744,7 @@ extern "C"
     // mvfxDefaultEmitterDef sets a spacing of 0.1, a kernel of 2, a
     // relaxation of 0.01, viscosity of 0.01 and 64 neighbors.
     // How a liquid moves.
-    typedef uint8_t mvfxLiquidSolver;
+    typedef int32_t mvfxLiquidSolver;
     enum
     {
         // Position-based fluids on its particles alone.
@@ -886,7 +876,7 @@ extern "C"
     } mvfxBeamDef;
 
     // How an expanded sprite's quad is turned (mvfxInstance_ExpandSprites).
-    typedef uint8_t mvfxBillboard;
+    typedef int32_t mvfxBillboard;
     enum
     {
         // In the view's plane, upright on its up.
@@ -1097,7 +1087,7 @@ extern "C"
         // gas's substeps; from 1 to MVFX_MAX_EVENTS when any is asked; the
         // rest counted dropped). The host reads them after the context step
         // (mvfxInstance_GetEvents).
-        uint8_t events;
+        mvfxEventMask events;
         int32_t eventCapacity;
         // Spawning from another emitter's events.
         mvfxEventSpawn eventSpawn;

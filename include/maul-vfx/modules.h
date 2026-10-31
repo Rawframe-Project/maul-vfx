@@ -20,6 +20,16 @@ extern "C"
 {
 #endif
 
+    // Where an emitter's particles live.
+    typedef int32_t mvfxSimulationSpace;
+    enum
+    {
+        // In the world: they stay where they were born as the instance moves.
+        mvfx_spaceWorld = 0,
+        // In the instance's space: they move, turn and scale with it.
+        mvfx_spaceLocal = 1,
+    };
+
 // The most custom attributes an emitter declares.
 #define MVFX_MAX_CUSTOM_ATTRIBUTES 8
 
@@ -84,7 +94,7 @@ extern "C"
     // What an over-life value is taken over: the particle's normalized age,
     // or its speed between speedRange's ends (in the emitter's units, 0 at
     // the first and 1 at the second, held to [0, 1]).
-    typedef uint8_t mvfxOverLifeInput;
+    typedef int32_t mvfxOverLifeInput;
     enum
     {
         mvfx_overAge = 0,
@@ -123,7 +133,7 @@ extern "C"
     } mvfxSizeOverLife;
 
     // How a flipbook frame moves over life.
-    typedef uint8_t mvfxFrameAnimation;
+    typedef int32_t mvfxFrameAnimation;
     enum
     {
         // The frame it starts at, always.
@@ -173,7 +183,7 @@ extern "C"
     // What a kill rule kills. Region rules test the straight segment a
     // particle covered over a step, so a particle is caught however fast it
     // went; how a curving path is cut into steps can still decide it.
-    typedef uint8_t mvfxKillKind;
+    typedef int32_t mvfxKillKind;
     enum
     {
         // Passing through a sphere of radius about center.
@@ -204,7 +214,7 @@ extern "C"
     {
         mvfxKillKind kind;
         // A mvfxSimulationSpace: 0 the world's, 1 the emitter's.
-        uint8_t space;
+        mvfxSimulationSpace space;
         float center[3];
         // A sphere's radius, above 0.
         float radius;
@@ -235,7 +245,7 @@ extern "C"
 #define MVFX_MAX_EVENTS 65536
 
     // What happened to a particle.
-    typedef uint8_t mvfxEventKind;
+    typedef int32_t mvfxEventKind;
     enum
     {
         // It was born.
@@ -253,7 +263,8 @@ extern "C"
         mvfx_eventWater = 4,
     };
 
-    // The kinds an emitter writes, as a mask.
+    // The kinds an emitter writes, as a mask: a bit for each kind.
+    typedef uint32_t mvfxEventMask;
     enum
     {
         mvfx_eventMaskBirth = 1u << mvfx_eventBirth,
@@ -348,7 +359,7 @@ extern "C"
         // velocity it would change; 0 for none, at most MVFX_MAX_EXTENT.
         float weight;
         // A mvfxSimulationSpace: 0 the world's, 1 the emitter's.
-        uint8_t space;
+        mvfxSimulationSpace space;
         // Finite, at most MVFX_MAX_EXTENT in size; or a parameter's x, y, z.
         float point[3];
         bool fromParameter;
@@ -371,7 +382,7 @@ extern "C"
         // As a steer point's; 0 for none.
         float weight;
         // A mvfxSimulationSpace: 0 the world's, 1 the emitter's.
-        uint8_t space;
+        mvfxSimulationSpace space;
         // From 2 to MVFX_MAX_PATH_POINTS points, x, y, z each, finite and at
         // most MVFX_MAX_EXTENT in size, copied at the effect's creation; a
         // closed path joins its last to its first.
@@ -491,7 +502,7 @@ extern "C"
 
     // What a collider is. Particles stay on its allowed side: above a plane,
     // outside a sphere or a box, or inside one (inside).
-    typedef uint8_t mvfxColliderKind;
+    typedef int32_t mvfxColliderKind;
     enum
     {
         // The plane through center, its allowed side the one normal points to.
@@ -526,7 +537,7 @@ extern "C"
     {
         mvfxColliderKind kind;
         // A mvfxSimulationSpace: 0 the world's, 1 the emitter's.
-        uint8_t space;
+        mvfxSimulationSpace space;
         // A sphere's or a box's particles kept inside it.
         bool inside;
         float center[3];
@@ -595,7 +606,7 @@ extern "C"
 #define MVFX_MAX_HOST_MODULES 8
 
     // When in a step a host module runs.
-    typedef uint8_t mvfxModuleStage;
+    typedef int32_t mvfxModuleStage;
     enum
     {
         // On the particles alive at the step's start (its ended ones taken

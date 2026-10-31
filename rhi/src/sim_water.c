@@ -579,7 +579,7 @@ static bool ReadWords(const SimWater* water, const mvfxGpuWaterReadDef* def,
     uint32_t bytes = FormatBytes(read->format);
     bool normalized = read->format != mvfx_formatFloat32 && read->format != mvfx_formatFloat16;
     bool valid =
-        read->field <= mvfx_waterDepth && bytes > 0 &&
+        read->field >= 0 && read->field <= mvfx_waterDepth && bytes > 0 &&
         (!normalized || (isfinite(read->low) && isfinite(read->high) && read->high > read->low));
     for (int32_t k = 0; valid && k < 2; ++k)
     {

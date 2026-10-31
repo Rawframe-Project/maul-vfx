@@ -18,7 +18,7 @@ mvfxResult mvfxMesh_GetGpuBytes(const mvfxContext* context, mvfxMeshId mesh, mvf
     {
         *bytesOut = 0;
     }
-    if (context == nullptr || bytesOut == nullptr || mode > mvfx_meshVolume)
+    if (context == nullptr || bytesOut == nullptr || mode < 0 || mode > mvfx_meshVolume)
     {
         return mvfx_errorInvalid;
     }

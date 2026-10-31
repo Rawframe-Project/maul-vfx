@@ -157,7 +157,7 @@ static bool IsReadValid(const mvfxWaterRead* read, const mvfxCompiledWater* wate
                         int64_t* end)
 {
     uint32_t bytes = mvfxReadFormatBytes(read->format);
-    bool valid = read->field <= mvfx_waterDepth && bytes > 0 &&
+    bool valid = mvfxIsKind(read->field, mvfx_waterDepth) && bytes > 0 &&
                  (!mvfxIsReadNormalized(read->format) ||
                   (isfinite(read->low) && isfinite(read->high) && read->high > read->low));
     for (int32_t k = 0; valid && k < 2; ++k)

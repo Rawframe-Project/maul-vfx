@@ -21,13 +21,13 @@ extern "C"
 #endif
 
 // The format version a file is written in, the one a reader takes.
-#define MVFX_FILE_VERSION 3
+#define MVFX_FILE_VERSION 4
 
 // The longest name of an asset, in bytes.
 #define MVFX_MAX_ASSET_NAME 4096
 
     // What an asset is.
-    typedef uint8_t mvfxAssetKind;
+    typedef int32_t mvfxAssetKind;
     enum
     {
         // A grid of the context: forces' and colliders' grids.

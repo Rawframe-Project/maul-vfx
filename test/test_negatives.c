@@ -11,7 +11,10 @@
 // grid, layout, instance and context def's, and a call's structs and
 // buffers), each from a def made or a call made with the field valid, set
 // to both: refused as invalid, an effect def's naming the field. Only
-// drawPriority, an order, takes a negative.
+// drawPriority, an order, takes a negative. Every kind, int32_t, alike: an
+// effect def's at one place of each struct that holds it, and the others'
+// and the calls'. The sets of bit flags, uint32_t, refused past their
+// bits.
 
 #include "test_harness.h"
 
@@ -36,6 +39,9 @@ static mvfxInstanceId s_planned;
 static mvfxLayoutId s_layout;
 static mvfxMeshId s_mesh;
 static mvfxGridId s_grid;
+// A vector field's grid and a heightfield's.
+static mvfxGridId s_fieldGrid;
+static mvfxGridId s_heightGrid;
 
 static void Open(void)
 {
@@ -112,6 +118,14 @@ static void Open(void)
     gridDef.components = 1;
     gridDef.values = values;
     CHECK(mvfxCreateGrid(s_context, &gridDef, &s_grid) == mvfx_success, "grid");
+    static const float vectors[24] = {0};
+    gridDef.components = 3;
+    gridDef.values = vectors;
+    CHECK(mvfxCreateGrid(s_context, &gridDef, &s_fieldGrid) == mvfx_success, "a field's grid");
+    gridDef.components = 1;
+    gridDef.size[1] = 1;
+    gridDef.values = values;
+    CHECK(mvfxCreateGrid(s_context, &gridDef, &s_heightGrid) == mvfx_success, "a heightfield");
     CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success, "a step");
 }
 
@@ -139,8 +153,8 @@ static void TestInstanceIndices(void)
     static const mvfxTubeDef tube = {.sides = 3};
     static const double point[3] = {0, 0, 0};
     static const float zero[3] = {0, 0, 0};
-    static unsigned char records[256];
-    static unsigned char scratch[4096];
+    static _Alignas(16) unsigned char records[256];
+    static _Alignas(16) unsigned char scratch[4096];
     static uint32_t indices[64];
     static float floats[64];
     const mvfxExpandBuffers expand = {
@@ -272,10 +286,10 @@ static void TestCounts(void)
     // Counts, capacities, sizes and ticks, of 32 and of 64 bits.
     static const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
     static const double point[3] = {0, 0, 0};
-    static unsigned char records[256];
-    static unsigned char scratch[4096];
+    static _Alignas(16) unsigned char records[256];
+    static _Alignas(16) unsigned char scratch[4096];
     static float floats[4 * 4 * 4 * 3];
-    static unsigned char bytes[64];
+    static _Alignas(16) unsigned char bytes[64];
     static char text[16];
     const mvfxAttachFrame frame = {.rotation = {0, 0, 0, 1}};
     const mvfxSceneAnswer answer = {0};
@@ -372,6 +386,10 @@ typedef struct Defs
     mvfxWaterDef water;
     float parameters[8];
     float path[6];
+    mvfxCollider collider;
+    mvfxHostModule module;
+    mvfxGasSource gasSource;
+    mvfxWaterSource waterSource;
     mvfxEffectDef effect;
 } Defs;
 
@@ -400,7 +418,10 @@ static void MakeDefs(Defs* d)
     d->effect.waterCount = 1;
 }
 
-// An index or count field of an effect def: the path a refusal of it
+// A row's valid value that leaves the field as the def is made.
+#define KEEP INT32_MAX
+
+// An index, count or kind field of an effect def: the path a refusal of it
 // names, and a value the def takes once the row has turned on what the
 // field belongs to. A count is named as the array it counts, and a
 // maxCount or a last below its minCount or first as that one, whose
@@ -496,10 +517,245 @@ static const Row s_rows[] = {
     {"emitters[0].meshIndex.first", 0, 0},
     {"emitters[0].meshIndex.first", 0, 0},
     {"emitters[0].custom[0].components", 1, 0},
+    {"emitters[0].shape.kind", 0, 0},
+    {"emitters[0].shape.arcMode", 0, 0},
+    {"emitters[0].shape.meshMode", 0, 0},
+    {"emitters[0].velocity.mode", 0, 0},
+    {"emitters[0].motion.gravitySpace", 0, 0},
+    {"emitters[0].forces[0].kind", 0, 0},
+    {"emitters[0].forces[0].space", 0, 0},
+    {"emitters[0].forces[0].falloff.kind", 0, 0},
+    {"emitters[0].forces[0].fieldMode", 0, 0},
+    {"emitters[0].forces[0].border", 0, 0},
+    {"emitters[0].lifetime.kind", KEEP, 0},
+    {"emitters[0].size.kind", KEEP, 0},
+    {"emitters[0].overLife.color.input", 0, 0},
+    {"emitters[0].overLife.size.input", 0, 0},
+    {"emitters[0].overLife.frame.animation", 0, 0},
+    {"emitters[0].overLife.size.size[0].curve.keys[0].interpolation", 0, 0},
+    {"emitters[0].overLife.size.size[0].curve.tangents", 0, 0},
+    {"emitters[0].killRules[0].kind", KEEP, 0},
+    {"emitters[0].killRules[0].space", 0, 0},
+    {"emitters[0].colliders[0].kind", 0, 0},
+    {"emitters[0].colliders[0].space", 0, 0},
+    {"emitters[0].hostModules[0].stage", 0, 0},
+    {"emitters[1].eventSpawn.kind", 0, 0},
+    {"emitters[0].steering.seek.space", 0, 0},
+    {"emitters[0].steering.path.space", 0, 0},
+    {"emitters[0].ribbon.ids", 0, 0},
+    {"emitters[0].ribbon.texture", 0, 0},
+    {"emitters[0].ribbon.facing", 0, 0},
+    {"emitters[0].unit.kind", 0, 0},
+    {"emitters[0].unit.attach", 0, 0},
+    {"emitters[0].rigid.shape", 0, 0},
+    {"emitters[0].liquid.solver", 0, 0},
+    {"emitters[0].sprite.billboard", 0, 0},
+    {"emitters[0].frame.mode", 0, 0},
+    {"emitters[0].meshIndex.mode", 0, 0},
+    {"emitters[0].space", 0, 0},
+    {"emitters[0].sortMode", 0, 0},
+    {"emitters[0].sortMeasure", 0, 0},
+    {"emitters[0].orientationMode", 0, 0},
+    {"gases[0].kind", 0, 0},
+    {"gases[0].space", 0, 0},
+    {"gases[0].advection", 0, 0},
+    {"gases[0].gravitySpace", KEEP, 0},
+    {"gases[0].sources[0].shape", 0, 0},
+    {"waters[0].space", 0, 0},
+    {"waters[0].model", 0, 0},
+    {"waters[0].sources[0].shape", 0, 0},
+    {"waters[0].terrain.kind", mvfx_colliderHeightfield, 0},
+    {"waters[0].terrain.space", 0, 0},
+    {"emitters[0].color.kind", KEEP, 0},
 };
 
-// The first row MoreField turns on.
+// The first row MoreField turns on, and the first KindField turns on.
 #define MORE_ROWS 33
+#define KIND_ROWS 82
+
+// A host module that does nothing.
+static void Nothing(const mvfxModuleCall* call, void* user)
+{
+    (void)call;
+    (void)user;
+}
+
+// Turns on what kind row r belongs to, and returns its field.
+static int32_t* KindField(Defs* d, int32_t r)
+{
+    mvfxEmitterDef* e = d->emitters;
+    switch (r - KIND_ROWS)
+    {
+    case 0:
+        return &e[0].shape.kind;
+    case 1:
+        return &e[0].shape.arcMode;
+    case 2:
+        e[0].shape.kind = mvfx_shapeMesh;
+        e[0].shape.mesh = s_mesh;
+        return &e[0].shape.meshMode;
+    case 3:
+        return &e[0].velocity.mode;
+    case 4:
+        return &e[0].motion.gravitySpace;
+    case 5:
+    case 6:
+    case 7:
+    case 8:
+    case 9:
+    {
+        d->force = (mvfxForce){.kind = mvfx_forceConstant,
+                               .vector = {0, 1, 0},
+                               .strength = {.kind = mvfx_sourceRange, .range = {1, 1}}};
+        e[0].forces = &d->force;
+        e[0].forceCount = 1;
+        if (r - KIND_ROWS == 9)
+        {
+            // The border only a field's box has.
+            d->force.kind = mvfx_forceVectorField;
+            d->force.grid = s_fieldGrid;
+            d->force.boxSize[0] = 1.0f;
+            d->force.boxSize[1] = 1.0f;
+            d->force.boxSize[2] = 1.0f;
+            d->force.boxRotation[3] = 1.0f;
+        }
+        int32_t* fields[5] = {&d->force.kind, &d->force.space, &d->force.falloff.kind,
+                              &d->force.fieldMode, &d->force.border};
+        return fields[r - KIND_ROWS - 5];
+    }
+    case 10:
+        return &e[0].lifetime.kind;
+    case 11:
+        return &e[0].size.kind;
+    case 12:
+        e[0].overLife.color.enable = true;
+        return &e[0].overLife.color.input;
+    case 13:
+        e[0].overLife.size.enable = true;
+        return &e[0].overLife.size.input;
+    case 14:
+        return &e[0].overLife.frame.animation;
+    case 15:
+    case 16:
+        d->keys[0] = (mvfxCurveKey){.time = 0.0f, .value = 1.0f};
+        d->keys[1] = (mvfxCurveKey){.time = 1.0f, .value = 1.0f};
+        e[0].overLife.size.enable = true;
+        e[0].overLife.size.size[0] =
+            (mvfxLifeCurve){.value = 1.0f, .curve = {.keys = d->keys, .keyCount = 2}};
+        return r - KIND_ROWS == 15 ? &d->keys[0].interpolation
+                                   : &e[0].overLife.size.size[0].curve.tangents;
+    case 17:
+    case 18:
+        d->rule = (mvfxKillRule){.kind = mvfx_killCollisions, .collisions = 1};
+        e[0].killRules = &d->rule;
+        e[0].killRuleCount = 1;
+        e[0].collision.enable = true;
+        return r - KIND_ROWS == 17 ? &d->rule.kind : &d->rule.space;
+    case 19:
+    case 20:
+        d->collider = (mvfxCollider){.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
+        e[0].collision.enable = true;
+        e[0].colliders = &d->collider;
+        e[0].colliderCount = 1;
+        return r - KIND_ROWS == 19 ? &d->collider.kind : &d->collider.space;
+    case 21:
+        d->module = (mvfxHostModule){.function = Nothing};
+        e[0].hostModules = &d->module;
+        e[0].hostModuleCount = 1;
+        return &d->module.stage;
+    case 22:
+        e[0].events = mvfx_eventMaskBirth;
+        e[0].eventCapacity = 4;
+        e[1].eventSpawn =
+            (mvfxEventSpawn){.enable = true, .minCount = 1, .maxCount = 1, .capacity = 4};
+        return &e[1].eventSpawn.kind;
+    case 23:
+        e[0].steering.enable = true;
+        e[0].steering.seek = (mvfxSteerPoint){.weight = 3.0f, .radius = 2.0f};
+        return &e[0].steering.seek.space;
+    case 24:
+        d->path[3] = 1.0f;
+        e[0].steering = (mvfxSteeringDef){
+            .enable = true,
+            .path = {.weight = 1.0f, .points = d->path, .pointCount = 2, .radius = 0.5f}};
+        return &e[0].steering.path.space;
+    case 25:
+        return &e[0].ribbon.ids;
+    case 26:
+    case 27:
+        e[0].ribbon.ids = mvfx_ribbonPerBatch;
+        return r - KIND_ROWS == 26 ? &e[0].ribbon.texture : &e[0].ribbon.facing;
+    case 28:
+        return &e[0].unit.kind;
+    case 29:
+        e[0].rate = 0.0f;
+        e[0].capacity = 12;
+        e[0].hostSpawnCapacity = 2;
+        e[0].unit = (mvfxUnitDef){.kind = mvfx_unitChain,
+                                  .points = 3,
+                                  .spacing = 0.5f,
+                                  .direction = {0, -1, 0},
+                                  .substeps = 4,
+                                  .pinFirst = true};
+        return &e[0].unit.attach;
+    case 30:
+        e[0].rigid.enable = true;
+        e[0].rigid.density = 1.0f;
+        e[0].rigid.substeps = 1;
+        return &e[0].rigid.shape;
+    case 31:
+        e[0].liquid.enable = true;
+        e[0].liquid.spacing = 0.05f;
+        return &e[0].liquid.solver;
+    case 32:
+        return &e[0].sprite.billboard;
+    case 33:
+        return &e[0].frame.mode;
+    case 34:
+        return &e[0].meshIndex.mode;
+    case 35:
+        return &e[0].space;
+    case 36:
+        return &e[0].sortMode;
+    case 37:
+        return &e[0].sortMeasure;
+    case 38:
+        return &e[0].orientationMode;
+    case 39:
+        return &d->gas.kind;
+    case 40:
+        return &d->gas.space;
+    case 41:
+        return &d->gas.advection;
+    case 42:
+        return &d->gas.gravitySpace;
+    case 43:
+        d->gasSource = (mvfxGasSource){.radius = 0.5f, .density = 1.0f};
+        d->gas.sources = &d->gasSource;
+        d->gas.sourceCount = 1;
+        return &d->gasSource.shape;
+    case 44:
+        return &d->water.space;
+    case 45:
+        return &d->water.model;
+    case 46:
+        d->waterSource = (mvfxWaterSource){.radius = 0.5f, .rate = 1.0f};
+        d->water.sources = &d->waterSource;
+        d->water.sourceCount = 1;
+        return &d->waterSource.shape;
+    case 49:
+        // Four components, which a gradient's kinds take.
+        return &e[0].color.kind;
+    default:
+        d->water.model = mvfx_waterShallow;
+        d->water.enableTerrain = true;
+        d->water.terrain = (mvfxCollider){.kind = mvfx_colliderHeightfield,
+                                          .halfExtents = {1, 1, 1},
+                                          .rotation = {0, 0, 0, 1},
+                                          .grid = s_heightGrid};
+        return r - KIND_ROWS == 47 ? &d->water.terrain.kind : &d->water.terrain.space;
+    }
+}
 
 // Turns on what row r from MORE_ROWS on belongs to, and returns its field.
 static int32_t* MoreField(Defs* d, int32_t r)
@@ -681,6 +937,10 @@ static int32_t* MoreField(Defs* d, int32_t r)
 // Turns on what row r's field belongs to, and returns the field.
 static int32_t* Field(Defs* d, int32_t r)
 {
+    if (r >= KIND_ROWS)
+    {
+        return KindField(d, r);
+    }
     if (r >= MORE_ROWS)
     {
         return MoreField(d, r);
@@ -839,7 +1099,7 @@ static void TestDefFields(void)
         {
             MakeDefs(&d);
             int32_t* field = Field(&d, r);
-            *field = s_rows[r].valid;
+            *field = s_rows[r].valid != KEEP ? s_rows[r].valid : *field;
             mvfxEffectId effect = {0};
             mvfxEffectRefusal refusal;
             char text[256] = {0};
@@ -867,6 +1127,46 @@ static void TestDefFields(void)
     }
     CHECK(made == 2 * rows, "each row's def made with its field valid");
     CHECK(named == 2 * rows, "each field refused as invalid when negative, and named");
+}
+
+static void TestFlagSets(void)
+{
+    // The sets of bit flags, uint32_t: an emitter's events and a gas's and
+    // a water surface's closed walls, each from a def made with a bit set,
+    // then with the first bit past the set's and the highest: refused as
+    // invalid, naming the field.
+    static Defs d;
+    static const char* const paths[3] = {"emitters[0].events", "gases[0].closedWalls",
+                                         "waters[0].closedWalls"};
+    static const uint32_t past[3] = {1u << 5, 1u << 6, 1u << 4};
+    int32_t made = 0;
+    int32_t named = 0;
+    for (int32_t f = 0; f < 3; ++f)
+    {
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            MakeDefs(&d);
+            d.emitters[0].eventCapacity = f == 0 ? 4 : 0;
+            uint32_t* field = f == 0   ? &d.emitters[0].events
+                              : f == 1 ? &d.gas.closedWalls
+                                       : &d.water.closedWalls;
+            *field = 1u;
+            mvfxEffectId effect = {0};
+            mvfxEffectRefusal refusal;
+            made += mvfxCreateEffect(s_context, &d.effect, &effect, &refusal) == mvfx_success &&
+                            mvfxDestroyEffect(s_context, effect) == mvfx_success
+                        ? 1
+                        : 0;
+            *field = k == 0 ? past[f] : 1u << 31;
+            named +=
+                mvfxCreateEffect(s_context, &d.effect, &effect, &refusal) == mvfx_errorInvalid &&
+                        IsPath(&refusal, paths[f])
+                    ? 1
+                    : 0;
+        }
+    }
+    CHECK(made == 6, "each set's def made with a bit set");
+    CHECK(named == 6, "each set refused past its bits, the highest too, and named");
 }
 
 static void TestInstanceAndContextDefs(void)
@@ -943,7 +1243,7 @@ static void TestCallStructs(void)
     // the call shown to succeed with them valid.
     static const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
     static const double point[3] = {0, 0, 0};
-    static unsigned char records[256];
+    static _Alignas(16) unsigned char records[256];
     static uint32_t indices[64];
     static float floats[64];
     static const float pixel[3] = {0.5f, 0.0f, 1.0f};
@@ -1031,9 +1331,9 @@ static void TestCallBuffers(void)
     static const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
     static const double origin[3] = {0, 0, 0};
     static const mvfxTubeDef tube = {.sides = 3};
-    static unsigned char points[256];
+    static _Alignas(16) unsigned char points[256];
     static mvfxRibbon ribbons[4];
-    static unsigned char vertices[256];
+    static _Alignas(16) unsigned char vertices[256];
     static uint32_t indices[64];
     static float positions[64];
     static const float pixel[3] = {0.5f, 0.0f, 1.0f};
@@ -1128,9 +1428,9 @@ static void TestAssetNames(void)
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;
-    static unsigned char bytes[4096];
-    static unsigned char memory[1 << 16];
-    static unsigned char written[4096];
+    static _Alignas(16) unsigned char bytes[4096];
+    static _Alignas(16) unsigned char memory[1 << 16];
+    static _Alignas(16) unsigned char written[4096];
     int64_t size = 0;
     CHECK(mvfxWriteEffect(&def, NULL, 0, bytes, sizeof bytes, &size, NULL).result == mvfx_success,
           "a file to read");
@@ -1172,6 +1472,158 @@ static void TestAssetNames(void)
         }
     }
     CHECK(made == 6 && refused == 6, "an asset's name length in each file call");
+}
+
+// The kinds outside an effect def: a grid's format, a layout field's
+// field and format, an instance def's offscreen mode, the kinds the calls
+// take by value (an offscreen mode, a stop mode, a gas's field), and
+// those in a call's structs (a gas and a water read's field and format, a
+// depth image's format, a collider's kind and space, an asset's kind).
+// Case c's call with the kind value, its result.
+static mvfxResult KindCall(int32_t c, int32_t value)
+{
+    static const float values[8] = {0};
+    static float floats[64];
+    static const double point[3] = {0, 0, 0};
+    static const float pixel[3] = {0.5f, 0.0f, 1.0f};
+    static _Alignas(16) unsigned char bytes[4096];
+    static _Alignas(16) unsigned char memory[1 << 16];
+    mvfxGridDef grid = mvfxDefaultGridDef();
+    grid.size[0] = 2;
+    grid.size[1] = 2;
+    grid.size[2] = 2;
+    grid.components = 1;
+    grid.values = values;
+    mvfxLayoutField field = {
+        .field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3};
+    mvfxLayoutDef layout = mvfxDefaultLayoutDef();
+    layout.fields = &field;
+    layout.fieldCount = 1;
+    layout.stride = 16;
+    mvfxInstanceDef instance = mvfxDefaultInstanceDef();
+    instance.effect = s_effect;
+    mvfxGasRead gas = {.format = mvfx_formatFloat32, .size = {1, 1, 1}, .high = 1.0f};
+    mvfxWaterRead water = {.format = mvfx_formatFloat32, .size = {1, 1}, .high = 1.0f};
+    mvfxDepthImage depth = {.pixels = pixel,
+                            .byteCount = sizeof(float),
+                            .width = 1,
+                            .height = 1,
+                            .stride = sizeof(float),
+                            .format = mvfx_depthFloat32,
+                            .projection = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+                            .rotation = {0, 0, 0, 1}};
+    mvfxCollider collider = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    mvfxEffectAsset asset = {
+        .kind = mvfx_assetMesh, .name = "corner", .nameLength = 6, .mesh = s_mesh};
+    int64_t size = 0;
+    int64_t length = 0;
+    mvfxEffectDef read;
+    mvfxGridId gridId = {0};
+    mvfxLayoutId layoutId = {0};
+    mvfxInstanceId instanceId = {0};
+    mvfxEffectId effectId = {0};
+    mvfxResult result = mvfx_errorInvalid;
+    switch (c)
+    {
+    case 0:
+        grid.format = value;
+        result = mvfxCreateGrid(s_context, &grid, &gridId);
+        (void)(result == mvfx_success ? mvfxDestroyGrid(s_context, gridId) : 0);
+        return result;
+    case 1:
+    case 2:
+        *(c == 1 ? &field.field : &field.format) = value;
+        result = mvfxCreateLayout(s_context, &layout, &layoutId);
+        (void)(result == mvfx_success ? mvfxDestroyLayout(s_context, layoutId) : 0);
+        return result;
+    case 3:
+        instance.offscreen = value;
+        result = mvfxCreateInstance(s_context, &instance, &instanceId);
+        (void)(result == mvfx_success ? mvfxDestroyInstance(s_context, instanceId) : 0);
+        return result;
+    case 4:
+        return mvfxInstance_SetOffscreen(s_context, s_plain, value, 1);
+    case 5:
+        // On an instance of its own, which a valid stop ends.
+        CHECK(mvfxCreateInstance(s_context, &instance, &instanceId) == mvfx_success, "to stop");
+        result = mvfxInstance_Stop(s_context, instanceId, value);
+        (void)mvfxDestroyInstance(s_context, instanceId);
+        return result;
+    case 6:
+        return mvfxInstance_ReadGas(s_context, s_plain, 0, value, floats, 64);
+    case 7:
+        return mvfxInstance_SampleGas(s_context, s_plain, 0, value, point, 1, floats);
+    case 8:
+    case 9:
+        *(c == 8 ? &gas.field : &gas.format) = value;
+        return mvfxInstance_ReadGasAs(s_context, s_plain, 0, &gas, floats, sizeof floats);
+    case 10:
+    case 11:
+        *(c == 10 ? &water.field : &water.format) = value;
+        return mvfxInstance_ReadWater(s_context, s_plain, 0, &water, floats, sizeof floats);
+    case 12:
+        depth.format = value;
+        return mvfxInstance_SetDepthImage(s_context, s_plain, &depth);
+    case 13:
+    case 14:
+        *(c == 13 ? &collider.kind : &collider.space) = value;
+        result = mvfxInstance_SetColliders(s_context, s_plain, &collider, 1);
+        (void)(result == mvfx_success ? mvfxInstance_SetColliders(s_context, s_plain, NULL, 0) : 0);
+        return result;
+    case 15:
+        asset.kind = value;
+        return mvfxWriteEffect(&def, &asset, 1, bytes, sizeof bytes, &size, NULL).result;
+    case 16:
+        CHECK(mvfxWriteEffect(&def, NULL, 0, bytes, sizeof bytes, &size, NULL).result ==
+                  mvfx_success,
+              "a file to read");
+        asset.kind = value;
+        return mvfxReadEffect(bytes, size, &asset, 1, memory, sizeof memory, &length, &read, NULL)
+            .result;
+    default:
+        CHECK(mvfxWriteEffect(&def, NULL, 0, bytes, sizeof bytes, &size, NULL).result ==
+                  mvfx_success,
+              "a file to read");
+        asset.kind = value;
+        result =
+            mvfxCreateEffectFromBytes(s_context, bytes, size, &asset, 1, &effectId, NULL).result;
+        (void)(result == mvfx_success ? mvfxDestroyEffect(s_context, effectId) : 0);
+        return result;
+    }
+}
+
+static void TestOtherKinds(void)
+{
+    // Each case's call shown to succeed with its kind 0, then refused as
+    // invalid with -1 and the least integer.
+    enum
+    {
+        CASES = 18
+    };
+    int32_t made = 0;
+    int32_t refused = 0;
+    for (int32_t c = 0; c < CASES; ++c)
+    {
+        for (int32_t k = 0; k < 2; ++k)
+        {
+            mvfxResult valid = KindCall(c, 0);
+            mvfxResult negative = KindCall(c, s_negatives[k]);
+            made += valid == mvfx_success ? 1 : 0;
+            refused += negative == mvfx_errorInvalid ? 1 : 0;
+            if (valid != mvfx_success)
+            {
+                printf("  kind case %d's valid call: %s\n", c, mvfxGetResultName(valid));
+            }
+            char what[32];
+            snprintf(what, sizeof what, "kind case %d", c);
+            Refused(negative, what, k);
+        }
+    }
+    CHECK(made == 2 * CASES && refused == 2 * CASES, "every other kind refused when negative");
 }
 
 static void TestOtherDefCounts(void)
@@ -1249,11 +1701,13 @@ int main(void)
     TestTicksTaken();
     TestCounts();
     TestDefFields();
+    TestFlagSets();
     TestOtherDefCounts();
     TestInstanceAndContextDefs();
     TestCallStructs();
     TestCallBuffers();
     TestAssetNames();
+    TestOtherKinds();
     CHECK(s_taken == 0, "every negative index and count refused as invalid");
     mvfxDestroyContext(s_context);
     return s_failures == 0 ? 0 : 1;
