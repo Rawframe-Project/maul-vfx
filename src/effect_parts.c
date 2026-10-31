@@ -670,23 +670,15 @@ static mvfxResult CheckSteering(const mvfxFieldPath* emitter, const mvfxEmitterD
     return valid != mvfx_success ? valid : CheckSteerPath(&path, &s->path);
 }
 
-// Whether an emitter's neighbor queries are valid against its effect: a
-// source of its own or in its space, a radius and a cap in range.
-static mvfxResult CheckNeighbors(const mvfxFieldPath* emitter, const mvfxEffectDef* def, int32_t i)
+// Whether an emitter's neighbor queries are valid: a radius and a cap in
+// range (mvfxCheckEffectDef checked the source).
+static mvfxResult CheckNeighbors(const mvfxFieldPath* emitter, const mvfxNeighborDef* neighbors)
 {
-    const mvfxNeighborDef* neighbors = &def->emitters[i].neighbors;
     if (!neighbors->enable)
     {
         return mvfx_success;
     }
     mvfxFieldPath at = mvfxFieldIn(emitter, MVFX_TAG_EMITTER_DEF_NEIGHBORS, -1);
-    int32_t source = neighbors->source;
-    bool sourceValid = source == -1 || (source >= 0 && source < def->emitterCount &&
-                                        def->emitters[source].space == def->emitters[i].space);
-    if (!sourceValid)
-    {
-        return mvfxRefuseField(&at, MVFX_TAG_NEIGHBOR_DEF_SOURCE, mvfx_errorInvalid);
-    }
     mvfxResult valid = mvfxRefuseField(
         &at, MVFX_TAG_NEIGHBOR_DEF_RADIUS,
         mvfxBounded(neighbors->radius, MVFX_MIN_NEIGHBOR_RADIUS, MVFX_MAX_NEIGHBOR_RADIUS));
@@ -702,7 +694,7 @@ static mvfxResult CheckEmitterParts(const mvfxFieldPath* root, const mvfxEffectD
     mvfxFieldPath at = mvfxFieldIn(root, MVFX_TAG_EFFECT_DEF_EMITTERS, i);
     mvfxFieldPath contacts = mvfxFieldIn(&at, MVFX_TAG_EMITTER_DEF_CONTACTS, -1);
     mvfxFieldPath plexus = mvfxFieldIn(&at, MVFX_TAG_EMITTER_DEF_PLEXUS, -1);
-    mvfxResult valid = CheckNeighbors(&at, def, i);
+    mvfxResult valid = CheckNeighbors(&at, &emitter->neighbors);
     valid = valid != mvfx_success ? valid : CheckSteering(&at, emitter, def->parameterCount);
     valid = valid != mvfx_success ? valid : CheckContacts(&contacts, &emitter->contacts);
     valid = valid != mvfx_success ? valid : CheckPairForce(&at, emitter);
