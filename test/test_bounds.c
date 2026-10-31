@@ -30,7 +30,7 @@ static mvfxEmitterDef Held(float size)
     emitter.rate = 0.0f;
     emitter.capacity = 8;
     emitter.hostSpawnCapacity = 8;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange,
                                       .min = {size, size, size, 0},
                                       .max = {size, size, size, 0},

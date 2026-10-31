@@ -29,7 +29,7 @@ static mvfxEmitterDef Coupled(const mvfxWaterCoupling* coupling)
     emitter.rate = 0.0f;
     emitter.capacity = 16;
     emitter.hostSpawnCapacity = 16;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.water = *coupling;
     emitter.events = mvfx_eventMaskWater | mvfx_eventMaskDeath;
     emitter.eventCapacity = 64;

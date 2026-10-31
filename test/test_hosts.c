@@ -208,7 +208,7 @@ static mvfxEmitterDef Thrown(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 256;
     emitter.rate = 37.0f;
-    emitter.lifetime = mvfxRangeSource(0.3f, 0.9f);
+    emitter.lifetime = mvfxMakeRangeSource(0.3f, 0.9f);
     emitter.velocity = (mvfxVelocity){.mode = mvfx_directionCone,
                                       .direction = {0.0f, 1.0f, 0.0f},
                                       .coneAngle = 0.7f,
@@ -339,7 +339,7 @@ static void Files(Out* out)
 {
     // The second emitter's least lifetime a subnormal, which is above 0.
     mvfxEmitterDef emitters[2] = {Thrown(), Thrown()};
-    emitters[1].lifetime = mvfxRangeSource(0x1p-140f, 0.5f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0x1p-140f, 0.5f);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
     def.emitterCount = 2;
@@ -436,7 +436,7 @@ static void Meshes(Out* out)
     emitter.rate = 0.0f;
     emitter.capacity = 4;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.motion.gravity[1] = -9.81f;
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.3f, 0.3f, 0.3f}, .max = {0.3f, 0.3f, 0.3f}};
@@ -522,7 +522,7 @@ static void Strips(Out* out)
                                   mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef()};
     emitters[0].capacity = 64;
     emitters[0].rate = 30.0f;
-    emitters[0].lifetime = mvfxRangeSource(0.7f, 0.9f);
+    emitters[0].lifetime = mvfxMakeRangeSource(0.7f, 0.9f);
     emitters[0].velocity.speed = (mvfxRange){0.3f, 0.7f};
     emitters[0].ribbon.ids = mvfx_ribbonOne;
     emitters[0].ribbon.pieces = 3;
@@ -530,7 +530,7 @@ static void Strips(Out* out)
     emitters[1].rate = 0.0f;
     emitters[1].capacity = 8;
     emitters[1].hostSpawnCapacity = 8;
-    emitters[1].lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitters[1].lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitters[1].plexus = (mvfxPlexusDef){.enable = true,
                                          .distance = 0.9f,
                                          .maxLinks = 64,
@@ -540,7 +540,7 @@ static void Strips(Out* out)
     emitters[2].rate = 0.0f;
     emitters[2].capacity = 12;
     emitters[2].hostSpawnCapacity = 1;
-    emitters[2].lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitters[2].lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitters[2].motion.gravity[1] = -9.81f;
     emitters[2].unit = (mvfxUnitDef){.kind = mvfx_unitSheet,
                                      .points = 4,
@@ -554,7 +554,7 @@ static void Strips(Out* out)
     emitters[3].rate = 0.0f;
     emitters[3].capacity = 6;
     emitters[3].hostSpawnCapacity = 2;
-    emitters[3].lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitters[3].lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitters[3].motion.gravity[1] = -9.81f;
     emitters[3].unit = (mvfxUnitDef){.kind = mvfx_unitChain,
                                      .points = 3,
@@ -675,7 +675,7 @@ static void Scenes(Out* out)
     emitters[0].rate = 0.0f;
     emitters[0].capacity = 8;
     emitters[0].hostSpawnCapacity = 8;
-    emitters[0].lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitters[0].lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitters[0].collision = (mvfxCollision){.enable = true,
                                             .restitution = 0.7f,
                                             .enableDepthImage = true,
@@ -689,7 +689,7 @@ static void Scenes(Out* out)
     emitters[1].rate = 0.0f;
     emitters[1].bursts = &burst;
     emitters[1].burstCount = 1;
-    emitters[1].lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitters[1].lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitters[1].shape.kind = mvfx_shapeBox;
     emitters[1].shape.offset[1] = 1.3f;
     emitters[1].shape.halfExtents[0] = 0.7f;
@@ -801,7 +801,7 @@ static void Gases(Out* out)
     emitter.rate = 0.0f;
     emitter.bursts = &burst;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.shape.kind = mvfx_shapeCircle;
     emitter.shape.radius = 0.7f;
     emitter.shape.thickness = 1.0f;
@@ -952,7 +952,7 @@ static void Plans(Out* out)
     mvfxEmitterDef emitters[2] = {Thrown(), mvfxDefaultEmitterDef()};
     emitters[1].capacity = 128;
     emitters[1].rate = 120.0f;
-    emitters[1].lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitters[1].lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitters[1].velocity.speed = (mvfxRange){1.0f, 2.0f};
     emitters[1].motion.gravity[1] = -9.81f;
     emitters[1].liquid.enable = true;

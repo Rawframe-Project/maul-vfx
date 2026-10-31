@@ -375,7 +375,7 @@ static void TestPins(Gpu* gpu, mvfxGpu* kernels)
     // unit (1.2e-4 at 1,024 m) over a substep of 1/120 s is 1.5e-2 m/s on
     // either path (1.2e-2 measured); an anchor left unshifted parts by the
     // whole shift.
-    emitter.lifetime = mvfxRangeSource(0.1f, 0.1f);
+    emitter.lifetime = mvfxMakeRangeSource(0.1f, 0.1f);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
@@ -422,7 +422,7 @@ static void TestPins(Gpu* gpu, mvfxGpu* kernels)
     pair[0].colliders = &floor;
     pair[0].colliderCount = 1;
     pair[0].collision = (mvfxCollision){.enable = true, .restitution = 0.6f, .radius = 0.02f};
-    pair[0].lifetime = mvfxRangeSource(0.4f, 0.8f);
+    pair[0].lifetime = mvfxMakeRangeSource(0.4f, 0.8f);
     pair[0].angularVelocity =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-3, -3, -3, 0}, .max = {3, 3, 3, 0}};
     pair[0].events = mvfx_eventMaskCollision;

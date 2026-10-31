@@ -42,7 +42,7 @@ static mvfxEmitterDef Emitter(bool splats)
     emitter.rate = 0.0f;
     emitter.bursts = &s_burst;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(0.3f, 0.3f);
+    emitter.lifetime = mvfxMakeRangeSource(0.3f, 0.3f);
     emitter.gasSplat = (mvfxGasSplat){.enable = splats, .gas = 0, .density = 1.0f};
     return emitter;
 }

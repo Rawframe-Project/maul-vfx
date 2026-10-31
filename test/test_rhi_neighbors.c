@@ -22,7 +22,7 @@ static mvfxEmitterDef AtRest(float radius, int32_t most)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = CAPACITY;
     emitter.rate = 1500.0f;
-    emitter.lifetime = mvfxRangeSource(0.3f, 0.6f);
+    emitter.lifetime = mvfxMakeRangeSource(0.3f, 0.6f);
     emitter.shape = (mvfxShape){
         .kind = mvfx_shapeBox, .rotation = {0, 0, 0, 1}, .halfExtents = {1.0f, 0.5f, 1.0f}};
     emitter.velocity = (mvfxVelocity){.mode = mvfx_directionCone, .direction = {0, 1, 0}};
@@ -88,7 +88,7 @@ static void TestNotFitting(Gpu* gpu, mvfxGpu* kernels)
     // the room of those that end within it.
     mvfxEmitterDef emitter = AtRest(0.2f, 16);
     emitter.rate = 2400.0f;
-    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     emitter.capacity = 620;
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .exactNeighbors = true},
             "births that do not all fit");
@@ -111,7 +111,7 @@ static void TestBorders(Gpu* gpu, mvfxGpu* kernels)
     }
     mvfxEmitterDef emitter = AtRest(0.3f, MVFX_MAX_NEIGHBORS);
     emitter.rate = 0.0f;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.shape = (mvfxShape){.kind = mvfx_shapePoint, .rotation = {0, 0, 0, 1}};
     emitter.hostSpawnCapacity = 64;
     const mvfxSpawnRequest spawn = {.count = 64, .positions = s_borders};

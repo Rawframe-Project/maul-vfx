@@ -62,7 +62,7 @@ static mvfxEmitterDef Ribbon(mvfxRibbonIds ids)
     emitter.rate = 0.0f;
     emitter.capacity = 8;
     emitter.hostSpawnCapacity = 8;
-    emitter.lifetime = mvfxRangeSource(9.0f, 9.0f);
+    emitter.lifetime = mvfxMakeRangeSource(9.0f, 9.0f);
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.5f, 1, 1, 0}, .max = {0.5f, 1, 1, 0}};
     emitter.ribbon.ids = ids;

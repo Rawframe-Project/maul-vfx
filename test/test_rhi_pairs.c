@@ -44,7 +44,7 @@ static mvfxEmitterDef Thrown(mvfxRigidShape shape, const mvfxCollider* floor, in
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {-20, -20, -20}, .max = {20, 20, 20}};
     emitter.motion.angularDrag = 0.3f;
     emitter.rate = 150.0f;
-    emitter.lifetime = mvfxRangeSource(0.8f, 1.2f);
+    emitter.lifetime = mvfxMakeRangeSource(0.8f, 1.2f);
     emitter.velocity.direction[1] = -1.0f;
     emitter.colliders = floor;
     emitter.colliderCount = 1;
@@ -116,7 +116,7 @@ static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
     // Living a third to two thirds of a second, bodies end within the run:
     // a pair's priority is of the bodies' ranks among those the step moves.
     emitter = Thrown(mvfx_rigidSphere, &s_floor, 8);
-    emitter.lifetime = mvfxRangeSource(0.3f, 0.6f);
+    emitter.lifetime = mvfxMakeRangeSource(0.3f, 0.6f);
     Met(gpu, kernels, &(Run){.least = 50, .emitters = &emitter},
         "spheres meeting each other, some ending within the run");
     // Sizes from 0.1 to 1: the pair grid has levels. Masses up to 500
@@ -145,7 +145,7 @@ static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
     emitter = Thrown(mvfx_rigidBox, &s_level, 8);
     emitter.shape.radius = 3.0f;
     emitter.rate = 15.0f;
-    emitter.lifetime = mvfxRangeSource(3.0f, 3.5f);
+    emitter.lifetime = mvfxMakeRangeSource(3.0f, 3.5f);
     emitter.rigid.sleepSpeed = 2.0f;
     emitter.rigid.sleepTime = 0.1f;
     Met(gpu, kernels,

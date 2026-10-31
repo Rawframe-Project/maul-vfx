@@ -45,7 +45,7 @@ static mvfxEmitterDef Telling(float life)
     emitter.rate = 0.0f;
     emitter.capacity = 16;
     emitter.hostSpawnCapacity = 16;
-    emitter.lifetime = mvfxRangeSource(life, life);
+    emitter.lifetime = mvfxMakeRangeSource(life, life);
     emitter.events = mvfx_eventMaskBirth | mvfx_eventMaskDeath;
     emitter.eventCapacity = 16;
     return emitter;

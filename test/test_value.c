@@ -103,7 +103,7 @@ static mvfxEmitterDef Many(float rate)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = rate;
     emitter.capacity = PEEK_MOST;
-    emitter.lifetime = mvfxRangeSource(200.0f, 200.0f);
+    emitter.lifetime = mvfxMakeRangeSource(200.0f, 200.0f);
     return emitter;
 }
 
@@ -120,7 +120,7 @@ static void TestScalarKinds(void)
 {
     // Spins drawn by a range of 2 to 4: within it, uniform over it.
     mvfxEmitterDef base = Many(4000.0f);
-    base.spin = mvfxRangeSource(2.0f, 4.0f);
+    base.spin = mvfxMakeRangeSource(2.0f, 4.0f);
     mvfxEmitterDef emitter = Peeking(&base);
     Scene scene = NewScene(&emitter, NULL, 0);
     Run(&scene, MVFX_TICKS_PER_SECOND / 2);
@@ -407,7 +407,7 @@ static void TestValuesThroughTheStep(void)
     base.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 2, 3}, .max = {2, 4, 6}};
     base.color = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {1, 0, 0, 1}, .max = {0, 0, 1, 1}, .uniform = true};
-    base.spin = mvfxRangeSource(-1.0f, 1.0f);
+    base.spin = mvfxMakeRangeSource(-1.0f, 1.0f);
     base.orientationMode = mvfx_orientationRandom;
     base.frame = (mvfxFrameStart){mvfx_frameRandom, 3, 6};
     base.custom = custom;

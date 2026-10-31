@@ -506,13 +506,9 @@ int32_t mvfxOrderAt(const mvfxRecordOrder* order, int64_t r)
                                      : (int32_t)r;
 }
 
-mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId instance,
+mvfxResult mvfxInstance_GetSortScratchBytes(const mvfxContext* context, mvfxInstanceId instance,
                                             int32_t emitter, int64_t* bytesOut)
 {
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
-    }
     if (bytesOut != nullptr)
     {
         *bytesOut = 0;
@@ -521,15 +517,19 @@ mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context, mvfxInstanceId
     {
         if (context != nullptr)
         {
-            mvfxCountMisuse(context);
+            mvfxCountMisuse((mvfxContext*)context);
         }
         return mvfx_errorInvalid;
     }
-    mvfxInstance* live = nullptr;
-    mvfxResult found = mvfxFindEmitter(context, instance, emitter, &live);
-    if (found != mvfx_success)
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
     {
-        return found;
+        return mvfx_errorStale;
+    }
+    if (emitter < 0 || emitter >= live->effect->emitterCount)
+    {
+        mvfxCountMisuse((mvfxContext*)context);
+        return mvfx_errorInvalid;
     }
     const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];
     *bytesOut = NeedsScratch(compiled)

@@ -73,7 +73,7 @@ static mvfxEmitterDef Beam(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.capacity = 8;
-    emitter.lifetime = mvfxRangeSource(9.0f, 9.0f);
+    emitter.lifetime = mvfxMakeRangeSource(9.0f, 9.0f);
     emitter.ribbon.ids = mvfx_ribbonOne;
     emitter.beam = (mvfxBeamDef){
         .enable = true, .segments = 4, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};
@@ -218,7 +218,7 @@ static void TestStrikes(void)
     // Strikes of a quarter second: after 0.3 seconds the second, serials 5
     // to 9 with new noise; the same stepped at once or in tenths.
     mvfxEmitterDef emitter = Beam();
-    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     emitter.beam.noiseAmplitude = 1.0f;
     emitter.beam.noiseFrequency = 3.0f;
     Scene once = NewScene(&emitter);
@@ -241,7 +241,7 @@ static void TestStrikes(void)
     mvfxDestroyContext(tenths.context);
     // Strikes of a hundredth in a tenth: nine skipped within the step, the
     // tenth (serials 45 to 49) alive at its end.
-    emitter.lifetime = mvfxRangeSource(0.01f, 0.01f);
+    emitter.lifetime = mvfxMakeRangeSource(0.01f, 0.01f);
     once = NewScene(&emitter);
     tenths = NewScene(&emitter);
     Step(&once, MVFX_TICKS_PER_SECOND / 10);
@@ -262,7 +262,7 @@ static void TestBounded(void)
     // Strikes of about a tick in a second's step: 64 worked through, the
     // next struck at the step's end, serials 320 on.
     mvfxEmitterDef emitter = Beam();
-    emitter.lifetime = mvfxRangeSource(1e-6f, 1e-6f);
+    emitter.lifetime = mvfxMakeRangeSource(1e-6f, 1e-6f);
     Scene scene = NewScene(&emitter);
     Step(&scene, MVFX_TICKS_PER_SECOND);
     Written w = Write(&scene);
@@ -270,7 +270,7 @@ static void TestBounded(void)
     mvfxDestroyContext(scene.context);
     // A strike dying at the step's end: the next struck there, serials 5
     // on.
-    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     scene = NewScene(&emitter);
     Step(&scene, MVFX_TICKS_PER_SECOND / 4);
     w = Write(&scene);
@@ -308,7 +308,7 @@ static void TestStop(void)
 {
     // Stopped, a beam's strike lives out its life and is not struck again.
     mvfxEmitterDef emitter = Beam();
-    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     Scene scene = NewScene(&emitter);
     Step(&scene, 1);
     CHECK(mvfxInstance_Stop(scene.context, scene.instance, mvfx_stopEmitting) == mvfx_success,

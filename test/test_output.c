@@ -189,7 +189,7 @@ static void Write(mvfxFormat format, bool srgb, int32_t components, const float 
         emitter.rate = 0.0f;
         emitter.capacity = 1;
         emitter.hostSpawnCapacity = 1;
-        emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+        emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
         emitter.color =
             (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1, 1}, .max = {1, 1, 1, 1}};
         emitter.frame = (mvfxFrameStart){.mode = mvfx_frameFixed, .first = 1, .last = 1};
@@ -294,7 +294,7 @@ static mvfxEmitterDef Held(void)
     emitter.rate = 0.0f;
     emitter.capacity = 8;
     emitter.hostSpawnCapacity = 8;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     return emitter;
 }
 
@@ -391,7 +391,7 @@ static void TestRuns(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 256;
     emitter.rate = 100.0f;
-    emitter.lifetime = mvfxRangeSource(4.0f, 4.0f);
+    emitter.lifetime = mvfxMakeRangeSource(4.0f, 4.0f);
     emitter.overLife.color =
         (mvfxColorOverLife){.enable = true,
                             .gradient = {s_redToBlue, 2, s_fading, 2},

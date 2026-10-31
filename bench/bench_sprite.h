@@ -21,7 +21,7 @@ static inline mvfxEmitterDef Sprite(int32_t capacity, float rate)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = capacity;
     emitter.rate = rate;
-    emitter.lifetime = mvfxRangeSource(1.8f, 2.2f);
+    emitter.lifetime = mvfxMakeRangeSource(1.8f, 2.2f);
     emitter.shape = (mvfxShape){.kind = mvfx_shapeSphere, .rotation = {0, 0, 0, 1}, .radius = 0.5f};
     emitter.velocity = (mvfxVelocity){.mode = mvfx_directionCone,
                                       .direction = {0, 1, 0},

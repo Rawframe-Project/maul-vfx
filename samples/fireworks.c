@@ -33,7 +33,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     rockets->rate = 0.0f;
     rockets->bursts = &launches;
     rockets->burstCount = 1;
-    rockets->lifetime = mvfxRangeSource(1.1f, 1.3f);
+    rockets->lifetime = mvfxMakeRangeSource(1.1f, 1.3f);
     rockets->velocity = (mvfxVelocity){.mode = mvfx_directionCone,
                                        .direction = {0.0f, 1.0f, 0.0f},
                                        .coneAngle = 0.3f,
@@ -47,7 +47,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     mvfxEmitterDef* sparks = &emitters[1];
     sparks->capacity = 512;
     sparks->rate = 0.0f;
-    sparks->lifetime = mvfxRangeSource(1.0f, 1.5f);
+    sparks->lifetime = mvfxMakeRangeSource(1.0f, 1.5f);
     sparks->velocity.speed = (mvfxRange){3.0f, 5.0f};
     sparks->motion.gravity[1] = -9.8f;
     sparks->motion.drag = 0.8f;

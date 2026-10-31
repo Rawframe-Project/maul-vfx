@@ -134,7 +134,7 @@ static mvfxEmitterDef Sorted(mvfxSortMode mode, mvfxSortMeasure measure)
     emitter.rate = 0.0f;
     emitter.capacity = 8;
     emitter.hostSpawnCapacity = 8;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     emitter.sortMode = mode;
     emitter.sortMeasure = measure;
     return emitter;

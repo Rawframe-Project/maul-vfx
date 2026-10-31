@@ -113,7 +113,7 @@ extern "C"
     /// @return The source.
     /// @par Thread safety
     /// Safe from any thread.
-    static inline mvfxScalarSource mvfxRangeSource(float min, float max)
+    static inline mvfxScalarSource mvfxMakeRangeSource(float min, float max)
     {
 #ifdef __cplusplus
         mvfxScalarSource source = {};

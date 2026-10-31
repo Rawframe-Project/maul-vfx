@@ -151,21 +151,21 @@ typedef struct Run
     bool ribbons;
     int64_t ribbonCapacity;
     // Whether those ribbons are expanded into strips instead
-    // (mvfxGpuSim_ExpandRibbons and mvfxInstance_ExpandRibbons), the list
+    // (mvfxGpuSim_AddRibbonExpansion and mvfxInstance_ExpandRibbons), the list
     // their indices and ribbonCapacity the indices it holds; or into
-    // tubes of these sides and caps (mvfxGpuSim_ExpandTubes and
+    // tubes of these sides and caps (mvfxGpuSim_AddTubeExpansion and
     // mvfxInstance_ExpandTubes) for sides past 0.
     bool strips;
     mvfxTubeDef tube;
     // Whether those ribbons are the first emitter's plexus links instead
-    // (mvfxGpuSim_AddPlexus or mvfxGpuSim_ExpandPlexus, and the CPU
+    // (mvfxGpuSim_AddPlexus or mvfxGpuSim_AddPlexusExpansion, and the CPU
     // path's mvfxInstance_WritePlexus or mvfxInstance_ExpandPlexus with
     // its links found from the GPU's places).
     bool plexus;
     // Whether the strips' buffers take the particles expanded into quads
-    // instead (mvfxGpuSim_ExpandSprites and mvfxInstance_ExpandSprites;
+    // instead (mvfxGpuSim_AddSpriteExpansion and mvfxInstance_ExpandSprites;
     // strips and ribbons set too); or the emitter's sheets expanded into
-    // meshes (mvfxGpuSim_ExpandSheets and mvfxInstance_ExpandSheets,
+    // meshes (mvfxGpuSim_AddSheetExpansion and mvfxInstance_ExpandSheets,
     // strips and ribbons set too).
     bool sprites;
     bool sheets;

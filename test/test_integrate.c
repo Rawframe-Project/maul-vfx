@@ -81,7 +81,7 @@ static void TestFactors(void)
             mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
             emitter.rate = 0.0f;
             emitter.hostSpawnCapacity = 1;
-            emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+            emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
             emitter.motion.gravity[0] = 1.0f;
             emitter.motion.gravity[1] = 0.0f;
             emitter.motion.drag = (float)drags[d];
@@ -125,7 +125,7 @@ static mvfxEmitterDef Thrown(void)
     emitter.rate = 0.0f;
     emitter.bursts = &burst;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.velocity = (mvfxVelocity){
         .mode = mvfx_directionFixed, .direction = {2, 1, 0}, .speed = {11.18034f, 11.18034f}};
     emitter.motion.gravity[1] = -9.75f;
@@ -223,7 +223,7 @@ static void TestGravitySpaces(void)
     {
         mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
         emitter.rate = 4.0f;
-        emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+        emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
         emitter.motion.gravity[0] = 1.0f;
         emitter.motion.gravity[1] = -4.0f;
         emitter.motion.gravitySpace = c == 1 ? mvfx_spaceLocal : mvfx_spaceWorld;
@@ -252,7 +252,7 @@ static void TestDragPerParticle(void)
     mvfxEmitterDef emitter = Thrown();
     emitter.motion.gravity[1] = 0.0f;
     emitter.motion.drag = 1.0f;
-    emitter.motion.dragScale = mvfxRangeSource(0.0f, 2.0f);
+    emitter.motion.dragScale = mvfxMakeRangeSource(0.0f, 2.0f);
     emitter.bursts = &(mvfxBurst){
         .time = 0.0f, .minCount = 64, .maxCount = 64, .cycles = 1, .probability = 1.0f};
     Scene scene = NewScene(&emitter);
@@ -281,7 +281,7 @@ static void TestDragPerParticle(void)
     {
         emitter.motion.drag = c == 0 ? 1.0f : MVFX_MAX_DRAG;
         emitter.motion.dragScale =
-            c == 0 ? mvfxRangeSource(-3.0f, -3.0f) : mvfxRangeSource(5.0f, 5.0f);
+            c == 0 ? mvfxMakeRangeSource(-3.0f, -3.0f) : mvfxMakeRangeSource(5.0f, 5.0f);
         scene = NewScene(&emitter);
         CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 1024) == mvfx_success,
               "step");
@@ -305,7 +305,7 @@ static void TestRotation(void)
         emitter.motion = (mvfxMotion){.angularDrag = c == 0 ? 0.5f : 0.0f};
         if (c == 0)
         {
-            emitter.spin = mvfxRangeSource(3.0f, 3.0f);
+            emitter.spin = mvfxMakeRangeSource(3.0f, 3.0f);
         }
         else
         {
@@ -394,7 +394,7 @@ static void TestTurnStaysUnit(void)
     // stays of unit length, normalized each step.
     mvfxEmitterDef emitter = Thrown();
     emitter.motion = (mvfxMotion){0};
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.angularVelocity = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {3.1f, -7.3f, 5.9f, 0}, .max = {3.1f, -7.3f, 5.9f, 0}};
     Scene scene = NewScene(&emitter);
@@ -445,7 +445,7 @@ static void TestRefusals(void)
             bad.motion.angularDrag = 2.0f * MVFX_MAX_DRAG;
             break;
         default:
-            bad.motion.dragScale = mvfxRangeSource(2.0f, 1.0f);
+            bad.motion.dragScale = mvfxMakeRangeSource(2.0f, 1.0f);
             break;
         }
         mvfxEffectDef effectDef = mvfxDefaultEffectDef();

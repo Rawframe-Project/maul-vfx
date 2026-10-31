@@ -14,6 +14,10 @@ extern "C"
 {
 #endif
 
+// The longest step a context takes in one call, in seconds: a host
+// catching up a longer span steps it in parts, which reach the same state.
+#define MVFX_MAX_STEP_SECONDS 1.0
+
     // A context. Create it with mvfxCreateContext.
     typedef struct mvfxContext mvfxContext;
 
@@ -148,6 +152,38 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_API int64_t mvfxContext_GetParticles(const mvfxContext* context);
+
+    /// Advances every instance of the context by a span of time: each
+    /// emitter spawns what it owes by the new time, each particle ages from
+    /// its birth, and particles whose life has ended are removed. The span is
+    /// rounded once to ticks (MVFX_TICKS_PER_SECOND), so spans whose ticks
+    /// sum to the same clock reach the same state.
+    ///
+    /// @param context  The context.
+    /// @param seconds  The span, from 0 to MVFX_MAX_STEP_SECONDS.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or a
+    ///         span below 0 or not finite; `mvfx_errorLimit` for a span past
+    ///         MVFX_MAX_STEP_SECONDS. Either counts as misuse when the
+    ///         context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time. Its
+    /// work runs on the host's task hooks when the context has them.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_Step(mvfxContext* context, double seconds);
+
+    /// Advances every instance of the context by a number of ticks, as
+    /// mvfxContext_Step does without the rounding.
+    ///
+    /// @param context  The context.
+    /// @param ticks    The span in ticks, from 0 to MVFX_MAX_STEP_SECONDS
+    ///                 seconds' worth.
+    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or a
+    ///         span below 0; `mvfx_errorLimit` for a span past
+    ///         MVFX_MAX_STEP_SECONDS. Either counts as misuse when the
+    ///         context is given.
+    /// @par Thread safety
+    /// Safe from any thread; the context is used by one thread at a time. Its
+    /// work runs on the host's task hooks when the context has them.
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_StepTicks(mvfxContext* context, int64_t ticks);
 
 #ifdef __cplusplus
 }

@@ -38,7 +38,7 @@ static mvfxEmitterDef Poured(void)
     mvfxEmitterDef emitter = Sprite();
     emitter.rate = 400.0f;
     emitter.burstCount = 0;
-    emitter.lifetime = mvfxRangeSource(1.5f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1.5f, 2.0f);
     emitter.shape.radius = 0.08f;
     emitter.velocity.speed = (mvfxRange){0.2f, 0.4f};
     emitter.velocity.direction[1] = -1.0f;
@@ -116,7 +116,7 @@ static mvfxEmitterDef Pour(void)
     emitter.capacity = 512;
     emitter.rate = 300.0f;
     emitter.burstCount = 0;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.shape.radius = 0.1f;
     emitter.velocity.speed = (mvfxRange){0.1f, 0.3f};
     emitter.motion.drag = 0.0f;
@@ -201,7 +201,7 @@ static void TestSplitRecords(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef emitter = Pour();
     emitter.velocity.direction[1] = -1.0f;
     emitter.velocity.speed = (mvfxRange){1.0f, 1.5f};
-    emitter.lifetime = mvfxRangeSource(2.0f, 3.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 3.0f);
     emitter.overLife =
         (mvfxOverLife){.color = {.enable = true,
                                  .input = mvfx_overAge,
@@ -260,7 +260,7 @@ static void TestSplitBeside(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].capacity = 512;
     emitters[1].rate = 300.0f;
     emitters[1].burstCount = 0;
-    emitters[1].lifetime = mvfxRangeSource(0.3f, 0.6f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.3f, 0.6f);
     emitters[1].shape.radius = 0.3f;
     emitters[1].velocity.speed = (mvfxRange){0.5f, 1.0f};
     emitters[1].motion.gravity[1] = 0.0f;
@@ -296,7 +296,7 @@ static void TestSplitEvents(Gpu* gpu, mvfxGpu* kernels)
     emitters[1].capacity = 512;
     emitters[1].rate = 600.0f;
     emitters[1].burstCount = 0;
-    emitters[1].lifetime = mvfxRangeSource(0.02f, 0.05f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.02f, 0.05f);
     emitters[1].events = mvfx_eventMaskBirth | mvfx_eventMaskDeath;
     emitters[1].eventCapacity = 256;
     emitters[1].overLife =
@@ -304,7 +304,7 @@ static void TestSplitEvents(Gpu* gpu, mvfxGpu* kernels)
     emitters[2].capacity = 1024;
     emitters[2].rate = 0.0f;
     emitters[2].burstCount = 0;
-    emitters[2].lifetime = mvfxRangeSource(0.2f, 0.2f);
+    emitters[2].lifetime = mvfxMakeRangeSource(0.2f, 0.2f);
     emitters[2].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 1,
                                               .kind = mvfx_eventDeath,

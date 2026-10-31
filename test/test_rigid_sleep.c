@@ -92,7 +92,7 @@ static mvfxEmitterDef Boxes(void)
     emitter.rate = 0.0f;
     emitter.capacity = 4;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.motion.gravity[1] = -9.81f;
     emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1}, .max = {1, 1, 1}};
     emitter.orientationMode = mvfx_orientationEuler;
@@ -206,7 +206,7 @@ static void TestFallsAsleep(void)
     // gone after its life.
     OpenContext();
     mvfxEmitterDef boxes = Boxes();
-    boxes.lifetime = mvfxRangeSource(3.0f, 3.0f);
+    boxes.lifetime = mvfxMakeRangeSource(3.0f, 3.0f);
     Play(&boxes);
     static const double place[3] = {0, 0.6, 0};
     Spawn(place, 1);

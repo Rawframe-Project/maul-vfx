@@ -51,7 +51,7 @@ static mvfxEmitterDef Emitter(void)
     emitter.rate = 0.0f;
     emitter.capacity = MOST;
     emitter.hostSpawnCapacity = MOST;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.hostModules = &s_capture;
     emitter.hostModuleCount = 1;
     emitter.contacts =

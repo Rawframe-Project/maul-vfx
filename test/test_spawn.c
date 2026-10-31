@@ -100,7 +100,7 @@ static void TestRatesAgainstIntegers(void)
                     emitter.startDelay = delays[d];
                     emitter.duration = durations[u];
                     emitter.loops = loops[l];
-                    emitter.lifetime = mvfxRangeSource(0.1f, 0.3f);
+                    emitter.lifetime = mvfxMakeRangeSource(0.1f, 0.3f);
                     Scene scene = NewScene(&emitter);
                     int64_t delay = (int64_t)(delays[d] * MVFX_TICKS_PER_SECOND);
                     int64_t duration = (int64_t)(durations[u] * MVFX_TICKS_PER_SECOND);
@@ -197,7 +197,7 @@ static void TestBurstsAtTheirTicks(void)
             emitter.startDelay = 0.125f;
             emitter.duration = durations[u];
             emitter.loops = loops;
-            emitter.lifetime = mvfxRangeSource(0.05f, 0.2f);
+            emitter.lifetime = mvfxMakeRangeSource(0.05f, 0.2f);
             Scene scene = NewScene(&emitter);
             int64_t duration = (int64_t)(durations[u] * MVFX_TICKS_PER_SECOND);
             int32_t loopCount = durations[u] > 0.0f ? loops : 0;
@@ -233,7 +233,7 @@ static void TestBurstCountsAndChances(void)
     emitter.rate = 0.0f;
     emitter.bursts = &counted;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(0.01f, 0.01f);
+    emitter.lifetime = mvfxMakeRangeSource(0.01f, 0.01f);
     Scene scene = NewScene(&emitter);
     int64_t histogram[4] = {0};
     uint64_t before = 0;
@@ -340,7 +340,7 @@ static void TestRateCurvesAgainstIntegrals(void)
         emitter.rate = 300.0f;
         emitter.duration = 0.5f;
         emitter.rateCurve = (mvfxCurve){keys[shape], keyCounts[shape], mvfx_tangentsGiven};
-        emitter.lifetime = mvfxRangeSource(0.1f, 0.4f);
+        emitter.lifetime = mvfxMakeRangeSource(0.1f, 0.4f);
         Scene scene = NewScene(&emitter);
         int64_t clock = 0;
         bool close = true;
@@ -376,7 +376,7 @@ static void TestRateCurvesAgainstIntegrals(void)
             shaped.rate = curveRates[r];
             shaped.duration = curveDurations[d];
             shaped.rateCurve = (mvfxCurve){constant, 1, mvfx_tangentsGiven};
-            shaped.lifetime = mvfxRangeSource(0.01f, 0.01f);
+            shaped.lifetime = mvfxMakeRangeSource(0.01f, 0.01f);
             mvfxEmitterDef plain = shaped;
             plain.rateCurve = (mvfxCurve){0};
             Scene withCurve = NewScene(&shaped);
@@ -426,7 +426,7 @@ static void TestEmitterStates(void)
     emitter.startDelay = 0.25f;
     emitter.duration = 0.5f;
     emitter.loops = 2;
-    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     Scene scene = NewScene(&emitter);
     const int64_t quarter = MVFX_TICKS_PER_SECOND / 4;
     CHECK(Stats(&scene).status == mvfx_emitterDelayed, "delayed at first");
@@ -479,7 +479,7 @@ static void TestEmitterStates(void)
                       .probability = 1.0f};
     emitter.bursts = &once;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(0.125f, 0.125f);
+    emitter.lifetime = mvfxMakeRangeSource(0.125f, 0.125f);
     scene = NewScene(&emitter);
     CHECK(Stats(&scene).status == mvfx_emitterActive, "a burst ahead");
     CHECK(mvfxContext_StepTicks(scene.context, 3 * quarter) == mvfx_success, "step");
@@ -494,7 +494,7 @@ static void TestStop(void)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 64.0f;
-    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     Scene scene = NewScene(&emitter);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 2) == mvfx_success, "step");
     CHECK(mvfxInstance_Stop(scene.context, scene.instance, mvfx_stopEmitting) == mvfx_success,
@@ -573,7 +573,7 @@ static void TestRestartReplays(void)
     emitter.burstCount = 1;
     emitter.startDelay = 0.05f;
     emitter.duration = 0.6f;
-    emitter.lifetime = mvfxRangeSource(0.2f, 1.2f);
+    emitter.lifetime = mvfxMakeRangeSource(0.2f, 1.2f);
     Scene scene = NewScene(&emitter);
     enum
     {

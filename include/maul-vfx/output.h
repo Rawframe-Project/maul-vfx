@@ -280,7 +280,7 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context,
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSortScratchBytes(const mvfxContext* context,
                                                                         mvfxInstanceId instance,
                                                                         int32_t emitter,
                                                                         int64_t* bytesOut);
@@ -909,7 +909,7 @@ extern "C"
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(
-        mvfxContext* context, mvfxInstanceId instance, int32_t gas, int64_t* bytesOut);
+        const mvfxContext* context, mvfxInstanceId instance, int32_t gas, int64_t* bytesOut);
 
     /// Writes the mesh of a surface gas at a level of its distance (0 for
     /// its surface), as the last step left it, by marching cubes (marching

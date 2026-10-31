@@ -22,7 +22,7 @@ mvfxEmitterDef emitters[3] = {mvfxDefaultEmitterDef(), mvfxDefaultEmitterDef(),
                               mvfxDefaultEmitterDef()};
 emitters[0].capacity = 8;
 emitters[0].rate = 2.0f;
-emitters[0].lifetime = mvfxRangeSource(1.0f, 1.0f);
+emitters[0].lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
 emitters[0].velocity = (mvfxVelocity){
     .mode = mvfx_directionFixed, .direction = {0.0f, 1.0f, 0.0f}, .speed = {10.0f, 10.0f}};
 emitters[0].events = mvfx_eventMaskDeath;
@@ -30,7 +30,7 @@ emitters[0].eventCapacity = 8;
 // Sparks: 20 from each rocket's death, with half its velocity.
 emitters[1].capacity = 256;
 emitters[1].rate = 0.0f;
-emitters[1].lifetime = mvfxRangeSource(0.5f, 0.8f);
+emitters[1].lifetime = mvfxMakeRangeSource(0.5f, 0.8f);
 emitters[1].velocity.speed = (mvfxRange){2.0f, 4.0f};
 emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                           .source = 0,
@@ -43,7 +43,7 @@ emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
 emitters[2].capacity = 4;
 emitters[2].rate = 0.0f;
 emitters[2].hostSpawnCapacity = 4;
-emitters[2].lifetime = mvfxRangeSource(10.0f, 10.0f);
+emitters[2].lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
 mvfxEffectDef effectDef = mvfxDefaultEffectDef();
 effectDef.emitters = emitters;
 effectDef.emitterCount = 3;

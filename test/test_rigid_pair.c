@@ -90,7 +90,7 @@ static mvfxEmitterDef Bodies(mvfxRigidShape shape, bool gravity)
     emitter.rate = 0.0f;
     emitter.capacity = 8;
     emitter.hostSpawnCapacity = 8;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.motion.gravity[0] = 0.0f;
     emitter.motion.gravity[1] = gravity ? -9.81f : 0.0f;
     emitter.motion.gravity[2] = 0.0f;

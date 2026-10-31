@@ -63,7 +63,7 @@ static mvfxEmitterDef Trail(void)
     emitter.rate = 0.0f;
     emitter.capacity = 32;
     emitter.hostSpawnCapacity = 8;
-    emitter.lifetime = mvfxRangeSource(9.0f, 9.0f);
+    emitter.lifetime = mvfxMakeRangeSource(9.0f, 9.0f);
     emitter.ribbon.ids = mvfx_ribbonOne;
     return emitter;
 }

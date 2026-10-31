@@ -60,7 +60,7 @@ static mvfxEmitterDef Ribboned(mvfxRibbonIds ids)
 {
     mvfxEmitterDef emitter = Sprite();
     emitter.rate = 240.0f;
-    emitter.lifetime = mvfxRangeSource(0.4f, 0.6f);
+    emitter.lifetime = mvfxMakeRangeSource(0.4f, 0.6f);
     emitter.size =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0.1f, 0.2f}, .max = {0.3f, 0.4f}};
     emitter.ribbon.ids = ids;
@@ -195,7 +195,7 @@ static void TestSources(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].eventCapacity = 4096;
     emitters[1].rate = 120.0f;
     emitters[1].burstCount = 0;
-    emitters[1].lifetime = mvfxRangeSource(0.1f, 0.3f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.1f, 0.3f);
     emitters[1].velocity.speed = (mvfxRange){0.5f, 1.0f};
     emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,

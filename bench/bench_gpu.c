@@ -176,7 +176,7 @@ static mvfxEmitterDef Emitter(const mvfxCollider* colliders, int32_t colliderCou
     emitter.capacity = CAPACITY;
     emitter.bursts = s_fill;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.shape = (mvfxShape){.kind = mvfx_shapeSphere, .rotation = {0, 0, 0, 1}, .radius = 0.5f};
     emitter.velocity = (mvfxVelocity){.mode = mvfx_directionShapeNormal, .speed = {speed, speed}};
     emitter.colliders = colliders;
@@ -276,7 +276,7 @@ static double Births(Gpu* gpu, mvfxGpu* kernels, int32_t births, int32_t room, b
     emitters[0].capacity = room * births;
     emitters[0].burstCount = 0;
     emitters[0].rate = (float)births * 60.0f;
-    emitters[0].lifetime = mvfxRangeSource(life, life);
+    emitters[0].lifetime = mvfxMakeRangeSource(life, life);
     emitters[0].events = sub ? mvfx_eventMaskDeath : 0;
     emitters[0].ribbon.ids = ribbons;
     emitters[0].ribbon.texture = mvfx_ribbonTileByDistance;
@@ -285,7 +285,7 @@ static double Births(Gpu* gpu, mvfxGpu* kernels, int32_t births, int32_t room, b
     emitters[1].capacity = room * births;
     emitters[1].burstCount = 0;
     emitters[1].rate = 0.0f;
-    emitters[1].lifetime = mvfxRangeSource(1.0f / 60.0f, 1.0f / 60.0f);
+    emitters[1].lifetime = mvfxMakeRangeSource(1.0f / 60.0f, 1.0f / 60.0f);
     emitters[1].startDelay = spawning ? 0.0f : 1000.0f;
     emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,

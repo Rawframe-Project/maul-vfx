@@ -52,7 +52,7 @@ static mvfxEmitterDef Emitter(float distance)
     emitter.rate = 0.0f;
     emitter.capacity = MOST;
     emitter.hostSpawnCapacity = MOST;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.plexus = (mvfxPlexusDef){.enable = true,
                                      .distance = distance,
                                      .maxLinks = 4096,

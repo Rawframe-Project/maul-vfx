@@ -36,7 +36,7 @@ static bool FirstEffect(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 128;
     emitter.rate = 50.0f;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     emitter.velocity = (mvfxVelocity){.mode = mvfx_directionCone,
                                       .direction = {0.0f, 1.0f, 0.0f},
                                       .coneAngle = 0.2f,
@@ -163,7 +163,7 @@ static bool Instances(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 64;
     emitter.rate = 30.0f;
-    emitter.lifetime = mvfxRangeSource(0.5f, 0.5f);
+    emitter.lifetime = mvfxMakeRangeSource(0.5f, 0.5f);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
@@ -296,7 +296,7 @@ static bool Ribbons(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 64;
     emitter.rate = 30.0f;
-    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     emitter.ribbon.ids = mvfx_ribbonOne;
     emitter.ribbon.pieces = 2;
     emitter.ribbon.pinHead = true;
@@ -368,7 +368,7 @@ static bool Events(void)
                                   mvfxDefaultEmitterDef()};
     emitters[0].capacity = 8;
     emitters[0].rate = 2.0f;
-    emitters[0].lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitters[0].lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     emitters[0].velocity = (mvfxVelocity){
         .mode = mvfx_directionFixed, .direction = {0.0f, 1.0f, 0.0f}, .speed = {10.0f, 10.0f}};
     emitters[0].events = mvfx_eventMaskDeath;
@@ -376,7 +376,7 @@ static bool Events(void)
     // Sparks: 20 from each rocket's death, with half its velocity.
     emitters[1].capacity = 256;
     emitters[1].rate = 0.0f;
-    emitters[1].lifetime = mvfxRangeSource(0.5f, 0.8f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.5f, 0.8f);
     emitters[1].velocity.speed = (mvfxRange){2.0f, 4.0f};
     emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
@@ -389,7 +389,7 @@ static bool Events(void)
     emitters[2].capacity = 4;
     emitters[2].rate = 0.0f;
     emitters[2].hostSpawnCapacity = 4;
-    emitters[2].lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitters[2].lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = emitters;
     effectDef.emitterCount = 3;
@@ -442,7 +442,7 @@ static bool Flock(void)
     emitter.rate = 0.0f;
     emitter.bursts = &burst;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.shape.kind = mvfx_shapeSphere;
     emitter.shape.radius = 2.0f;
     emitter.shape.thickness = 1.0f;
@@ -583,7 +583,7 @@ static bool SurfaceMesh(void)
     emitter.rate = 0.0f;
     emitter.bursts = &burst;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.shape.kind = mvfx_shapeCircle;
     emitter.shape.radius = 1.0f;
     emitter.shape.thickness = 1.0f;
@@ -701,7 +701,7 @@ static bool Rain(void)
     emitter.rate = 0.0f;
     emitter.bursts = &burst;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.shape.kind = mvfx_shapeBox;
     emitter.shape.offset[1] = 3.0f;
     emitter.shape.halfExtents[0] = 1.0f;

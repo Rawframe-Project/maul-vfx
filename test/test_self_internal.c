@@ -71,7 +71,7 @@ static mvfxEmitterDef Sheets(float thickness, Kick* kick)
     emitter.rate = 0.0f;
     emitter.capacity = 32;
     emitter.hostSpawnCapacity = 2;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.unit = (mvfxUnitDef){.kind = mvfx_unitSheet,
                                  .points = 4,
                                  .rows = 4,

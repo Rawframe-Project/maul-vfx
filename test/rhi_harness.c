@@ -975,15 +975,15 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
     strips.tube = s_tube;
     if (s_sprites)
     {
-        return mvfxGpuSim_ExpandSprites(sim, &strips) == mvfx_success;
+        return mvfxGpuSim_AddSpriteExpansion(sim, &strips) == mvfx_success;
     }
     if (s_sheets)
     {
-        return mvfxGpuSim_ExpandSheets(sim, &strips) == mvfx_success;
+        return mvfxGpuSim_AddSheetExpansion(sim, &strips) == mvfx_success;
     }
     if (s_plexus)
     {
-        return mvfxGpuSim_ExpandPlexus(sim, &strips) == mvfx_success;
+        return mvfxGpuSim_AddPlexusExpansion(sim, &strips) == mvfx_success;
     }
     if (s_tube.sides > 0)
     {
@@ -991,12 +991,12 @@ static bool AddRibbonPass(mvfxGpuSim* sim, mrhiResourceId count)
         // than MVFX_MAX_TUBE_SIDES past a named bound.
         mvfxGpuExpandDef bad = strips;
         bad.tube.sides = 2;
-        bool refused = mvfxGpuSim_ExpandTubes(sim, &bad) == mvfx_errorInvalid;
+        bool refused = mvfxGpuSim_AddTubeExpansion(sim, &bad) == mvfx_errorInvalid;
         bad.tube.sides = MVFX_MAX_TUBE_SIDES + 1;
-        refused = refused && mvfxGpuSim_ExpandTubes(sim, &bad) == mvfx_errorLimit;
-        return refused && mvfxGpuSim_ExpandTubes(sim, &strips) == mvfx_success;
+        refused = refused && mvfxGpuSim_AddTubeExpansion(sim, &bad) == mvfx_errorLimit;
+        return refused && mvfxGpuSim_AddTubeExpansion(sim, &strips) == mvfx_success;
     }
-    return mvfxGpuSim_ExpandRibbons(sim, &strips) == mvfx_success;
+    return mvfxGpuSim_AddRibbonExpansion(sim, &strips) == mvfx_success;
 }
 
 // Adds the fill of the records and list buffers and the first emitter's
@@ -2137,7 +2137,7 @@ mvfxEmitterDef Sprite(void)
     emitter.rate = 600.0f;
     emitter.bursts = s_bursts;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(0.2f, 0.4f);
+    emitter.lifetime = mvfxMakeRangeSource(0.2f, 0.4f);
     emitter.shape = (mvfxShape){.kind = mvfx_shapeSphere, .rotation = {0, 0, 0, 1}, .radius = 0.5f};
     emitter.velocity = (mvfxVelocity){
         .mode = mvfx_directionCone, .direction = {0, 1, 0}, .coneAngle = 0.4f, .speed = {2, 4}};
