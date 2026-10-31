@@ -43,7 +43,7 @@ typedef struct mvfxHullMeasure
     // hull past a build's room (at least MVFX_MAX_HULL_COUNT vertices).
     mvfxResult counted;
     int32_t count;
-    // mvfx_success when the hull was built, mvfx_errorInvalid when the
+    // mvfx_success when the hull was built, mvfx_errorUnsupported when the
     // points span no volume, mvfx_errorLimit when the hull has more than
     // MVFX_MAX_HULL_VERTICES vertices.
     mvfxResult built;

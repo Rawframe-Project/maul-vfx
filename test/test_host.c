@@ -405,6 +405,22 @@ static void TestPrewarm(void)
           "stale");
     CHECK(mvfxInstance_Prewarm(NULL, warmed.instance, 1.0, 0.25, 1, NULL) == mvfx_errorInvalid,
           "no context");
+    // The span left is 0 after any failure.
+    double remaining = 5.0;
+    bool zeroed = mvfxInstance_Prewarm(warmed.context, warmed.instance, 1.0, 0.0, 1, &remaining) ==
+                      mvfx_errorInvalid &&
+                  remaining == 0.0;
+    remaining = 5.0;
+    zeroed =
+        zeroed &&
+        mvfxInstance_Prewarm(warmed.context, stale, 1.0, 0.25, 1, &remaining) == mvfx_errorStale &&
+        remaining == 0.0;
+    remaining = 5.0;
+    zeroed = zeroed &&
+             mvfxInstance_Prewarm(NULL, warmed.instance, 1.0, 0.25, 1, &remaining) ==
+                 mvfx_errorInvalid &&
+             remaining == 0.0;
+    CHECK(zeroed, "the span left 0 on failure");
     mvfxDestroyContext(warmed.context);
     mvfxDestroyContext(stepped.context);
 }

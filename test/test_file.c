@@ -1319,12 +1319,12 @@ static void TestCreate(void)
 
 // A def of one emitter, written with the table and created from its
 // bytes: what a file asks of the program's assets that they do not hold is
-// refused with mvfx_errorInvalid as untrusted data, counting no misuse.
-// The same def passed by the program itself counts one when counted is
-// true: a correct program does not pass it.
+// refused with status as untrusted data, counting no misuse. The same def
+// passed by the program itself counts one when counted is true: a correct
+// program does not pass it.
 static bool RefusedFromFile(mvfxContext* context, const mvfxEmitterDef* emitter,
-                            const mvfxEffectAsset* table, int32_t count, bool counted,
-                            const char* path)
+                            const mvfxEffectAsset* table, int32_t count, mvfxResult status,
+                            bool counted, const char* path)
 {
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitter;
@@ -1339,9 +1339,9 @@ static bool RefusedFromFile(mvfxContext* context, const mvfxEmitterDef* emitter,
     mvfxFileResult result =
         mvfxCreateEffectFromBytes(context, bytes, size, table, count, &effect, &refusal);
     // Refused at the field that names the asset.
-    bool file = result.result == mvfx_errorInvalid && result.offset > 0 && IsPath(&refusal, path) &&
+    bool file = result.result == status && result.offset > 0 && IsPath(&refusal, path) &&
                 effect.index1 == 0 && mvfxContext_GetMisuse(context) == misuse;
-    bool program = mvfxCreateEffect(context, &def, &effect, &refusal) == mvfx_errorInvalid &&
+    bool program = mvfxCreateEffect(context, &def, &effect, &refusal) == status &&
                    IsPath(&refusal, path) &&
                    mvfxContext_GetMisuse(context) == misuse + (counted ? 1 : 0);
     return written && file && program;
@@ -1384,7 +1384,8 @@ static void TestUntrustedAssets(void)
     emitter.collision.enable = true;
     emitter.colliders = &heights;
     emitter.colliderCount = 1;
-    CHECK(RefusedFromFile(context, &emitter, table, 3, true, "emitters[0].colliders[0].grid"),
+    CHECK(RefusedFromFile(context, &emitter, table, 3, mvfx_errorInvalid, true,
+                          "emitters[0].colliders[0].grid"),
           "a heightfield of a tall grid");
 
     emitter = mvfxDefaultEmitterDef();
@@ -1395,14 +1396,16 @@ static void TestUntrustedAssets(void)
                              .boxRotation = {0, 0, 0, 1}};
     emitter.forces = &field;
     emitter.forceCount = 1;
-    CHECK(RefusedFromFile(context, &emitter, table, 3, true, "emitters[0].forces[0].grid"),
+    CHECK(RefusedFromFile(context, &emitter, table, 3, mvfx_errorInvalid, true,
+                          "emitters[0].forces[0].grid"),
           "a vector field over a grid of one component");
 
     emitter = mvfxDefaultEmitterDef();
     emitter.shape.kind = mvfx_shapeMesh;
     emitter.shape.mesh = table[1].mesh;
     emitter.shape.meshMode = mvfx_meshSurface;
-    CHECK(RefusedFromFile(context, &emitter, table, 3, true, "emitters[0].shape.mesh"),
+    CHECK(RefusedFromFile(context, &emitter, table, 3, mvfx_errorInvalid, true,
+                          "emitters[0].shape.mesh"),
           "a surface of a mesh without one");
 
     emitter = mvfxDefaultEmitterDef();
@@ -1415,7 +1418,8 @@ static void TestUntrustedAssets(void)
                                    .staticFriction = 0.6f,
                                    .dynamicFriction = 0.4f,
                                    .hull = table[2].mesh};
-    CHECK(RefusedFromFile(context, &emitter, table, 3, false, "emitters[0].rigid.hull"),
+    CHECK(RefusedFromFile(context, &emitter, table, 3, mvfx_errorUnsupported, false,
+                          "emitters[0].rigid.hull"),
           "a hull of a flat mesh, misuse from neither");
     mvfxDestroyContext(context);
 }
