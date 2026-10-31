@@ -8,8 +8,10 @@ def's memory (16), a sort scratch (4), records and vertices of a layout.
 An array of unsigned char or uint8_t has an alignment of 1, and where it
 lands decides the rest: AddressSanitizer aligns globals on Linux, so a
 missing alignment passes there and fails on another platform. Every
-array of unsigned char or uint8_t declared in test/ (static, local or a
-member) therefore states one, with _Alignas or alignas. The guide's tests
+array of unsigned char or uint8_t declared in test/ (static or local)
+therefore states one, with _Alignas or alignas. A struct's member is left
+out: it lays out bytes as a record holds them, which an alignment would
+move. The guide's tests
 (test_guide*.c) are left out: their code is the user documentation's, as
 a host writes it, and a buffer there that needs an alignment states it in
 the documentation too.
@@ -27,10 +29,23 @@ ARRAY = re.compile(
     r"(?:static\s+)?(?:const\s+)?(?:unsigned\s+char|uint8_t)\s+\w+\s*\[")
 
 
+STRUCT_START = re.compile(r"^\s*(?:typedef\s+)?(?:struct|union)\b[^;]*$")
+STRUCT_END = re.compile(r"^\s*}[^;]*;")
+
+
 def findings(name, text):
-    """Each line of text that declares a byte array without an alignment."""
+    """Each line of text that declares a byte array without an alignment,
+    outside a struct's members."""
     out = []
+    member = False
     for number, line in enumerate(text.splitlines(), 1):
+        if STRUCT_START.match(line):
+            member = True
+        elif member and STRUCT_END.match(line):
+            member = False
+            continue
+        if member:
+            continue
         m = ARRAY.match(line)
         # A parameter on a line of its own is not a declaration.
         parameter = line.rstrip().endswith((")", ",", ") {"))
@@ -45,7 +60,11 @@ def self_test():
             "static const _Alignas(16) uint8_t c[2] = {1, 2};\n"
             "    uint8_t* pointer;\n"
             "    char text[256];\n"
-            "                 unsigned char out[16])\n")
+            "                 unsigned char out[16])\n"
+            "typedef struct Record\n"
+            "{\n"
+            "    uint8_t color[4];\n"
+            "} Record;\n")
     bad = ("static unsigned char a[4];\n"
            "    uint8_t b[8] = {0};\n"
            "static const uint8_t c[2] = {1, 2};\n"

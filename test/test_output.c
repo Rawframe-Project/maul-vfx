@@ -312,7 +312,7 @@ static void Place(Scene* scene, double x, double y, double z, float vx)
 typedef struct Record
 {
     float position[3];
-    _Alignas(16) uint8_t color[4];
+    uint8_t color[4];
     uint16_t size;
     uint16_t pad0;
     float age;

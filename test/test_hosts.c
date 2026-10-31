@@ -31,7 +31,7 @@
 
 typedef struct Out
 {
-    _Alignas(16) unsigned char bytes[1 << 20];
+    unsigned char bytes[1 << 20];
     size_t at;
     bool full;
 } Out;
