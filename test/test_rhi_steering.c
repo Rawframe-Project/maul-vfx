@@ -29,6 +29,16 @@ static void Steered(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, c
     Compare(gpu, kernels, &(Run){.emitters = emitter, .emitterCount = 1, .moving = true}, what);
 }
 
+// Flocking with separation: its push from a close neighbor turns by the
+// places' difference over their distance, as the pair force's pull does,
+// so velocities part faster than the others': within 1e-3.
+static void Flocked(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, const char* what)
+{
+    Compare(gpu, kernels,
+            &(Run){.emitters = emitter, .emitterCount = 1, .moving = true, .tolerance = 1e-3f},
+            what);
+}
+
 static void TestFlocking(Gpu* gpu, mvfxGpu* kernels)
 {
     mvfxEmitterDef emitter = WithNeighbors(0.3f, 32);
@@ -40,10 +50,10 @@ static void TestFlocking(Gpu* gpu, mvfxGpu* kernels)
                                          .cohesion = 0.3f,
                                          .cohesionRadius = 0.25f,
                                          .viewAngle = 2.0f};
-    Steered(gpu, kernels, &emitter, "flocking within a view cone");
+    Flocked(gpu, kernels, &emitter, "flocking within a view cone");
     emitter.steering.viewAngle = 3.14159274f;
     emitter.steering.maxForce = 2.0f;
-    Steered(gpu, kernels, &emitter, "flocking within a full view, the force held");
+    Flocked(gpu, kernels, &emitter, "flocking within a full view, the force held");
 }
 
 static void TestTargets(Gpu* gpu, mvfxGpu* kernels)
