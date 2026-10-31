@@ -20,6 +20,23 @@
 #include "spawn.h"
 
 #include <math.h>
+#include <stddef.h>
+
+// A GPU buffer holds the births as they are, three vectors of four words
+// each: their layout is final from 1.0.
+static_assert(sizeof(mvfxPlannedBirth) == 48, "a birth is 48 bytes");
+static_assert(offsetof(mvfxPlannedBirth, serialLow) == 0, "the serial's low word first");
+static_assert(offsetof(mvfxPlannedBirth, serialHigh) == 4, "then its high word");
+static_assert(offsetof(mvfxPlannedBirth, tick) == 8, "then the tick");
+static_assert(offsetof(mvfxPlannedBirth, deathLow) == 12, "then the death's low word");
+static_assert(offsetof(mvfxPlannedBirth, deathHigh) == 16, "the second vector the death's high");
+static_assert(offsetof(mvfxPlannedBirth, inverseLife) == 20, "then the inverse life");
+static_assert(offsetof(mvfxPlannedBirth, batchIndex) == 24, "then the batch's index");
+static_assert(offsetof(mvfxPlannedBirth, batchCount) == 28, "and its size");
+static_assert(offsetof(mvfxPlannedBirth, sourceAge) == 32, "the third vector the source age");
+static_assert(offsetof(mvfxPlannedBirth, host) == 36, "then the host's particle");
+static_assert(offsetof(mvfxPlannedBirth, eventKeyLow) == 40, "then the event key's low word");
+static_assert(offsetof(mvfxPlannedBirth, eventKeyHigh) == 44, "and its high word");
 
 void mvfxBeginPlans(mvfxInstance* instance)
 {

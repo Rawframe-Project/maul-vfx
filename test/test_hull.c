@@ -303,10 +303,10 @@ static void TestRefused(void)
         ball[3 * i + 2] = z;
     }
     mvfxHull hull;
-    CHECK(mvfxBuildHull(flat, 5, &s_allocator, &hull) == mvfx_errorInvalid &&
-              mvfxBuildHull(line, 4, &s_allocator, &hull) == mvfx_errorInvalid &&
-              mvfxBuildHull(same, 4, &s_allocator, &hull) == mvfx_errorInvalid &&
-              mvfxBuildHull(same, 3, &s_allocator, &hull) == mvfx_errorInvalid &&
+    CHECK(mvfxBuildHull(flat, 5, &s_allocator, &hull) == mvfx_errorUnsupported &&
+              mvfxBuildHull(line, 4, &s_allocator, &hull) == mvfx_errorUnsupported &&
+              mvfxBuildHull(same, 4, &s_allocator, &hull) == mvfx_errorUnsupported &&
+              mvfxBuildHull(same, 3, &s_allocator, &hull) == mvfx_errorUnsupported &&
               mvfxBuildHull(ball, 200, &s_allocator, &hull) == mvfx_errorLimit,
           "refused");
 }
@@ -342,7 +342,7 @@ static void TestCount(void)
     mvfxHullMeasure none = {.count = -1};
     bool flatNone = mvfxMeasureHull(flat, 5, &s_allocator, &none, &hull) == mvfx_success &&
                     none.counted == mvfx_success && none.count == 0 &&
-                    none.built == mvfx_errorInvalid;
+                    none.built == mvfx_errorUnsupported;
     CHECK(counted && flatNone, "hull vertices counted");
 }
 

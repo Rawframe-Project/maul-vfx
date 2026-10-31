@@ -38,14 +38,18 @@ mvfxPlannedCollider mvfxPlannedColliderOf(const mvfxResolvedCollider* c, mvfxGri
 }
 
 // A resolved kill rule as a plan hands it over, its least age in ticks
-// rounded up (exact: the age in seconds times 2^20 in binary64).
+// rounded up (exact: the age in seconds times 2^20 in binary64) for the
+// kind that reads it; any other kind leaves the age unchecked, so it may
+// be anything and takes 0.
 static mvfxPlannedKillRule PlannedKillRule(const mvfxResolvedKillRule* r)
 {
     mvfxPlannedKillRule out = {
         .kind = r->kind,
         .radius = r->radius,
         .speed = r->speed,
-        .minimumAgeTicks = (uint64_t)ceil((double)r->minimumAge * (double)MVFX_TICKS_PER_SECOND),
+        .minimumAgeTicks = r->kind == mvfx_killSlower ? (int64_t)ceil((double)r->minimumAge *
+                                                                      (double)MVFX_TICKS_PER_SECOND)
+                                                      : 0,
         .collisions = r->collisions,
     };
     for (int32_t k = 0; k < 3; ++k)
