@@ -1271,8 +1271,8 @@ extern "C"
     ///         indices as the list; else as mvfxGpuSim_AddRibbons.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRibbonExpansion(mvfxGpuSim* sim,
-                                                                    const mvfxGpuExpandDef* def);
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult
+    mvfxGpuSim_AddRibbonExpansion(mvfxGpuSim* sim, const mvfxGpuExpandDef* def);
 
     /// Adds the passes expanding an emitter's ribbons into tubes to the
     /// frame the host builds, as mvfxInstance_ExpandTubes expands them on
@@ -1298,7 +1298,7 @@ extern "C"
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddTubeExpansion(mvfxGpuSim* sim,
-                                                                  const mvfxGpuExpandDef* def);
+                                                                       const mvfxGpuExpandDef* def);
 
     /// Adds the passes writing an emitter's plexus links of the last
     /// recorded step to the frame the host builds, as two-point ribbons,
@@ -1335,8 +1335,8 @@ extern "C"
     /// @return As mvfxGpuSim_AddRibbonExpansion.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPlexusExpansion(mvfxGpuSim* sim,
-                                                                   const mvfxGpuExpandDef* def);
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult
+    mvfxGpuSim_AddPlexusExpansion(mvfxGpuSim* sim, const mvfxGpuExpandDef* def);
 
     /// Adds the passes expanding an emitter's particles into quads to the
     /// frame the host builds, as mvfxInstance_ExpandSprites expands them on
@@ -1359,8 +1359,8 @@ extern "C"
     /// @return As mvfxGpuSim_AddRibbonExpansion.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddSpriteExpansion(mvfxGpuSim* sim,
-                                                                    const mvfxGpuExpandDef* def);
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult
+    mvfxGpuSim_AddSpriteExpansion(mvfxGpuSim* sim, const mvfxGpuExpandDef* def);
 
     /// Adds the passes expanding an emitter's sheets (mvfx_unitSheet) into
     /// meshes to the frame the host builds, as mvfxInstance_ExpandSheets
@@ -1383,8 +1383,8 @@ extern "C"
     /// @return As mvfxGpuSim_AddRibbonExpansion.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddSheetExpansion(mvfxGpuSim* sim,
-                                                                   const mvfxGpuExpandDef* def);
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult
+    mvfxGpuSim_AddSheetExpansion(mvfxGpuSim* sim, const mvfxGpuExpandDef* def);
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is
     /// compiled: the plans' bytes written, the kernels dispatched. Nothing
