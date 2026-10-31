@@ -86,9 +86,10 @@ static void StepPlan(const mvfxInstance* live, int32_t w, int32_t s, mvfxWaterPl
     };
     double scale = (double)mvfxWaterPlace(live, w).scale;
     planOut->volumeScale = scale * scale * scale;
-    planOut->substeps = shallow ? mvfxShallowSubsteps(water, state->stepSpeed, seconds,
-                                                      &planOut->dt, &planOut->slowed)
-                                : mvfxWaveSubsteps(water, seconds, &planOut->dt, &planOut->slowed);
+    planOut->substeps =
+        shallow ? mvfxShallowSubsteps(water, state->stepSpeed, seconds, &planOut->substepSeconds,
+                                      &planOut->slowed)
+                : mvfxWaveSubsteps(water, seconds, &planOut->substepSeconds, &planOut->slowed);
     for (int32_t p = 0; p < planOut->pushCount; ++p)
     {
         const mvfxPlannedWaterPush* push = &state->planPushes[p];

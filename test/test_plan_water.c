@@ -99,7 +99,7 @@ static bool SubstepsAre(const mvfxWaterPlan* plan, int64_t ticks, double bound)
     bool slowed = false;
     int32_t n = Substeps((double)ticks / (double)MVFX_TICKS_PER_SECOND, bound, &dt, &slowed);
     return plan->substeps == n && plan->slowed == slowed &&
-           fabs((double)plan->dt - dt) <= 1e-6 * dt && plan->ticks == ticks;
+           fabs((double)plan->substepSeconds - dt) <= 1e-6 * dt && plan->ticks == ticks;
 }
 
 // The clock after the planned instance's last step: its plan's end.
@@ -372,7 +372,7 @@ static void TestUnreported(void)
     CHECK(mvfxContext_StepTicks(s_context, STEP_TICKS) == mvfx_success &&
               mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success &&
               plan.substeps == MVFX_MAX_WATER_SUBSTEPS && !plan.slowed &&
-              plan.dt ==
+              plan.substepSeconds ==
                   (float)((double)STEP_TICKS / MVFX_TICKS_PER_SECOND / MVFX_MAX_WATER_SUBSTEPS) &&
               !plan.cleared,
           "unreported, the most");

@@ -10,6 +10,17 @@
 // draws and ends its particles as the CPU path does. Which births have
 // room is for the simulation to decide: only it knows the particles it
 // holds.
+//
+// A host's own GPU path reads these records, so from 1.0 their layouts
+// hold as the family's rules hold any public struct's: a minor release
+// adds a field only at the end of its struct, a patch release changes
+// none, and the MVFX_MAX_* limits that size their arrays change only in a
+// minor release. Records sit in arrays whose stride is their size, so a
+// program runs only against the minor release it was built with, which
+// the shared library's SOVERSION (major.minor from 1.0) enforces.
+// mvfxPlannedBirth is held further: a GPU buffer holds the births as they
+// are, so its 48 bytes keep their layout through every 1.x release, and a
+// later need of a birth's becomes an array of its own beside them.
 
 #ifndef MAUL_VFX_PLAN_H
 #define MAUL_VFX_PLAN_H
@@ -30,7 +41,8 @@ extern "C"
 // context's step takes at most two of its steps.
 #define MVFX_MAX_PLAN_STEPS (2 * MVFX_MAX_LIQUID_SUBSTEPS)
 
-    // A birth a step owes an emitter: 48 bytes, as a GPU buffer holds it.
+    // A birth a step owes an emitter: 48 bytes, as a GPU buffer holds it,
+    // its layout final from 1.0.
     typedef struct mvfxPlannedBirth
     {
         // Its serial, the count of the emitter's births owed before it.
@@ -229,7 +241,7 @@ extern "C"
         float rotation[4];
         float normal[3];
         float speed;
-        uint64_t minimumAgeTicks;
+        int64_t minimumAgeTicks;
         int32_t collisions;
     } mvfxPlannedKillRule;
 
@@ -513,12 +525,12 @@ extern "C"
         // stills and empties the surface first, and shallow water fills it
         // again at this step.
         bool cleared;
-        // Its substeps, each one's length in seconds, and whether the step
+        // Its substeps, the seconds each one takes, and whether the step
         // is slowed (its time past MVFX_MAX_WATER_SUBSTEPS of the longest
         // stable substep): the waves' from the def, shallow water's from
         // the speed reported (mvfxInstance_SetWaterSpeed).
         int32_t substeps;
-        float dt;
+        float substepSeconds;
         bool slowed;
         // The host's pushes this step, in order; for waves, the sum of what
         // they sink over the cells (binary64, cell by cell, push by push,
@@ -629,8 +641,6 @@ extern "C"
         float speedMax;
     } mvfxVelocityView;
 
-    // An emitter of an effect as compiled, as a simulation elsewhere reads
-    // it: what it uses, and the numbers of what every emitter has.
     // Where an emitter's particles keep their values, as the CPU path
     // stores them: one array a component, each value's arrays in a row
     // from its first (-1 for a value it does not store), count in all.
@@ -800,6 +810,8 @@ extern "C"
         bool random;
     } mvfxIndexView;
 
+    // An emitter of an effect as compiled, as a simulation elsewhere reads
+    // it: what it uses, and the numbers of what every emitter has.
     typedef struct mvfxEmitterView
     {
         uint64_t features;
@@ -1335,7 +1347,7 @@ extern "C"
     /// @param tick         The tick of the step's end the report is of, at
     ///                     most the instance's clock.
     /// @param reach        The reach then, finite and at least 0.
-    /// @param heldFaceCount    The faces held over the step's substeps (0 for
+    /// @param heldFaceCount The faces held over the step's substeps (0 for
     ///                     waves).
     /// @param volumePoured The volume poured over the step, in the world's
     ///                     lengths cubed, finite and at least 0 (0 for

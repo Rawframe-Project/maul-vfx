@@ -753,7 +753,7 @@ static void KillRules(const mvfxEmitterPlan* plan, uint32_t* words)
         at[0] = rule->kind;
         at[1] = (uint32_t)rule->collisions;
         at[2] = (uint32_t)rule->minimumAgeTicks;
-        at[3] = (uint32_t)(rule->minimumAgeTicks >> 32u);
+        at[3] = (uint32_t)((uint64_t)rule->minimumAgeTicks >> 32u);
         const float* c = rule->center;
         const float* h = rule->halfExtents;
         mvfxFloatWords(at + 4, c[0], c[1], c[2], rule->radius);

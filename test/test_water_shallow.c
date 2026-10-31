@@ -923,7 +923,7 @@ static int32_t Planned(float speed, int64_t ticks, float* dt, bool* slowed)
           "told and stepped");
     static mvfxWaterPlan plan;
     CHECK(mvfxInstance_GetWaterPlan(s_context, s_instance, 0, &plan) == mvfx_success, "plan");
-    *dt = plan.dt;
+    *dt = plan.substepSeconds;
     *slowed = plan.slowed;
     Close();
     return plan.substeps;
