@@ -107,7 +107,7 @@ static void TestOutput(Gpu* gpu, mvfxGpu* kernels)
     layout.stride = 92;
     // Spread along the moving instance's path: a longer distance.
     mvfxEmitterDef emitter = Linked(MVFX_MAX_PLEXUS_LINKS, 4);
-    emitter.plexus.distance = 0.5f;
+    emitter.plexus.distance = 0.6f;
     emitter.plexus.fade = true;
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
