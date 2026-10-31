@@ -568,6 +568,7 @@ static const Row s_rows[] = {
     {"waters[0].sources[0].shape", 0, 0},
     {"waters[0].terrain.kind", mvfx_colliderHeightfield, 0},
     {"waters[0].terrain.space", 0, 0},
+    {"emitters[0].color.kind", KEEP, 0},
 };
 
 // The first row MoreField turns on, and the first KindField turns on.
@@ -744,6 +745,9 @@ static int32_t* KindField(Defs* d, int32_t r)
         d->water.sources = &d->waterSource;
         d->water.sourceCount = 1;
         return &d->waterSource.shape;
+    case 49:
+        // Four components, which a gradient's kinds take.
+        return &e[0].color.kind;
     default:
         d->water.model = mvfx_waterShallow;
         d->water.enableTerrain = true;
