@@ -4,7 +4,8 @@
 // Spawning over an emitter's life against exact integer oracles: rates
 // with delays, loops and their ends under random splits of time, bursts at
 // their ticks, burst counts and chances by their statistics, rate curves
-// against their integrals, emitter states, stop, restart.
+// against their integrals, emitter states, stop, restart; a box's sides
+// and fine slices of a speed's range drawn alike.
 
 #include "particles.h"
 #include "test_harness.h"
@@ -642,6 +643,74 @@ static void TestShapesThroughTheStep(void)
     mvfxDestroyContext(scene.context);
 }
 
+// A burst of DRAWS particles of an emitter at its start, read after a
+// tick.
+#define DRAWS 40000
+
+static TestParticle s_drawn[DRAWS];
+
+static void Draw(mvfxEmitterDef* emitter)
+{
+    mvfxBurst burst = {
+        .time = 0.0f, .minCount = DRAWS, .maxCount = DRAWS, .cycles = 1, .probability = 1.0f};
+    emitter->rate = 0.0f;
+    emitter->capacity = DRAWS;
+    emitter->lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
+    emitter->bursts = &burst;
+    emitter->burstCount = 1;
+    Scene scene = NewScene(emitter);
+    CHECK(mvfxContext_StepTicks(scene.context, 1) == mvfx_success, "step");
+    CHECK(ReadParticles(scene.context, scene.instance, 0, s_drawn, DRAWS) == DRAWS, "all born");
+    mvfxDestroyContext(scene.context);
+}
+
+// Whether count of DRAWS is half of them within five standard deviations.
+static bool Half(int64_t count)
+{
+    return fabs((double)count - 0.5 * DRAWS) <= 5.0 * sqrt(0.25 * DRAWS);
+}
+
+static void TestEvenDraws(void)
+{
+    // A box's surface, still: as many particles on its faces' negative
+    // sides as on their positive ones.
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.shape.kind = mvfx_shapeBox;
+    emitter.shape.halfExtents[0] = 1.0f;
+    emitter.shape.halfExtents[1] = 2.0f;
+    emitter.shape.halfExtents[2] = 3.0f;
+    emitter.shape.thickness = 0.0f;
+    emitter.velocity.speed = (mvfxRange){0.0f, 0.0f};
+    Draw(&emitter);
+    int64_t negative = 0;
+    for (int32_t i = 0; i < DRAWS; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float p = s_drawn[i].position[k];
+            negative += p == -emitter.shape.halfExtents[k] ? 1 : 0;
+        }
+    }
+    CHECK(Half(negative), "a box's sides alike");
+
+    // Speeds from 2 to 3: as many in the odd 256ths of the range as in the
+    // even ones, and the odd 128ths.
+    emitter = mvfxDefaultEmitterDef();
+    emitter.velocity.mode = mvfx_directionFixed;
+    emitter.velocity.direction[0] = 1.0f;
+    emitter.velocity.speed = (mvfxRange){2.0f, 3.0f};
+    Draw(&emitter);
+    int64_t odd256 = 0;
+    int64_t odd128 = 0;
+    for (int32_t i = 0; i < DRAWS; ++i)
+    {
+        double u = (double)s_drawn[i].velocity[0] - 2.0;
+        odd256 += ((int64_t)floor(u * 256.0) & 1) != 0 ? 1 : 0;
+        odd128 += ((int64_t)floor(u * 128.0) & 1) != 0 ? 1 : 0;
+    }
+    CHECK(Half(odd256) && Half(odd128), "speeds alike in fine slices");
+}
+
 int main(void)
 {
     TestRatesAgainstIntegers();
@@ -652,5 +721,6 @@ int main(void)
     TestStop();
     TestRestartReplays();
     TestShapesThroughTheStep();
+    TestEvenDraws();
     return s_failures == 0 ? 0 : 1;
 }

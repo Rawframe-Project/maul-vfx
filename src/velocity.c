@@ -143,10 +143,9 @@ void mvfxDrawVelocity(const mvfxCompiledVelocity* velocity, const mvfxShapeSampl
             direction[2] = random[2];
         }
     }
-    // The speed from the low byte of every word, apart from the bits the
-    // direction's draws read.
-    uint32_t speedWord = ((words.x & 0xFFu) << 24u) | ((words.y & 0xFFu) << 16u) |
-                         ((words.z & 0xFFu) << 8u) | (words.w & 0xFFu);
+    // The speed from a word drawn afresh from the direction's: their high
+    // bits are the direction's, and pcg4d's low bits are far from even.
+    uint32_t speedWord = mvfxPcg4d(words).x;
     float speed = velocity->speed.min +
                   (velocity->speed.max - velocity->speed.min) * mvfxUnitFloat(speedWord);
     for (int32_t i = 0; i < 3; ++i)

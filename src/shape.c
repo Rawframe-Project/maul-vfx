@@ -286,14 +286,17 @@ static void SampleBoxShell(const float h[3], float t, mvfxWords4 words, float po
         mvfxRandomDirection(words.x, words.y, normal);
         return;
     }
-    int32_t axis = ChooseSlab(weights, total, words.x);
+    // The side from x's top bit, the slab from the bits below it: pcg4d's
+    // low bits are far from even (bit 0 of x is set a quarter or three
+    // quarters of the time), so no draw reads them.
+    int32_t axis = ChooseSlab(weights, total, words.x << 1u);
     // The spans of the slab's other two axes.
     float spans[3] = {
         axis == 0 ? inner[0] : h[0],
         axis == 2 ? h[1] : inner[1],
         inner[2],
     };
-    float side = (words.x & 1u) != 0 ? -1.0f : 1.0f;
+    float side = (words.x >> 31u) != 0 ? -1.0f : 1.0f;
     uint32_t free[2] = {words.y, words.z};
     int32_t used = 0;
     for (int32_t i = 0; i < 3; ++i)

@@ -173,9 +173,10 @@ fn sampleBoxShell(words: vec4<u32>, normal: ptr<function, vec3<f32>>) -> vec3<f3
         *normal = randomDirection(words.x, words.y);
         return vec3<f32>(0.0);
     }
-    // The slab a draw chooses; should the product round onto the total,
-    // the heaviest axis rather than an empty one.
-    let pick = unitFloat(words.x) * total;
+    // The slab from x's bits below its top, which picks the side, as the
+    // core draws them; should the product round onto the total, the
+    // heaviest axis rather than an empty one.
+    let pick = unitFloat(words.x << 1u) * total;
     var axis = select(select(2u, 1u, pick < weights.x + weights.y), 0u, pick < weights.x);
     if (!(weights[axis] > 0.0)) {
         let heaviest = select(0u, 1u, weights.y > weights.x);
@@ -183,7 +184,7 @@ fn sampleBoxShell(words: vec4<u32>, normal: ptr<function, vec3<f32>>) -> vec3<f3
     }
     let spans = vec3<f32>(select(h.x, inner.x, axis == 0u), select(inner.y, h.y, axis == 2u),
                           inner.z);
-    let side = select(1.0, -1.0, (words.x & 1u) != 0u);
+    let side = select(1.0, -1.0, (words.x >> 31u) != 0u);
     let free = vec2<u32>(words.y, words.z);
     var used = 0u;
     var position = vec3<f32>(0.0);
@@ -418,10 +419,9 @@ fn drawVelocity(words: vec4<u32>, local: vec3<f32>, normal: vec3<f32>) -> vec3<f
             direction = random;
         }
     }
-    // The speed from the low byte of every word, apart from the bits the
-    // direction's draws read.
-    let speedWord = ((words.x & 0xFFu) << 24u) | ((words.y & 0xFFu) << 16u) |
-                    ((words.z & 0xFFu) << 8u) | (words.w & 0xFFu);
+    // The speed from a word drawn afresh from the direction's, as the core
+    // draws it.
+    let speedWord = pcg4d(words).x;
     let speed = params.tangentB.w + (params.speed.x - params.tangentB.w) * unitFloat(speedWord);
     return direction * speed;
 }
