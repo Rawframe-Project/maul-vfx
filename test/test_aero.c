@@ -52,7 +52,7 @@ static mvfxEmitterDef Sheet(float normalDrag, float tangentDrag)
     emitter.rate = 0.0f;
     emitter.capacity = 16;
     emitter.hostSpawnCapacity = 1;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.motion.gravity[1] = -9.81f;
     emitter.unit = (mvfxUnitDef){.kind = mvfx_unitSheet,
                                  .points = 4,

@@ -115,7 +115,7 @@ static mvfxEmitterDef Held(const mvfxHostModule* modules, int32_t count)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.hostModules = modules;
     emitter.hostModuleCount = count;
     return emitter;

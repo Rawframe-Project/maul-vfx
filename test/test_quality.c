@@ -39,7 +39,7 @@ static mvfxEffectId NewEffect(mvfxContext* context)
     for (int32_t e = 0; e < 4; ++e)
     {
         s_emitters[e] = mvfxDefaultEmitterDef();
-        s_emitters[e].lifetime = mvfxRangeSource(9.0f, 9.0f);
+        s_emitters[e].lifetime = mvfxMakeRangeSource(9.0f, 9.0f);
         s_emitters[e].rate = 0.0f;
     }
     s_emitters[0].capacity = 100;

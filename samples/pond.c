@@ -42,7 +42,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     leaves.rate = 0.0f;
     leaves.bursts = &drop;
     leaves.burstCount = 1;
-    leaves.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    leaves.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     leaves.shape.kind = mvfx_shapeCircle;
     leaves.shape.offset[1] = 0.2f;
     leaves.shape.radius = 2.0f;

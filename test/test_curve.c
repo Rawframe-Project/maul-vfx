@@ -519,7 +519,7 @@ static void TestReadPastTheEnds(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 200.0f;
-    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     emitter.size = (mvfxVectorSource){.kind = mvfx_sourceCurve,
                                       .min = {1, 1, 1, 0},
                                       .max = {1, 1, 1, 0},

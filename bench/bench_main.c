@@ -127,7 +127,7 @@ static int RunRain(const char* name, float rate, bool meets, bool pushes)
     mvfxEmitterDef rain = mvfxDefaultEmitterDef();
     rain.capacity = (int32_t)(rate * 2.0f) + 1;
     rain.rate = rate;
-    rain.lifetime = mvfxRangeSource(1.5f, 2.0f);
+    rain.lifetime = mvfxMakeRangeSource(1.5f, 2.0f);
     rain.shape = (mvfxShape){.kind = mvfx_shapeBox,
                              .offset = {0.0f, 1.0f, 0.0f},
                              .rotation = {0.0f, 0.0f, 0.0f, 1.0f},

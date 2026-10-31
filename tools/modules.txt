@@ -96,7 +96,7 @@ field_path: file_fields file_tags invariant refusal
 file_codec: field_path file_fields invariant
 file: allocator context effect effect_api effect_check effect_parts field_path file_codec file_fields fpenv refusal
 marching_table:
-surface_mesh: context fpenv gas gas_api instance marching_table refusal
+surface_mesh: context fpenv gas gas_api instance instance_api marching_table refusal
 gas_forces: direction elementary force gas
 gas_pressure: gas tasks
 gas_read: context fpenv gas gas_api gas_lattice instance instance_api layout read_format refusal

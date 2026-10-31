@@ -338,17 +338,17 @@ static mvfxResult Expand(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, bool tube
     return AddRibbons(sim, &ribbons, sink, links);
 }
 
-mvfxResult mvfxGpuSim_ExpandRibbons(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+mvfxResult mvfxGpuSim_AddRibbonExpansion(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
 {
     return Expand(sim, def, false, false);
 }
 
-mvfxResult mvfxGpuSim_ExpandTubes(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+mvfxResult mvfxGpuSim_AddTubeExpansion(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
 {
     return Expand(sim, def, true, false);
 }
 
-mvfxResult mvfxGpuSim_ExpandPlexus(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+mvfxResult mvfxGpuSim_AddPlexusExpansion(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
 {
     return Expand(sim, def, false, true);
 }
@@ -452,12 +452,12 @@ static mvfxResult ExpandQuads(mvfxGpuSim* sim, const mvfxGpuExpandDef* def, uint
                : mvfx_errorState;
 }
 
-mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+mvfxResult mvfxGpuSim_AddSpriteExpansion(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
 {
     return ExpandQuads(sim, def, MVFX_SINK_SPRITES);
 }
 
-mvfxResult mvfxGpuSim_ExpandSheets(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
+mvfxResult mvfxGpuSim_AddSheetExpansion(mvfxGpuSim* sim, const mvfxGpuExpandDef* def)
 {
     return ExpandQuads(sim, def, MVFX_SINK_SHEETS);
 }

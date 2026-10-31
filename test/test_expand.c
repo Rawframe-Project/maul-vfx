@@ -65,7 +65,7 @@ static mvfxEmitterDef Sprites(mvfxBillboard billboard)
     emitter.rate = 0.0f;
     emitter.capacity = 4;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(9.0f, 9.0f);
+    emitter.lifetime = mvfxMakeRangeSource(9.0f, 9.0f);
     emitter.size =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {2, 4, 1, 0}, .max = {2, 4, 1, 0}};
     emitter.color = (mvfxVectorSource){
@@ -158,7 +158,7 @@ static void TestRotated(void)
 {
     // Turned a quarter about the view axis: right is up, up is left.
     mvfxEmitterDef emitter = Sprites(mvfx_billboardRotated);
-    emitter.angle = mvfxRangeSource(1.5707963f, 1.5707963f);
+    emitter.angle = mvfxMakeRangeSource(1.5707963f, 1.5707963f);
     Scene scene = NewScene(&emitter);
     static const double places[3] = {1, 2, 3};
     Spawn(&scene, places, NULL, 1);

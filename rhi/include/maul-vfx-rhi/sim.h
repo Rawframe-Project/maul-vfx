@@ -1114,7 +1114,7 @@ extern "C"
 
 // The counts a ribbon pass writes, 32-bit words: the points and the
 // ribbons there are, as mvfxInstance_WriteRibbons counts them, and the
-// points and the ribbons written (for strips, mvfxGpuSim_ExpandRibbons,
+// points and the ribbons written (for strips, mvfxGpuSim_AddRibbonExpansion,
 // the vertices and the indices). What is left out is the difference, the
 // room a host lacks.
 #define MVFX_GPU_RIBBON_COUNTS 4
@@ -1211,7 +1211,7 @@ extern "C"
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRibbons(mvfxGpuSim* sim,
                                                                  const mvfxGpuRibbonsDef* def);
 
-    // Where an emitter's ribbons expanded go (mvfxGpuSim_ExpandRibbons).
+    // Where an emitter's ribbons expanded go (mvfxGpuSim_AddRibbonExpansion).
     // Build it with mvfxDefaultGpuExpandDef.
     typedef struct mvfxGpuExpandDef
     {
@@ -1237,7 +1237,7 @@ extern "C"
         // for none.
         mrhiResourceId counts;
         uint64_t countsOffset;
-        // For mvfxGpuSim_ExpandTubes, the tubes' sides (0 for strips, else
+        // For mvfxGpuSim_AddTubeExpansion, the tubes' sides (0 for strips, else
         // 3 to MVFX_MAX_TUBE_SIDES) and whether their ends are capped.
         mvfxTubeDef tube;
     } mvfxGpuExpandDef;
@@ -1271,7 +1271,7 @@ extern "C"
     ///         indices as the list; else as mvfxGpuSim_AddRibbons.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandRibbons(mvfxGpuSim* sim,
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddRibbonExpansion(mvfxGpuSim* sim,
                                                                     const mvfxGpuExpandDef* def);
 
     /// Adds the passes expanding an emitter's ribbons into tubes to the
@@ -1287,17 +1287,17 @@ extern "C"
     /// from the CPU path's by what binary32 gathers along the ribbon. What
     /// a host may rely on otherwise, where the passes come and what they
     /// count among: as mvfxGpuSim_AddRibbons; with 0 sides, as
-    /// mvfxGpuSim_ExpandRibbons.
+    /// mvfxGpuSim_AddRibbonExpansion.
     ///
     /// @param sim  The simulation.
     /// @param def  Where the tubes go, from mvfxDefaultGpuExpandDef, with
     ///             its tube's sides and caps.
-    /// @return As mvfxGpuSim_ExpandRibbons; `mvfx_errorInvalid` too for
+    /// @return As mvfxGpuSim_AddRibbonExpansion; `mvfx_errorInvalid` too for
     ///         fewer than 3 sides, `mvfx_errorLimit` for more than
     ///         MVFX_MAX_TUBE_SIDES.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandTubes(mvfxGpuSim* sim,
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddTubeExpansion(mvfxGpuSim* sim,
                                                                   const mvfxGpuExpandDef* def);
 
     /// Adds the passes writing an emitter's plexus links of the last
@@ -1327,15 +1327,15 @@ extern "C"
     /// Adds the passes expanding an emitter's plexus links into triangle
     /// strips, as mvfxInstance_ExpandPlexus expands them on the CPU path:
     /// the passes of mvfxGpuSim_AddPlexus, each link four vertices and six
-    /// indices, as mvfxGpuSim_ExpandRibbons expands a ribbon. The def's
+    /// indices, as mvfxGpuSim_AddRibbonExpansion expands a ribbon. The def's
     /// tube is not read.
     ///
     /// @param sim  The simulation.
     /// @param def  Where the strips go, from mvfxDefaultGpuExpandDef.
-    /// @return As mvfxGpuSim_ExpandRibbons.
+    /// @return As mvfxGpuSim_AddRibbonExpansion.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandPlexus(mvfxGpuSim* sim,
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPlexusExpansion(mvfxGpuSim* sim,
                                                                    const mvfxGpuExpandDef* def);
 
     /// Adds the passes expanding an emitter's particles into quads to the
@@ -1356,10 +1356,10 @@ extern "C"
     ///
     /// @param sim  The simulation.
     /// @param def  Where the quads go, from mvfxDefaultGpuExpandDef.
-    /// @return As mvfxGpuSim_ExpandRibbons.
+    /// @return As mvfxGpuSim_AddRibbonExpansion.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandSprites(mvfxGpuSim* sim,
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddSpriteExpansion(mvfxGpuSim* sim,
                                                                     const mvfxGpuExpandDef* def);
 
     /// Adds the passes expanding an emitter's sheets (mvfx_unitSheet) into
@@ -1380,10 +1380,10 @@ extern "C"
     ///
     /// @param sim  The simulation.
     /// @param def  Where the meshes go, from mvfxDefaultGpuExpandDef.
-    /// @return As mvfxGpuSim_ExpandRibbons.
+    /// @return As mvfxGpuSim_AddRibbonExpansion.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
-    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_ExpandSheets(mvfxGpuSim* sim,
+    MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddSheetExpansion(mvfxGpuSim* sim,
                                                                    const mvfxGpuExpandDef* def);
 
     /// Records the passes mvfxGpuSim_AddPasses added, after the frame is

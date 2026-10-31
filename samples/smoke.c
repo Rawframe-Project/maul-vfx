@@ -69,7 +69,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     mvfxEmitterDef embers = mvfxDefaultEmitterDef();
     embers.capacity = 256;
     embers.rate = 40.0f;
-    embers.lifetime = mvfxRangeSource(2.5f, 3.0f);
+    embers.lifetime = mvfxMakeRangeSource(2.5f, 3.0f);
     embers.shape.kind = mvfx_shapeSphere;
     embers.shape.offset[1] = 0.4f;
     embers.shape.radius = 0.25f;

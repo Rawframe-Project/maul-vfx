@@ -23,7 +23,7 @@ static void Open(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 200;
     emitter.rate = 8.0f;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.events = mvfx_eventMaskBirth;
     emitter.eventCapacity = 16;
     mvfxEffectDef def = mvfxDefaultEffectDef();

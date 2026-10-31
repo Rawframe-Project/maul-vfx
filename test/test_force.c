@@ -58,7 +58,7 @@ static mvfxEmitterDef Held(const mvfxForce* forces, int32_t count)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.forces = forces;
     emitter.forceCount = count;
     return emitter;
@@ -122,7 +122,7 @@ static void TestKinds(void)
     CHECK(Is(a, 0, 0, 4), "within it, linearly");
     AccelerationAt(&emitter, 0, 0, 0, a);
     CHECK(Is(a, 0, 0, 0), "none at the point");
-    force.strength = mvfxRangeSource(-8.0f, -8.0f);
+    force.strength = mvfxMakeRangeSource(-8.0f, -8.0f);
     force.point[0] = 1.0f;
     emitter = Held(&force, 1);
     AccelerationAt(&emitter, 3, 0, 0, a);
@@ -349,7 +349,7 @@ static void TestScaledAndWindy(void)
                         .strength = {.kind = mvfx_sourceRange, .range = {3.0f, 3.0f}}};
     emitter = Held(&force, 1);
     emitter.motion.drag = 1.0f;
-    emitter.motion.dragScale = mvfxRangeSource(1.0f, 1.0f);
+    emitter.motion.dragScale = mvfxMakeRangeSource(1.0f, 1.0f);
     scene = NewScene(&emitter, 0);
     static const double home[3] = {0, 0, 0};
     static const float thrown[3] = {8, 0, 0};
@@ -802,7 +802,7 @@ static void TestRefusals(void)
             force.point[2] = 2.0f * MVFX_MAX_EXTENT;
             break;
         case 4:
-            force.strength = mvfxRangeSource(-2.0f * MVFX_MAX_EXTENT, -2.0f * MVFX_MAX_EXTENT);
+            force.strength = mvfxMakeRangeSource(-2.0f * MVFX_MAX_EXTENT, -2.0f * MVFX_MAX_EXTENT);
             break;
         case 5:
             force.softening = 0.0f;

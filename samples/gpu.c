@@ -240,7 +240,7 @@ static mvfxEffectId MakeFountain(mvfxContext* context)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 1024;
     emitter.rate = 200.0f;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.5f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.5f);
     emitter.velocity = (mvfxVelocity){.mode = mvfx_directionCone,
                                       .direction = {0.0f, 1.0f, 0.0f},
                                       .coneAngle = 0.15f,

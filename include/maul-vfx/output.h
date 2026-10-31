@@ -275,12 +275,11 @@ extern "C"
     /// @param bytesOut  Receives the bytes; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
     ///         nothing live; `mvfx_errorInvalid` for a NULL context or out
-    ///         parameter or an emitter out of range, which counts as misuse
-    ///         when the context is given.
+    ///         parameter or an emitter out of range.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSortScratchBytes(mvfxContext* context,
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSortScratchBytes(const mvfxContext* context,
                                                                         mvfxInstanceId instance,
                                                                         int32_t emitter,
                                                                         int64_t* bytesOut);
@@ -903,13 +902,12 @@ extern "C"
     /// @param bytesOut  Receives the bytes; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
     ///         nothing live; `mvfx_errorInvalid` for a NULL context or out
-    ///         parameter, or a gas out of range or not a surface, which
-    ///         counts as misuse when the context is given.
+    ///         parameter, or a gas out of range or not a surface.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(
-        mvfxContext* context, mvfxInstanceId instance, int32_t gas, int64_t* bytesOut);
+        const mvfxContext* context, mvfxInstanceId instance, int32_t gas, int64_t* bytesOut);
 
     /// Writes the mesh of a surface gas at a level of its distance (0 for
     /// its surface), as the last step left it, by marching cubes (marching

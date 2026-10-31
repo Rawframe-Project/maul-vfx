@@ -65,7 +65,7 @@ static void TestWorldSpawns(void)
         (mvfxVelocity){.mode = mvfx_directionFixed, .direction = {1, 0, 0}, .speed = {2.0f, 2.0f}};
     emitter.color =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 0, 1}, .max = {0, 0, 0, 1}};
-    emitter.lifetime = mvfxRangeSource(5.0f, 5.0f);
+    emitter.lifetime = mvfxMakeRangeSource(5.0f, 5.0f);
     Scene scene = NewScene(&emitter);
     const double origin[3] = {10.0, 0.0, 0.0};
     const float quarter[4] = {0.0f, 0.0f, 0.70710678f, 0.70710678f};
@@ -164,7 +164,7 @@ static void TestEdges(void)
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
     emitter.inheritVelocity = 1.0f;
-    emitter.lifetime = mvfxRangeSource(5.0f, 5.0f);
+    emitter.lifetime = mvfxMakeRangeSource(5.0f, 5.0f);
     emitter.size =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1, 0}, .max = {1, 1, 1, 0}};
     emitter.velocity = (mvfxVelocity){.mode = mvfx_directionFromCenter, .speed = {1.0f, 1.0f}};
@@ -221,7 +221,7 @@ static void TestEdges(void)
     emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 1;
-    emitter.lifetime = mvfxRangeSource(0.1f, 0.1f);
+    emitter.lifetime = mvfxMakeRangeSource(0.1f, 0.1f);
     scene = NewScene(&emitter);
     mvfxSpawnRequest one = {.count = 1, .positions = places};
     CHECK(mvfxInstance_Spawn(scene.context, scene.instance, 0, &one) == mvfx_success, "queued");
@@ -341,7 +341,7 @@ static void TestPrewarm(void)
     emitter.capacity = 60;
     emitter.bursts = &burst;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(0.3f, 1.4f);
+    emitter.lifetime = mvfxMakeRangeSource(0.3f, 1.4f);
     Scene warmed = NewScene(&emitter);
     Scene stepped = NewScene(&emitter);
     double left = 3.0;

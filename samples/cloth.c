@@ -49,7 +49,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     cloth.rate = 0.0f;
     cloth.bursts = &once;
     cloth.burstCount = 1;
-    cloth.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    cloth.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     cloth.shape.offset[0] = -0.5f * SPACING * (SIDE - 1);
     cloth.shape.offset[1] = 2.0f;
     cloth.shape.offset[2] = -0.5f * SPACING * (SIDE - 1);

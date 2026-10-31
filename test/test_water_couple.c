@@ -42,7 +42,7 @@ static mvfxEmitterDef Coupled(const mvfxWaterCoupling* coupling)
     emitter.rate = 0.0f;
     emitter.capacity = 16;
     emitter.hostSpawnCapacity = 16;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.water = *coupling;
     emitter.events = mvfx_eventMaskWater | mvfx_eventMaskDeath;
     emitter.eventCapacity = 64;
@@ -199,7 +199,7 @@ static void TestRefusals(void)
     mvfxEmitterDef emitters[2] = {Coupled(&pour), mvfxDefaultEmitterDef()};
     emitters[1].capacity = 16;
     emitters[1].rate = 0.0f;
-    emitters[1].lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitters[1].lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventWater,

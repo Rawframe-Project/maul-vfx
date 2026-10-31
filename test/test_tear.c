@@ -53,7 +53,7 @@ static mvfxEmitterDef Chain(int32_t points)
     emitter.rate = 0.0f;
     emitter.capacity = points;
     emitter.hostSpawnCapacity = 1;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.events = mvfx_eventMaskTear;
     emitter.eventCapacity = 16;
     emitter.unit = (mvfxUnitDef){.kind = mvfx_unitChain,
@@ -293,7 +293,7 @@ static void TestSheet(void)
         emitters[0].hostModuleCount = 1;
         emitters[1].rate = 0.0f;
         emitters[1].capacity = 16;
-        emitters[1].lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+        emitters[1].lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
         emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                   .source = 0,
                                                   .kind = mvfx_eventTear,
@@ -418,7 +418,7 @@ static void TestReborn(void)
     // A sheet with every edge torn dies; one born in its slots is whole. A
     // restart clears the count.
     mvfxEmitterDef emitter = Sheet(3);
-    emitter.lifetime = mvfxRangeSource(0.1f, 0.1f);
+    emitter.lifetime = mvfxMakeRangeSource(0.1f, 0.1f);
     emitter.hostSpawnCapacity = 1;
     Open(&emitter, 1);
     Steps(1);

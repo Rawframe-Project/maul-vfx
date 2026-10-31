@@ -49,7 +49,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     mvfxEmitterDef* trail = &emitters[0];
     trail->capacity = TRAIL_CAPACITY;
     trail->rate = 60.0f;
-    trail->lifetime = mvfxRangeSource(1.0f, 1.0f);
+    trail->lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     trail->size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.2f, 0.2f, 0.2f}, .max = {0.2f, 0.2f, 0.2f}};
     trail->ribbon.ids = mvfx_ribbonOne;
@@ -63,7 +63,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     mvfxEmitterDef* beam = &emitters[1];
     beam->capacity = BEAM_SEGMENTS + 1;
     beam->rate = 0.0f;
-    beam->lifetime = mvfxRangeSource(0.1f, 0.1f);
+    beam->lifetime = mvfxMakeRangeSource(0.1f, 0.1f);
     beam->ribbon.ids = mvfx_ribbonOne;
     beam->beam = (mvfxBeamDef){.enable = true,
                                .segments = BEAM_SEGMENTS,

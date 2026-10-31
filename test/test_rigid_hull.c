@@ -65,7 +65,7 @@ static mvfxEmitterDef Rigid(mvfxRigidShape shape, mvfxMeshId hull, const float s
     emitter.rate = 0.0f;
     emitter.capacity = 4;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.motion.gravity[0] = 0.0f;
     emitter.motion.gravity[1] = gravity ? -9.81f : 0.0f;
     emitter.motion.gravity[2] = 0.0f;

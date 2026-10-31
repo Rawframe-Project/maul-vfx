@@ -96,7 +96,7 @@ static void Tumbled(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, b
 static mvfxEmitterDef Thrown(mvfxRigidShape shape, const mvfxCollider* colliders, int32_t count)
 {
     mvfxEmitterDef emitter = Bodies(shape);
-    emitter.lifetime = mvfxRangeSource(0.8f, 1.2f);
+    emitter.lifetime = mvfxMakeRangeSource(0.8f, 1.2f);
     emitter.velocity.direction[1] = -1.0f;
     emitter.colliders = colliders;
     emitter.colliderCount = count;
@@ -207,7 +207,7 @@ static void TestFloor(Gpu* gpu, mvfxGpu* kernels)
     // of the bodies are newborns, their drops counted with the rest.
     emitter = Thrown(mvfx_rigidCapsule, floors, 5);
     emitter.events = 0;
-    emitter.lifetime = mvfxRangeSource(0.15f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.15f, 0.25f);
     emitter.shape = (mvfxShape){.kind = mvfx_shapeBox,
                                 .rotation = {0, 0, 0, 1},
                                 .offset = {0, -0.605f, 0},
@@ -374,7 +374,7 @@ static void TestStrikes(Gpu* gpu, mvfxGpu* kernels)
     // die in the rest of the strike's step, their deaths written the next
     // step at their ticks, before its start.
     emitter = Thrown(mvfx_rigidSphere, &floor, 1);
-    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     emitter.shape.radius = 0.1f;
     emitter.shape.offset[1] = -0.45f;
     emitter.collision.lifeLoss = 0.96f;
@@ -407,7 +407,7 @@ static void TestSleep(Gpu* gpu, mvfxGpu* kernels)
     emitter.motion.gravity[1] = 0.0f;
     emitter.motion.drag = 30.0f;
     emitter.motion.angularDrag = 30.0f;
-    emitter.lifetime = mvfxRangeSource(1.0f, 1.5f);
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.5f);
     emitter.rigid.sleepSpeed = 0.05f;
     emitter.rigid.sleepTime = 0.1f;
     Settled(gpu, kernels, &emitter, "capsules falling asleep in a drag, the whole run");
@@ -427,7 +427,7 @@ static void TestSleep(Gpu* gpu, mvfxGpu* kernels)
     emitter.rigid.restitution = 0.0f;
     emitter.rigid.sleepSpeed = 0.1f;
     emitter.rigid.sleepTime = 0.1f;
-    emitter.lifetime = mvfxRangeSource(2.0f, 3.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 3.0f);
     emitter.events = 0;
     Met(gpu, kernels, &(Run){.mostApart = 32, .emitters = &emitter},
         "capsules falling asleep on a floor");
@@ -689,7 +689,7 @@ static void TestHeldSpeed(Gpu* gpu, mvfxGpu* kernels)
     emitter.burstCount = 0;
     emitter.capacity = 4;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.space = mvfx_spaceWorld;
     emitter.collision.hostColliders = true;
     emitter.size = (mvfxVectorSource){
@@ -807,7 +807,7 @@ static void TestFreeBoxes(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef emitter = Bodies(mvfx_rigidBox);
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.5f, 1.0f, 1.5f}, .max = {0.5f, 1.0f, 1.5f}};
-    emitter.lifetime = mvfxRangeSource(20.0f, 20.0f);
+    emitter.lifetime = mvfxMakeRangeSource(20.0f, 20.0f);
     emitter.motion.angularDrag = 0.0f;
     emitter.rigid.substeps = 8;
     emitter.orientationMode = mvfx_orientationNone;
@@ -822,7 +822,7 @@ static void TestFreeBoxes(Gpu* gpu, mvfxGpu* kernels)
     // by 3.3.
     emitter.size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.3f, 0.6f, 1.2f}, .max = {0.6f, 1.6f, 1.9f}};
-    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     emitter.orientationMode = mvfx_orientationRandom;
     emitter.angularVelocity = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {-500, -500, -500}, .max = {500, 500, 500}};
@@ -877,7 +877,7 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
         mvfxEmitterDef emitter = Bodies((mvfxRigidShape)shape);
         emitter.size = (mvfxVectorSource){
             .kind = mvfx_sourceRange, .min = {4e-7f, 0.4f, 4e-7f}, .max = {4e-7f, 0.4f, 4e-7f}};
-        emitter.lifetime = mvfxRangeSource(20.0f, 20.0f);
+        emitter.lifetime = mvfxMakeRangeSource(20.0f, 20.0f);
         emitter.motion.angularDrag = 0.0f;
         emitter.orientationMode = mvfx_orientationEuler;
         emitter.orientation = (mvfxVectorSource){

@@ -45,7 +45,7 @@ static mvfxEmitterDef Held(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     return emitter;
 }
 

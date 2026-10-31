@@ -20,6 +20,7 @@
 #include "gas.h"
 #include "gas_api.h"
 #include "instance.h"
+#include "instance_api.h"
 #include "marching_table.h"
 #include "refusal.h"
 
@@ -399,26 +400,26 @@ static const mvfxInstance* FindSurface(mvfxContext* context, mvfxInstanceId inst
     return live;
 }
 
-mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(mvfxContext* context, mvfxInstanceId instance,
-                                                   int32_t gas, int64_t* bytesOut)
+mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(const mvfxContext* context,
+                                                   mvfxInstanceId instance, int32_t gas,
+                                                   int64_t* bytesOut)
 {
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
-    }
     if (bytesOut != nullptr)
     {
         *bytesOut = 0;
     }
-    mvfxResult result = mvfx_success;
-    const mvfxInstance* live = FindSurface(context, instance, gas, &result);
+    if (context == nullptr || bytesOut == nullptr)
+    {
+        return mvfx_errorInvalid;
+    }
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
     {
-        return result;
+        return mvfx_errorStale;
     }
-    if (bytesOut == nullptr)
+    if (gas < 0 || gas >= live->effect->gasCount ||
+        live->effect->gases[gas].def.kind != mvfx_gasSurface)
     {
-        mvfxCountMisuse(context);
         return mvfx_errorInvalid;
     }
     *bytesOut = ScratchBytes(&live->effect->gases[gas]);

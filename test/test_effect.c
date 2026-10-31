@@ -159,16 +159,16 @@ static void TestInvalidDefsAreMisuse(void)
             bad.rate = MVFX_MAX_SPAWN_RATE * 2.0f;
             break;
         case 6:
-            bad.lifetime = mvfxRangeSource(0.0f, 1.0f);
+            bad.lifetime = mvfxMakeRangeSource(0.0f, 1.0f);
             break;
         case 7:
-            bad.lifetime = mvfxRangeSource(2.0f, 1.0f);
+            bad.lifetime = mvfxMakeRangeSource(2.0f, 1.0f);
             break;
         case 8:
-            bad.lifetime = mvfxRangeSource(1.0f, INFINITY);
+            bad.lifetime = mvfxMakeRangeSource(1.0f, INFINITY);
             break;
         case 9:
-            bad.lifetime = mvfxRangeSource(NAN, 1.0f);
+            bad.lifetime = mvfxMakeRangeSource(NAN, 1.0f);
             break;
         case 10:
             broken.cookie = 0;
@@ -198,7 +198,7 @@ static void TestInvalidDefsAreMisuse(void)
     mvfxEmitterDef edges = mvfxDefaultEmitterDef();
     edges.capacity = MVFX_MAX_EMITTER_CAPACITY;
     edges.rate = 0.0f;
-    edges.lifetime = mvfxRangeSource(MVFX_MAX_LIFETIME, MVFX_MAX_LIFETIME);
+    edges.lifetime = mvfxMakeRangeSource(MVFX_MAX_LIFETIME, MVFX_MAX_LIFETIME);
     mvfxEffectDef atEdges = OneEmitter(&edges);
     CHECK(mvfxCreateEffect(context, &atEdges, &effect, NULL) == mvfx_success,
           "every edge accepted");
@@ -559,7 +559,7 @@ static void TestValuesRefused(void)
             bad.lifetime.kind = mvfx_sourceNone;
             break;
         case 1:
-            bad.lifetime = mvfxRangeSource(-1.0f, 1.0f);
+            bad.lifetime = mvfxMakeRangeSource(-1.0f, 1.0f);
             break;
         case 2:
             bad.lifetime =
@@ -592,7 +592,7 @@ static void TestValuesRefused(void)
             bad.color = (mvfxVectorSource){.kind = mvfx_sourceParameter, .parameter = -1};
             break;
         case 10:
-            bad.angle = mvfxRangeSource(1.0f, 0.0f);
+            bad.angle = mvfxMakeRangeSource(1.0f, 0.0f);
             break;
         case 11:
             bad.spin = (mvfxScalarSource){.kind = 7};

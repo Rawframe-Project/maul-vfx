@@ -263,10 +263,10 @@ static void TestExactAlignmentIsEnough(void)
     emitter.rate = 200.0f;
     emitter.size = set;
     emitter.color = set;
-    emitter.angle = mvfxRangeSource(0.0f, 1.0f);
+    emitter.angle = mvfxMakeRangeSource(0.0f, 1.0f);
     emitter.orientationMode = mvfx_orientationRandom;
     emitter.frame = (mvfxFrameStart){mvfx_frameRandom, 2, 9};
-    emitter.motion.dragScale = mvfxRangeSource(0.5f, 2.0f);
+    emitter.motion.dragScale = mvfxMakeRangeSource(0.5f, 2.0f);
     emitter.collision.enable = true;
     emitter.custom = custom;
     emitter.customCount = 2;
@@ -348,7 +348,7 @@ static void TestMemoryPastSizeIsRefused(void)
         // sprite, a turn, a frame, a drag multiplier and scene queries, 67.
         mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
         emitter.capacity = MVFX_MAX_EMITTER_CAPACITY;
-        emitter.angle = mvfxRangeSource(0.0f, 1.0f);
+        emitter.angle = mvfxMakeRangeSource(0.0f, 1.0f);
         emitter.custom = custom;
         emitter.customCount = 7;
         if (arrays[c] == 67)
@@ -358,7 +358,7 @@ static void TestMemoryPastSizeIsRefused(void)
             emitter.color = set;
             emitter.orientationMode = mvfx_orientationRandom;
             emitter.frame = (mvfxFrameStart){mvfx_frameRandom, 2, 9};
-            emitter.motion.dragScale = mvfxRangeSource(0.5f, 2.0f);
+            emitter.motion.dragScale = mvfxMakeRangeSource(0.5f, 2.0f);
             emitter.collision.enable = true;
             emitter.collision.enableSceneQueries = true;
             emitter.collision.queryCapacity = 1;
@@ -425,10 +425,10 @@ static size_t BlockFor(mvfxContext* context, int32_t capacity, int32_t hostSpawn
     emitter.customCount = MVFX_MAX_CUSTOM_ATTRIBUTES;
     emitter.size = set;
     emitter.color = set;
-    emitter.angle = mvfxRangeSource(0.0f, 1.0f);
+    emitter.angle = mvfxMakeRangeSource(0.0f, 1.0f);
     emitter.orientationMode = mvfx_orientationRandom;
     emitter.frame = (mvfxFrameStart){mvfx_frameRandom, 2, 9};
-    emitter.motion.dragScale = mvfxRangeSource(0.5f, 2.0f);
+    emitter.motion.dragScale = mvfxMakeRangeSource(0.5f, 2.0f);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;

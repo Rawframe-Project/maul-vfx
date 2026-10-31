@@ -47,7 +47,7 @@ static mvfxEmitterDef Held(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     return emitter;
 }
 
@@ -115,7 +115,7 @@ static void TestSetAndScale(void)
         {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
         {.time = 1.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear}};
     emitter = Held();
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     emitter.velocityModules.addedDirection[2] = 1.0f;
     emitter.velocityModules.addedSpeed =
         (mvfxLifeCurve){.value = 3.0f, .curve = {.keys = rising, .keyCount = 2}};
@@ -136,7 +136,7 @@ static void TestOrbitAndRadial(void)
     for (int32_t steps = 1; steps <= 64; steps *= 64)
     {
         mvfxEmitterDef emitter = Held();
-        emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+        emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
         emitter.velocityModules.orbitAxis[2] = 2.0f;
         emitter.velocityModules.orbitCenter[0] = 1.0f;
         emitter.velocityModules.orbitRate.value = 3.14159265f;
@@ -292,7 +292,7 @@ static void TestMoreUnderAnInstance(void)
         {.time = 0.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear},
         {.time = 1.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear}};
     emitter = Held();
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     emitter.velocityModules.motionScale =
         (mvfxLifeCurve){.value = 1.0f, .curve = {.keys = falling, .keyCount = 2}};
     scene = NewScene(&emitter);

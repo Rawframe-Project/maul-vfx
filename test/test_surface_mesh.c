@@ -59,7 +59,7 @@ static bool Open(int32_t n, int32_t depth, float cell, float radius, mvfxGasKind
     emitter.rate = 0.0f;
     emitter.capacity = 64;
     emitter.hostSpawnCapacity = 64;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;

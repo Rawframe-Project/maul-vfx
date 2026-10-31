@@ -890,13 +890,9 @@ mvfxResult mvfxInstance_SetParameter(mvfxContext* context, mvfxInstanceId instan
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_GetParameter(mvfxContext* context, mvfxInstanceId instance,
+mvfxResult mvfxInstance_GetParameter(const mvfxContext* context, mvfxInstanceId instance,
                                      int32_t parameter, float valueOut[4])
 {
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
-    }
     if (valueOut != nullptr)
     {
         for (int32_t c = 0; c < 4; ++c)
@@ -904,11 +900,18 @@ mvfxResult mvfxInstance_GetParameter(mvfxContext* context, mvfxInstanceId instan
             valueOut[c] = 0.0f;
         }
     }
-    mvfxInstance* live = nullptr;
-    mvfxResult result = FindParameter(context, instance, parameter, valueOut, &live);
-    if (result != mvfx_success)
+    if (context == nullptr || valueOut == nullptr)
     {
-        return result;
+        return mvfx_errorInvalid;
+    }
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return mvfx_errorStale;
+    }
+    if (parameter < 0 || parameter >= live->effect->parameterCount)
+    {
+        return mvfx_errorInvalid;
     }
     for (int32_t c = 0; c < 4; ++c)
     {
@@ -971,25 +974,18 @@ mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context, mvfxInstanceId instan
     return mvfx_success;
 }
 
-mvfxResult mvfxInstance_GetQuality(mvfxContext* context, mvfxInstanceId instance, int32_t* levelOut)
+mvfxResult mvfxInstance_GetQuality(const mvfxContext* context, mvfxInstanceId instance,
+                                   int32_t* levelOut)
 {
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
-    }
     if (levelOut != nullptr)
     {
         *levelOut = 0;
     }
     if (context == nullptr || levelOut == nullptr)
     {
-        if (context != nullptr)
-        {
-            mvfxCountMisuse(context);
-        }
         return mvfx_errorInvalid;
     }
-    mvfxInstance* live = mvfxContextInstance(context, instance);
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
     {
         return mvfx_errorStale;

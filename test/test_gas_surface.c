@@ -42,7 +42,7 @@ static mvfxEmitterDef Emitter(int32_t capacity)
     emitter.rate = 0.0f;
     emitter.capacity = capacity;
     emitter.hostSpawnCapacity = capacity;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     return emitter;
 }
 

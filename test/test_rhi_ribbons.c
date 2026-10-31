@@ -75,7 +75,7 @@ static void TestSources(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].eventCapacity = 4096;
     emitters[1].rate = 120.0f;
     emitters[1].burstCount = 0;
-    emitters[1].lifetime = mvfxRangeSource(0.1f, 0.3f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.1f, 0.3f);
     emitters[1].velocity.speed = (mvfxRange){0.5f, 1.0f};
     emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
@@ -100,13 +100,13 @@ static void TestSourcesFarApart(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].capacity = 16384;
     emitters[0].rate = 60000.0f;
     emitters[0].burstCount = 0;
-    emitters[0].lifetime = mvfxRangeSource(0.1f, 0.2f);
+    emitters[0].lifetime = mvfxMakeRangeSource(0.1f, 0.2f);
     emitters[0].events = mvfx_eventMaskDeath;
     emitters[0].eventCapacity = 4096;
     emitters[1].capacity = 16384;
     emitters[1].rate = 100.0f;
     emitters[1].burstCount = 0;
-    emitters[1].lifetime = mvfxRangeSource(0.1f, 0.3f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.1f, 0.3f);
     emitters[1].eventSpawn = (mvfxEventSpawn){.enable = true,
                                               .source = 0,
                                               .kind = mvfx_eventDeath,
@@ -145,7 +145,7 @@ static void TestKilled(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne, 0.6f);
     emitter.killRules = &rule;
     emitter.killRuleCount = 1;
-    emitter.lifetime = mvfxRangeSource(0.03f, 0.3f);
+    emitter.lifetime = mvfxMakeRangeSource(0.03f, 0.3f);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
@@ -166,7 +166,7 @@ static void TestEnded(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne, 0.0f);
     emitter.rate = 45.0f;
     emitter.burstCount = 0;
-    emitter.lifetime = mvfxRangeSource(0.02f, 0.08f);
+    emitter.lifetime = mvfxMakeRangeSource(0.02f, 0.08f);
     Compare(
         gpu, kernels,
         &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 120, .least = 2, .moving = true},
@@ -183,7 +183,7 @@ static void TestMany(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef emitter = Ribboned(mvfx_ribbonOne, 0.05f);
     emitter.capacity = 16384;
     emitter.rate = 36000.0f;
-    emitter.lifetime = mvfxRangeSource(0.1f, 0.3f);
+    emitter.lifetime = mvfxMakeRangeSource(0.1f, 0.3f);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
@@ -203,7 +203,7 @@ static void TestMany(Gpu* gpu, mvfxGpu* kernels)
     emitter.rate = 0.0f;
     emitter.bursts = bursts;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(0.1f, 0.3f);
+    emitter.lifetime = mvfxMakeRangeSource(0.1f, 0.3f);
     Compare(
         gpu, kernels,
         &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 20, .least = 2000, .moving = true},

@@ -24,7 +24,7 @@ static Scene NewScene(int32_t capacity, float rate, mvfxRange lifetime)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = capacity;
     emitter.rate = rate;
-    emitter.lifetime = mvfxRangeSource(lifetime.min, lifetime.max);
+    emitter.lifetime = mvfxMakeRangeSource(lifetime.min, lifetime.max);
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;

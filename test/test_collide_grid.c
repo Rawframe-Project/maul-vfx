@@ -51,7 +51,7 @@ static mvfxEmitterDef Held(const mvfxCollider* colliders, int32_t count, int32_t
     emitter.rate = 0.0f;
     emitter.capacity = capacity;
     emitter.hostSpawnCapacity = capacity;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.collision = (mvfxCollision){.enable = true, .restitution = 1.0f};
     emitter.colliders = colliders;
     emitter.colliderCount = count;

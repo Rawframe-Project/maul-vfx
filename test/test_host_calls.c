@@ -285,12 +285,15 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
     return true;
 }
 
-// From a host module, each call that writes outputs, called back in:
-// refused as busy and writing none of them, counts and single values as
-// well as buffers, since any may be one the call in progress fills. The
-// layout is live, so any other refusal would zero them.
+// From a host module, each call that writes outputs and takes the context
+// mutable, called back in: refused as busy and writing none of them,
+// counts and single values as well as buffers, since any may be one the
+// call in progress fills. The layout is live, so any other refusal would
+// zero them. The reads that take a const context answer instead.
 static mvfxLayoutId s_layout;
 static bool s_left;
+// Whether the reads taking a const context answered from the module.
+static bool s_answered;
 
 static void WriteBack(const mvfxModuleCall* call, void* user)
 {
@@ -314,8 +317,6 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     static float positions[3];
     static mvfxBounds bounds;
     static mvfxEmitterStats stats;
-    static float values[4];
-    static int32_t level;
     static double remaining;
     static const mvfxEvent* events;
     static const mvfxSceneQuery* queries;
@@ -330,8 +331,6 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     memset(positions, 0xEE, sizeof positions);
     memset(&bounds, 0xEE, sizeof bounds);
     memset(&stats, 0xEE, sizeof stats);
-    memset(values, 0xEE, sizeof values);
-    memset(&level, 0xEE, sizeof level);
     memset(&remaining, 0xEE, sizeof remaining);
     memset(&eventCount, 0xEE, sizeof eventCount);
     memset(&queryCount, 0xEE, sizeof queryCount);
@@ -365,12 +364,8 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
             mvfx_errorBusy &&
         mvfxInstance_WriteSurfaceMesh(target, i, 0, eye, 0.0f, &mesh, &n[16], &n[17]) ==
             mvfx_errorBusy &&
-        mvfxInstance_GetSortScratchBytes(target, i, 0, &n[0]) == mvfx_errorBusy &&
-        mvfxInstance_GetSurfaceMeshScratchBytes(target, i, 0, &n[1]) == mvfx_errorBusy &&
         mvfxInstance_GetBounds(target, i, -1, &bounds) == mvfx_errorBusy &&
         mvfxInstance_GetEmitterStats(target, i, 0, &stats) == mvfx_errorBusy &&
-        mvfxInstance_GetParameter(target, i, 0, values) == mvfx_errorBusy &&
-        mvfxInstance_GetQuality(target, i, &level) == mvfx_errorBusy &&
         mvfxInstance_GetEvents(target, i, 0, &events, &eventCount) == mvfx_errorBusy &&
         mvfxInstance_GetSceneQueries(target, i, 0, &queries, &queryCount) == mvfx_errorBusy &&
         mvfxInstance_Prewarm(target, i, 1.0, 0.1, 4, &remaining) == mvfx_errorBusy;
@@ -379,11 +374,24 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
              Filled(lights, sizeof lights, 0xEE) && Filled(items, sizeof items, 0xEE) &&
              Filled(ribbons, sizeof ribbons, 0xEE) && Filled(positions, sizeof positions, 0xEE) &&
              Filled(&bounds, sizeof bounds, 0xEE) && Filled(&stats, sizeof stats, 0xEE) &&
-             Filled(values, sizeof values, 0xEE) && Filled(&level, sizeof level, 0xEE) &&
              Filled(&remaining, sizeof remaining, 0xEE) &&
              Filled(&eventCount, sizeof eventCount, 0xEE) &&
              Filled(&queryCount, sizeof queryCount, 0xEE) && events == (const mvfxEvent*)records &&
              queries == (const mvfxSceneQuery*)records;
+    // The reads taking a const context answer, never busy: the quality
+    // and the sort scratch (none for this emitter); the parameter and the
+    // surface mesh's scratch refused as invalid, the effect having neither
+    // a parameter nor a gas.
+    float values[4];
+    int32_t level = -1;
+    int64_t bytes = -1;
+    int64_t meshBytes = -1;
+    s_answered =
+        mvfxInstance_GetParameter(target, i, 0, values) == mvfx_errorInvalid &&
+        mvfxInstance_GetQuality(target, i, &level) == mvfx_success && level == 0 &&
+        mvfxInstance_GetSortScratchBytes(target, i, 0, &bytes) == mvfx_success && bytes == 0 &&
+        mvfxInstance_GetSurfaceMeshScratchBytes(target, i, 0, &meshBytes) == mvfx_errorInvalid &&
+        meshBytes == 0;
 }
 
 static const mvfxHostModule s_writeBack = {.stage = mvfx_stageAfterMotion, .function = WriteBack};
@@ -412,9 +420,11 @@ static void TestBusyLeavesBuffers(void)
     layoutDef.stride = 16;
     CHECK(mvfxCreateLayout(context, &layoutDef, &s_layout) == mvfx_success, "layout");
     s_left = false;
+    s_answered = false;
     s_target = context;
     CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success && s_target == NULL && s_left,
           "a host module's calls back in refused as busy, writing none of their outputs");
+    CHECK(s_answered, "a host module's const reads answered");
     mvfxDestroyContext(context);
 }
 

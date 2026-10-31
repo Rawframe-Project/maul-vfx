@@ -195,7 +195,7 @@ static void TestUniformDraws(void)
     mvfxBurst burst = {.minCount = COUNT, .maxCount = COUNT, .cycles = 1, .probability = 1.0f};
     emitter.bursts = &burst;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.custom = &custom;
     emitter.customCount = 1;
     mvfxContextDef contextDef = mvfxDefaultContextDef();

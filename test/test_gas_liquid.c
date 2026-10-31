@@ -65,7 +65,7 @@ static mvfxEmitterDef Emitter(float spacing, const mvfxCollider* box, int32_t ca
     emitter.rate = 0.0f;
     emitter.capacity = capacity;
     emitter.hostSpawnCapacity = capacity;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.liquid.enable = true;
     emitter.liquid.solver = mvfx_liquidGrid;
     emitter.liquid.gas = 0;
@@ -871,14 +871,14 @@ static void OpenTwins(const float courant[2], mvfxEffectId effects[2], mvfxInsta
                                       mvfxDefaultEmitterDef()};
         emitters[0].motion.gravity[1] = -9.81f;
         emitters[1].rate = 600.0f;
-        emitters[1].lifetime = mvfxRangeSource(0.02f, 0.05f);
+        emitters[1].lifetime = mvfxMakeRangeSource(0.02f, 0.05f);
         emitters[1].events = mvfx_eventMaskDeath;
         emitters[1].eventCapacity = 64;
         // Two children a death, from their step's deaths alone.
         emitters[2].rate = 0.0f;
         emitters[2].burstCount = 0;
         emitters[2].capacity = 512;
-        emitters[2].lifetime = mvfxRangeSource(1.0f, 1.0f);
+        emitters[2].lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
         emitters[2].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                   .source = 1,
                                                   .kind = mvfx_eventDeath,

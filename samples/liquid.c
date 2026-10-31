@@ -51,7 +51,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     water.rate = 150.0f;
     water.duration = 1.0f;
     water.loops = 1;
-    water.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    water.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     water.shape.kind = mvfx_shapeCircle;
     water.shape.offset[1] = 0.9f;
     water.shape.radius = 0.08f;

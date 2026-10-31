@@ -89,7 +89,7 @@ static mvfxEmitterDef Rigid(mvfxRigidShape shape, float x, float y, float z)
     emitter.rate = 0.0f;
     emitter.capacity = 8;
     emitter.hostSpawnCapacity = 8;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.motion.gravity[0] = 0.0f;
     emitter.motion.gravity[1] = -9.81f;
     emitter.motion.gravity[2] = 0.0f;
@@ -1653,7 +1653,7 @@ static void TestTiedSizes(void)
     // seconds, likewise.
     mvfxEmitterDef emitters[2] = {mvfxDefaultEmitterDef(), Rigid(mvfx_rigidCapsule, 1, 1, 1)};
     emitters[0].rate = 40.0f;
-    emitters[0].lifetime = mvfxRangeSource(0.1f, 0.1f);
+    emitters[0].lifetime = mvfxMakeRangeSource(0.1f, 0.1f);
     emitters[0].size =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 2, 3}, .max = {1, 2, 3}};
     emitters[0].events = mvfx_eventMaskDeath;

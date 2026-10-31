@@ -870,7 +870,7 @@ static void TestSplats(Gpu* gpu, mvfxGpu* kernels)
     splatter.capacity = 512;
     splatter.rate = 300.0f;
     splatter.burstCount = 0;
-    splatter.lifetime = mvfxRangeSource(0.3f, 0.6f);
+    splatter.lifetime = mvfxMakeRangeSource(0.3f, 0.6f);
     splatter.shape.radius = 0.3f;
     splatter.velocity.speed = (mvfxRange){0.5f, 1.0f};
     splatter.motion.gravity[1] = 0.0f;

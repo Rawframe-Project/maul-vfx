@@ -16,10 +16,6 @@ extern "C"
 {
 #endif
 
-// The longest step a context takes in one call, in seconds: a host
-// catching up a longer span steps it in parts, which reach the same state.
-#define MVFX_MAX_STEP_SECONDS 1.0
-
     // Names an instance of a context: a 1-based slot, 0 for the null id,
     // and a generation that tells a live instance from earlier occupants of
     // its slot.
@@ -621,10 +617,10 @@ extern "C"
     /// @param valueOut   Receives four floats; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument or an index
-    ///         out of range, which counts as misuse when the context is given.
+    ///         out of range.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetParameter(mvfxContext* context,
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetParameter(const mvfxContext* context,
                                                                  mvfxInstanceId instance,
                                                                  int32_t parameter,
                                                                  float valueOut[4]);
@@ -760,11 +756,10 @@ extern "C"
     /// @param instance  The instance.
     /// @param levelOut  Receives its level: 0 the full one; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL argument, which counts
-    ///         as misuse when the context is given.
+    ///         instance; `mvfx_errorInvalid` for a NULL argument.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetQuality(mvfxContext* context,
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetQuality(const mvfxContext* context,
                                                                mvfxInstanceId instance,
                                                                int32_t* levelOut);
 
@@ -786,38 +781,6 @@ extern "C"
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_BreakRibbons(mvfxContext* context,
                                                                  mvfxInstanceId instance,
                                                                  int32_t emitter);
-
-    /// Advances every instance of the context by a span of time: each
-    /// emitter spawns what it owes by the new time, each particle ages from
-    /// its birth, and particles whose life has ended are removed. The span is
-    /// rounded once to ticks (MVFX_TICKS_PER_SECOND), so spans whose ticks
-    /// sum to the same clock reach the same state.
-    ///
-    /// @param context  The context.
-    /// @param seconds  The span, from 0 to MVFX_MAX_STEP_SECONDS.
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or a
-    ///         span below 0 or not finite; `mvfx_errorLimit` for a span past
-    ///         MVFX_MAX_STEP_SECONDS. Either counts as misuse when the
-    ///         context is given.
-    /// @par Thread safety
-    /// Safe from any thread; the context is used by one thread at a time. Its
-    /// work runs on the host's task hooks when the context has them.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_Step(mvfxContext* context, double seconds);
-
-    /// Advances every instance of the context by a number of ticks, as
-    /// mvfxContext_Step does without the rounding.
-    ///
-    /// @param context  The context.
-    /// @param ticks    The span in ticks, from 0 to MVFX_MAX_STEP_SECONDS
-    ///                 seconds' worth.
-    /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL context or a
-    ///         span below 0; `mvfx_errorLimit` for a span past
-    ///         MVFX_MAX_STEP_SECONDS. Either counts as misuse when the
-    ///         context is given.
-    /// @par Thread safety
-    /// Safe from any thread; the context is used by one thread at a time. Its
-    /// work runs on the host's task hooks when the context has them.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxContext_StepTicks(mvfxContext* context, int64_t ticks);
 
     // What a gas is now: its cells and their edge, and its box's center
     // and orientation (x, y, z, w) in the world, and the scale of its box

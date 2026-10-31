@@ -55,7 +55,7 @@ static mvfxEmitterDef Chain(mvfxAttachKind kind)
     emitter.rate = 0.0f;
     emitter.capacity = 12;
     emitter.hostSpawnCapacity = 2;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.motion.gravity[1] = -9.81f;
     emitter.unit = (mvfxUnitDef){.kind = mvfx_unitChain,
                                  .points = 3,
@@ -220,7 +220,7 @@ static void TestParticles(void)
     emitters[0].rate = 0.0f;
     emitters[0].capacity = 2;
     emitters[0].hostSpawnCapacity = 1;
-    emitters[0].lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitters[0].lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     emitters[0].events = mvfx_eventMaskBirth;
     emitters[0].eventCapacity = 4;
     emitters[0].angularVelocity = (mvfxVectorSource){
@@ -374,7 +374,7 @@ static void TestSources(void)
     emitters[0].bursts = &burst;
     emitters[0].burstCount = 1;
     emitters[0].capacity = 16;
-    emitters[0].lifetime = mvfxRangeSource(0.3f, 1.2f);
+    emitters[0].lifetime = mvfxMakeRangeSource(0.3f, 1.2f);
     emitters[0].shape.kind = mvfx_shapeSphere;
     emitters[0].shape.radius = 0.1f;
     emitters[0].velocity.speed = (mvfxRange){3.0f, 3.0f};
@@ -392,7 +392,7 @@ static void TestSources(void)
     static const mvfxHostModule killer = {.stage = mvfx_stageAfterMotion, .function = KillAll};
     emitters[2].rate = 0.0f;
     emitters[2].hostSpawnCapacity = 1;
-    emitters[2].lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitters[2].lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitters[2].events = mvfx_eventMaskBirth;
     emitters[2].eventCapacity = 1;
     emitters[2].hostModules = &killer;

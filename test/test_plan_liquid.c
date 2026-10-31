@@ -48,7 +48,7 @@ static mvfxEmitterDef Emitter(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 256;
     emitter.rate = 120.0f;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.velocity.speed = (mvfxRange){1.0f, 2.0f};
     emitter.motion.gravity[1] = -9.81f;
     emitter.liquid.enable = true;
@@ -408,7 +408,7 @@ static void TestPlanRoom(void)
     mvfxEmitterDef emitters[2] = {Emitter(), mvfxDefaultEmitterDef()};
     emitters[1].rate = 0.0f;
     emitters[1].capacity = 6;
-    emitters[1].lifetime = mvfxRangeSource(0.001f, 0.001f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.001f, 0.001f);
     emitters[1].ribbon.ids = mvfx_ribbonOne;
     emitters[1].beam = (mvfxBeamDef){
         .enable = true, .segments = 5, .start = {.point = {0, 0, 0}}, .end = {.point = {1, 0, 0}}};

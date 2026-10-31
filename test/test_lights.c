@@ -44,7 +44,7 @@ static mvfxEmitterDef Lit(void)
     emitter.rate = 0.0f;
     emitter.capacity = 16;
     emitter.hostSpawnCapacity = 16;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     emitter.color = (mvfxVectorSource){.kind = mvfx_sourceRange,
                                        .min = {1.0f, 0.5f, 0.25f, 0.5f},
                                        .max = {1.0f, 0.5f, 0.25f, 0.5f}};
@@ -106,7 +106,7 @@ static void TestStable(void)
     // Two groups of a quarter second's life an eighth apart: when the
     // first has died, the lights stay on the same serials of the second.
     mvfxEmitterDef emitter = Lit();
-    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     emitter.light.alphaScales = true;
     Scene scene = NewScene(&emitter, 1);
     Spawn(&scene, 4);

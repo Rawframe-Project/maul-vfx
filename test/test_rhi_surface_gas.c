@@ -58,7 +58,7 @@ static mvfxEmitterDef Drops(void)
     emitter.capacity = 512;
     emitter.rate = 300.0f;
     emitter.burstCount = 0;
-    emitter.lifetime = mvfxRangeSource(1.0f, 1.5f);
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.5f);
     emitter.shape.radius = 0.15f;
     emitter.velocity.direction[1] = -1.0f;
     emitter.velocity.speed = (mvfxRange){0.2f, 0.5f};
@@ -187,7 +187,7 @@ static void TestFinishing(Gpu* gpu, mvfxGpu* kernels)
     // the step the CPU path's does, once its record says the surface
     // holds nothing.
     mvfxEmitterDef emitter = Drops();
-    emitter.lifetime = mvfxRangeSource(0.2f, 0.4f);
+    emitter.lifetime = mvfxMakeRangeSource(0.2f, 0.4f);
     mvfxGasDef gas = Wrap(24, 24, 16);
     mvfxEffectId effect = {0};
     const Run run = {.emitters = &emitter, .emitterCount = 1, .gases = &gas, .gasCount = 1};

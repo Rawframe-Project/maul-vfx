@@ -51,7 +51,7 @@ static mvfxEffectId MakeFountain(mvfxContext* context)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = CAPACITY;
     emitter.rate = 200.0f;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.5f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.5f);
     emitter.shape.kind = mvfx_shapeCircle;
     emitter.shape.radius = 0.1f;
     emitter.shape.rotation[0] = 0.70710678f; // the circle turned into the XZ plane

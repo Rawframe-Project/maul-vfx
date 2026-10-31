@@ -106,7 +106,7 @@ static mvfxEmitterDef Sprite(void)
     emitter.rate = 600.0f;
     emitter.bursts = &s_burst;
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(0.2f, 0.4f);
+    emitter.lifetime = mvfxMakeRangeSource(0.2f, 0.4f);
     emitter.shape = (mvfxShape){.kind = mvfx_shapeSphere, .rotation = {0, 0, 0, 1}, .radius = 0.5f};
     emitter.velocity = (mvfxVelocity){
         .mode = mvfx_directionCone, .direction = {0, 1, 0}, .coneAngle = 0.4f, .speed = {2, 4}};
@@ -298,7 +298,7 @@ static void TestUploads(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef beam = mvfxDefaultEmitterDef();
     beam.rate = 0.0f;
     beam.capacity = 9;
-    beam.lifetime = mvfxRangeSource(0.05f, 0.1f);
+    beam.lifetime = mvfxMakeRangeSource(0.05f, 0.1f);
     beam.ribbon.ids = mvfx_ribbonOne;
     beam.beam = (mvfxBeamDef){
         .enable = true, .segments = 8, .start = {.point = {0, 0, 0}}, .end = {.point = {4, 0, 0}}};

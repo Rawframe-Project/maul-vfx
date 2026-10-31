@@ -104,7 +104,7 @@ static int32_t Sample(mvfxMeshId mesh, mvfxMeshMode mode, int32_t count)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = count;
     emitter.rate = (float)count;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.shape.kind = mvfx_shapeMesh;
     emitter.shape.mesh = mesh;
     emitter.shape.meshMode = mode;
