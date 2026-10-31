@@ -373,7 +373,7 @@ static void Substep(const mvfxCompiledWater* water, mvfxWaterState* state, float
     mvfxRunTasks(tasks, FaceRows, water->def.size[1], ROW_RANGE, &f);
     for (int32_t z = 0; z < water->def.size[1]; ++z)
     {
-        state->facesHeld += (uint64_t)state->heldRows[z];
+        state->heldFaceCount += (uint64_t)state->heldRows[z];
     }
     mvfxRunTasks(tasks, GivingRows, water->def.size[1], ROW_RANGE, &f);
     mvfxRunTasks(tasks, DepthRows, water->def.size[1], ROW_RANGE, &f);
@@ -431,6 +431,6 @@ void mvfxStepShallow(mvfxInstance* instance, int32_t w, const mvfxTasks* tasks)
     {
         Substep(water, state, dt, tasks);
     }
-    state->stepsSlowed += slowed ? 1u : 0u;
+    state->slowedStepCount += slowed ? 1u : 0u;
     Settle(water, state);
 }

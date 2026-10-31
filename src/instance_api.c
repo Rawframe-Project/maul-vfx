@@ -287,18 +287,18 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterStatsWork(mvfxContext* co
         .live = state->count,
         .asleep = mvfxCountAsleep(live, emitter),
         .owed = state->owed,
-        .refused = state->refused,
-        .killed = state->killed,
-        .valuesKilled = state->valuesKilled,
+        .birthsDropped = state->birthsDropped,
+        .killCount = state->killCount,
+        .valueKillCount = state->valueKillCount,
         .queriesDropped = state->queriesDropped,
         .eventsDropped = state->eventsDropped,
-        .neighborsCapped = state->neighborsCapped,
-        .contactsCapped = state->contactsCapped,
+        .cappedNeighborQueryCount = state->cappedNeighborQueryCount,
+        .contactCappedParticleCount = state->contactCappedParticleCount,
         .linksDropped = state->linksDropped,
-        .torn = state->torn,
-        .selfContactsCapped = state->selfContactsCapped,
-        .rigidContactsCapped = state->rigidContactsCapped,
-        .rigidSearchesCapped = state->rigidSearchesCapped,
+        .tearCount = state->tearCount,
+        .selfContactCappedPointCount = state->selfContactCappedPointCount,
+        .rigidContactsDropped = state->rigidContactsDropped,
+        .rigidSearchStopCount = state->rigidSearchStopCount,
     };
     return mvfx_success;
 }
@@ -365,7 +365,7 @@ static void StepPlan(const mvfxInstance* live, int32_t emitter, int32_t s, mvfxE
     mvfxPlanStepSpan(live, s, &start, &end);
     int32_t first = split ? state->planStepFirst[s] : 0;
     int32_t past = split && s < last ? state->planStepFirst[s + 1] : state->planCount;
-    uint64_t refusedBefore = split && s > 0 ? state->planStepRefused[s - 1] : 0;
+    uint64_t droppedBefore = split && s > 0 ? state->planStepDropped[s - 1] : 0;
     const mvfxTransform* from = s == 0 ? &live->planFrom : &live->to;
     const mvfxTransform* to = &live->to;
     *planOut = (mvfxEmitterPlan){
@@ -378,7 +378,7 @@ static void StepPlan(const mvfxInstance* live, int32_t emitter, int32_t s, mvfxE
         .ticks = end - start,
         .births = state->plan + first,
         .birthCount = past - first,
-        .refused = (split ? state->planStepRefused[s] : state->planRefused) - refusedBefore,
+        .birthsDropped = (split ? state->planStepDropped[s] : state->planDropped) - droppedBefore,
         // The host's particles are born at the first step's start.
         .hostBirths = state->planHosts,
         .hostBirthCount = s == 0 ? state->planHostCount : 0,

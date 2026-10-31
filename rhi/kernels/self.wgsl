@@ -43,7 +43,7 @@ const PIN_ROW: u32 = 2u;
 const LET_GO: u32 = 8u;
 
 // The statistics record's word counting the points with more candidates
-// than the most (MVFX_GPU_SELF_CAPPED).
+// than the most (MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT).
 const STATISTICS_SELF_CAPPED: u32 = 51u;
 
 // The count buffer's words: the points the grid holds (the sort's

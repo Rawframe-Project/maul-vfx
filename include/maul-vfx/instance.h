@@ -256,7 +256,7 @@ extern "C"
 
     /// Queues particles for an emitter of an instance: they are born at the
     /// start of the next step, before its other births, each taking a serial
-    /// and room like any birth (refused, and counted, when the emitter is
+    /// and room like any birth (dropped, and counted, when the emitter is
     /// full); a planned instance's plan carries them (mvfxEmitterPlan's
     /// hostBirths). The values are copied: the arrays may be released at
     /// once.
@@ -653,40 +653,40 @@ extern "C"
         int32_t live;
         int32_t asleep;
         // Particles it owed by now, from its rate and its bursts: spawned,
-        // refused, and those whose life ended within the step they were
+        // dropped, and those whose life ended within the step they were
         // born in.
         uint64_t owed;
-        // Particles its capacity refused.
-        uint64_t refused;
+        // Births its capacity dropped: owed, with no room to be born.
+        uint64_t birthsDropped;
         // Particles its kill rules (and attractors' kill radii, contacts that
         // kill, its host modules' kills) killed.
-        uint64_t killed;
+        uint64_t killCount;
         // Particles killed for a value one of its host modules left them
         // with that is not finite or is past its limit
         // (mvfxParticleArrays), apart from those killed.
-        uint64_t valuesKilled;
+        uint64_t valueKillCount;
         // Scene queries its capacity of them dropped.
         uint64_t queriesDropped;
         // Events its capacity of them dropped.
         uint64_t eventsDropped;
         // Neighbor queries that reached their most neighbors.
-        uint64_t neighborsCapped;
+        uint64_t cappedNeighborQueryCount;
         // Particles whose contacts in a pass were more than the most.
-        uint64_t contactsCapped;
+        uint64_t contactCappedParticleCount;
         // Plexus links past the most an emitter keeps or a particle owns.
         uint64_t linksDropped;
         // Units' stretch constraints torn.
-        uint64_t torn;
+        uint64_t tearCount;
         // Points of units with more self-collision candidates than
         // selfContacts, once a step each.
-        uint64_t selfContactsCapped;
+        uint64_t selfContactCappedPointCount;
         // Rigid particles' contacts past MVFX_MAX_RIGID_CONTACTS in a
         // substep, the shallowest dropped.
-        uint64_t rigidContactsCapped;
+        uint64_t rigidContactsDropped;
         // Rigid hulls' and boxes' nearest-point and depth searches (GJK
         // and EPA) stopped at their most steps: the pair is kept as
         // touching, its depth then at most the true one.
-        uint64_t rigidSearchesCapped;
+        uint64_t rigidSearchStopCount;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.
@@ -920,8 +920,8 @@ extern "C"
         // adds. A planned instance counts its steps slowed from its plans,
         // and the others as its simulation reports them
         // (mvfxInstance_SetWaterCounts).
-        uint64_t stepsSlowed;
-        uint64_t facesHeld;
+        uint64_t slowedStepCount;
+        uint64_t heldFaceCount;
         double volumePoured;
     } mvfxWaterInfo;
 

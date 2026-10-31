@@ -193,8 +193,8 @@ static void TestCapped(void)
         }
         expected += near > 3 ? 1u : 0u;
     }
-    CHECK(expected > 0 && stats[0].neighborsCapped == expected &&
-              stats[1].neighborsCapped == 2 * expected,
+    CHECK(expected > 0 && stats[0].cappedNeighborQueryCount == expected &&
+              stats[1].cappedNeighborQueryCount == 2 * expected,
           "a liquid's neighbors capped and counted");
     mvfxDestroyContext(s_context);
 }

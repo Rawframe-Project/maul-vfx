@@ -200,10 +200,10 @@ void mvfxBuildEventBirths(mvfxInstance* instance, int32_t emitter)
             birth.key = mvfxEventBirthKey(event->serial, event->tick, c);
             if (!KeepEarliest(state->eventQueue, &state->eventQueueCount, spawn->capacity, &birth))
             {
-                // More than a step takes from events: the latest refused, a
+                // More than a step takes from events: the latest dropped, a
                 // serial spent.
                 state->owed = mvfxSaturatingAdd(state->owed, 1);
-                state->refused = mvfxSaturatingAdd(state->refused, 1);
+                state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, 1);
             }
         }
     }

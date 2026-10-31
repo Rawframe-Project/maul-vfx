@@ -407,7 +407,7 @@ static bool StillLake(bool host, const float rotation[4], float* depths)
     CHECK(mvfxInstance_Stop(s_context, s_instance, mvfx_stopEmitting) == mvfx_success &&
               mvfxContext_StepTicks(s_context, 1) == mvfx_success,
           "stopped");
-    bool still = mvfxInstance_IsFinished(s_context, s_instance) && info.facesHeld == 0;
+    bool still = mvfxInstance_IsFinished(s_context, s_instance) && info.heldFaceCount == 0;
     for (int32_t i = 0; i < 1600; ++i)
     {
         still = still && fabsf(d[i] - filled[i]) <= 1e-6f;
@@ -563,7 +563,7 @@ static double Cliff(bool turned, float depths[128], uint64_t* held)
     memcpy(depths, Depths(&water), 128 * sizeof(float));
     mvfxWaterInfo info;
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
-    *held = info.facesHeld;
+    *held = info.heldFaceCount;
     bool dry = true;
     double volume = Volume(&water, &dry);
     Close();
@@ -632,11 +632,11 @@ static bool Column(bool pinnacle, float deep, int32_t row, uint64_t* held)
     double volume = Volume(&water, &dry);
     mvfxWaterInfo info;
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
-    *held = info.facesHeld;
+    *held = info.heldFaceCount;
     CHECK(mvfxInstance_Restart(s_context, s_instance) == mvfx_success, "restarted");
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success, "info");
     Close();
-    return fabs(volume / ((double)deep * 0.01) - 1.0) <= 1e-5 && dry && info.facesHeld == 0;
+    return fabs(volume / ((double)deep * 0.01) - 1.0) <= 1e-5 && dry && info.heldFaceCount == 0;
 }
 
 static void TestColumn(void)
@@ -895,15 +895,15 @@ static void TestSlowed(void)
     Steps(1, 1.0 / 60.0);
     mvfxWaterInfo info;
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
-              info.stepsSlowed == 0,
+              info.slowedStepCount == 0,
           "a frame's step not slowed");
     Steps(1, 1.0);
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
-              info.stepsSlowed == 1,
+              info.slowedStepCount == 1,
           "a second's step slowed");
     CHECK(mvfxInstance_Restart(s_context, s_instance) == mvfx_success, "restarted");
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
-              info.stepsSlowed == 0,
+              info.slowedStepCount == 0,
           "a restart clears it");
     Close();
 }
@@ -957,11 +957,11 @@ static void TestSubsteps(void)
     Steps(1, 1.0);
     mvfxWaterInfo info;
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
-              info.stepsSlowed == 0,
+              info.slowedStepCount == 0,
           "the first step counted before the fill");
     Steps(1, 1.0);
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
-              info.stepsSlowed == 1,
+              info.slowedStepCount == 1,
           "the next from the filled basin");
     Close();
 }

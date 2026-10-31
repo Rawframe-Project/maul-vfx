@@ -638,7 +638,7 @@ static void TestPile(void)
     CHECK(mvfxInstance_GetEmitterStats(s_scene.context, s_scene.instance, 0, &stats) ==
               mvfx_success,
           "stats");
-    CHECK(count == 6 && deepest >= -0.01 && fastest <= 0.05f && stats.rigidSearchesCapped == 0,
+    CHECK(count == 6 && deepest >= -0.01 && fastest <= 0.05f && stats.rigidSearchStopCount == 0,
           "a pile of hulls");
     mvfxDestroyContext(s_scene.context);
 }

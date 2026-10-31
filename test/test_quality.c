@@ -141,7 +141,8 @@ static void TestLeftOut(void)
     CHECK(mvfxInstance_Spawn(context, low, 1, &request) == mvfx_success, "spawned into it");
     Run(context, &low, 1);
     mvfxEmitterStats left = Stats(context, low, 1);
-    CHECK(left.live == 0 && left.refused == 3 && left.owed == 0, "left out, the host's refused");
+    CHECK(left.live == 0 && left.birthsDropped == 3 && left.owed == 0,
+          "left out, the host's refused");
     CHECK(Stats(context, low, 0).live == 0 && Stats(context, low, 2).live == 0 &&
               Stats(context, low, 3).live == 5,
           "no rate, the beam still struck");

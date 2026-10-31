@@ -200,16 +200,18 @@ static bool SameCounts(int32_t w, float tolerance)
     double poured = fabs(planned.volumePoured - cpu.volumePoured) / (1.0 + cpu.volumePoured);
     float reach = fabsf(plannedReach - cpuReach) / (1.0f + cpuReach);
     s_poured = fmax(s_poured, cpu.volumePoured);
-    s_held = cpu.facesHeld > s_held ? cpu.facesHeld : s_held;
-    bool same = planned.stepsSlowed == cpu.stepsSlowed && planned.facesHeld == cpu.facesHeld &&
-                poured <= (double)tolerance && reach <= tolerance;
+    s_held = cpu.heldFaceCount > s_held ? cpu.heldFaceCount : s_held;
+    bool same = planned.slowedStepCount == cpu.slowedStepCount &&
+                planned.heldFaceCount == cpu.heldFaceCount && poured <= (double)tolerance &&
+                reach <= tolerance;
     if (!same)
     {
         printf("surface %d: slowed %llu and %llu, held %llu and %llu, poured %g and %g, reach %g "
                "and %g (GPU and CPU)\n",
-               w, (unsigned long long)planned.stepsSlowed, (unsigned long long)cpu.stepsSlowed,
-               (unsigned long long)planned.facesHeld, (unsigned long long)cpu.facesHeld,
-               planned.volumePoured, cpu.volumePoured, (double)plannedReach, (double)cpuReach);
+               w, (unsigned long long)planned.slowedStepCount,
+               (unsigned long long)cpu.slowedStepCount, (unsigned long long)planned.heldFaceCount,
+               (unsigned long long)cpu.heldFaceCount, planned.volumePoured, cpu.volumePoured,
+               (double)plannedReach, (double)cpuReach);
     }
     return same;
 }

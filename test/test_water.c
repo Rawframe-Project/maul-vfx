@@ -448,7 +448,7 @@ static void TestStability(void)
     Steps(1, 63.5 * 0.9 * 0.1 / (10.0 * sqrt(2.0)));
     mvfxWaterInfo info;
     CHECK(mvfxInstance_GetWaterInfo(s_context, s_instance, 0, &info) == mvfx_success &&
-              info.stepsSlowed == 40 && info.facesHeld == 0,
+              info.slowedStepCount == 40 && info.heldFaceCount == 0,
           "each long step slowed");
     mvfxDestroyContext(s_context);
 }

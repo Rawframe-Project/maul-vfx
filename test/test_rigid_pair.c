@@ -660,7 +660,7 @@ static void TestPoolAndStrikes(void)
     boxes.rigid.bodyContacts = 1;
     Open(&boxes, faces, NULL, NULL, 2);
     Steps(2);
-    CHECK(Stats().rigidContactsCapped > 0u, "the pool capped");
+    CHECK(Stats().rigidContactsDropped > 0u, "the pool capped");
     mvfxDestroyContext(s_scene.context);
     static const double places[6] = {-1, 0, 0, 0.5, 0, 0};
     static const float velocities[6] = {2, 0, 0, 0, 0, 0};

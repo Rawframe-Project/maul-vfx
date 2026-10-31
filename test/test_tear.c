@@ -149,11 +149,11 @@ static void TestGravity(void)
     emitter.unit.stretchCompliance = 0.05f;
     Open(&emitter, 1);
     Steps(1);
-    CHECK(Stats(0).torn == 0, "not yet");
+    CHECK(Stats(0).tearCount == 0, "not yet");
     const mvfxEvent* events = NULL;
     int32_t count = 0;
     int32_t step = 1;
-    for (; Stats(0).torn == 0 && step < 120; ++step)
+    for (; Stats(0).tearCount == 0 && step < 120; ++step)
     {
         Steps(1);
     }
@@ -168,7 +168,7 @@ static void TestGravity(void)
     float at = s_scene.records[1].position[1];
     Steps(30);
     Read(0);
-    CHECK(Stats(0).torn == 1 && s_scene.records[0].position[1] == 0.0f &&
+    CHECK(Stats(0).tearCount == 1 && s_scene.records[0].position[1] == 0.0f &&
               s_scene.records[1].position[1] < at - 1.0f,
           "falling free");
     mvfxDestroyContext(s_scene.context);
@@ -176,7 +176,7 @@ static void TestGravity(void)
     emitter.unit.stretchCompliance = 1e-4f;
     Open(&emitter, 1);
     Steps(120);
-    CHECK(Stats(0).torn == 0, "below the strain");
+    CHECK(Stats(0).tearCount == 0, "below the strain");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -209,7 +209,7 @@ static void TestFar(void)
     Steps(2);
     const mvfxEvent* events = NULL;
     int32_t count = 0;
-    CHECK(moved && Stats(0).torn == 1 &&
+    CHECK(moved && Stats(0).tearCount == 1 &&
               mvfxInstance_GetEvents(s_scene.context, s_scene.instance, 0, &events, &count) ==
                   mvfx_success &&
               count == 1 && fabsf(events[0].normal[1] + 1.0f) <= 1e-5f &&
@@ -241,8 +241,8 @@ static void TestRibbons(void)
     Steps(3);
     const mvfxEvent* events = NULL;
     int32_t count = 0;
-    CHECK(Stats(0).torn == 1 && mvfxInstance_GetEvents(s_scene.context, s_scene.instance, 0,
-                                                       &events, &count) == mvfx_success,
+    CHECK(Stats(0).tearCount == 1 && mvfxInstance_GetEvents(s_scene.context, s_scene.instance, 0,
+                                                            &events, &count) == mvfx_success,
           "one tear");
     static Record points[MOST];
     static mvfxRibbon ribbons[8];
@@ -332,7 +332,7 @@ static void TestSheet(void)
                                         &indexCount) == mvfx_success &&
                   vertexCount == 9 && indexCount == (kicked ? 0 : 24),
               "the mesh's quads");
-        CHECK(Stats(0).torn == (kicked ? 6u : 0u) && Stats(1).live == (kicked ? 6 : 0),
+        CHECK(Stats(0).tearCount == (kicked ? 6u : 0u) && Stats(1).live == (kicked ? 6 : 0),
               "the tears and their sparks");
         mvfxDestroyContext(s_scene.context);
     }
@@ -441,9 +441,9 @@ static void TestReborn(void)
     chain.unit.stretchCompliance = 0.05f;
     Open(&chain, 1);
     Steps(60);
-    CHECK(Stats(0).torn == 1 &&
+    CHECK(Stats(0).tearCount == 1 &&
               mvfxInstance_Restart(s_scene.context, s_scene.instance) == mvfx_success &&
-              Stats(0).torn == 0,
+              Stats(0).tearCount == 0,
           "a restart's count");
     mvfxDestroyContext(s_scene.context);
 }

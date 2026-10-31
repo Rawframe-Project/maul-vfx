@@ -642,7 +642,7 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
         // Its contacts make an event (BIRTH_CONTACT), and its crossing
         // of the water surface (BIRTH_CROSSED), for the events' count; a
         // rigid body's contacts dropped past the most above, which offsets
-        // sums (MVFX_GPU_RIGID_CAPPED).
+        // sums (MVFX_GPU_RIGID_CONTACTS_DROPPED).
         accepted[j] = mark | select(0u, BIRTH_CONTACT, fate.contacted) |
                       select(0u, BIRTH_CROSSED, crossed) |
                       (min(fate.capped, 0xFFFFu) << 8u) | (min(fate.searches, 0xFFu) << 24u);

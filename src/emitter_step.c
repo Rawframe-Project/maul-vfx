@@ -321,8 +321,8 @@ static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
     // Those a host module's values killed apart (mvfxRunHostModules).
     int32_t gone = state->count - kept;
     int32_t values = state->valuesMarked < gone ? state->valuesMarked : gone;
-    state->valuesKilled = mvfxSaturatingAdd(state->valuesKilled, (uint64_t)values);
-    state->killed = mvfxSaturatingAdd(state->killed, (uint64_t)(gone - values));
+    state->valueKillCount = mvfxSaturatingAdd(state->valueKillCount, (uint64_t)values);
+    state->killCount = mvfxSaturatingAdd(state->killCount, (uint64_t)(gone - values));
     state->valuesMarked = 0;
     state->count = kept;
 }
@@ -340,7 +340,7 @@ static void RunModulesBeforeMotion(mvfxInstance* instance, int32_t emitter)
     }
 }
 
-// The births of a step whose emitter cannot fill: none is refused, so the
+// The births of a step whose emitter cannot fill: none is dropped, so the
 // ones that live past the step are appended in order.
 static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
 {
@@ -383,7 +383,7 @@ static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
 }
 
 // Replays the event births of the queue from next up to a tick in a full
-// emitter: each tick's deaths first, refused when it is full.
+// emitter: each tick's deaths first, dropped when it is full.
 static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDeathHeap* heap,
                                 int64_t limit, int32_t* next, int32_t* accepted)
 {
@@ -396,7 +396,7 @@ static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDea
         state->owed = mvfxSaturatingAdd(state->owed, 1);
         if (heap->count >= UnitCapacity(instance, emitter))
         {
-            state->refused = mvfxSaturatingAdd(state->refused, 1);
+            state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, 1);
             continue;
         }
         int64_t death = mvfxDeathTick(
@@ -411,7 +411,7 @@ static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDea
 
 // The births of a step whose emitter may fill, replayed in tick order as
 // if it were stepped one tick at a time (each tick's deaths before its
-// births): births that find the emitter full are refused, the last of a
+// births): births that find the emitter full are dropped, the last of a
 // burst's first. The particles alive at the step's start are those before
 // it, and stay until their death ticks.
 static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
@@ -441,7 +441,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
         state->owed = mvfxSaturatingAdd(state->owed, 1);
         if (heap.count >= UnitCapacity(instance, emitter))
         {
-            state->refused = mvfxSaturatingAdd(state->refused, 1);
+            state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, 1);
             continue;
         }
         int64_t death = mvfxDeathTick(start, mvfxInverseLifeOf(instance, emitter, k, start));
@@ -475,7 +475,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
             }
         }
         state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)count);
-        state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)(count - taken));
+        state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, (uint64_t)(count - taken));
     }
     AcceptEventBirthsBy(instance, emitter, &heap, instance->clock, &next, &accepted);
     // Every accepted birth outlives the step, so it is still in the heap.
@@ -501,8 +501,8 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     if (state->capacity == 0)
     {
         // Left out at the instance's quality level: the host's spawns are
-        // refused, nothing else happens.
-        state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)state->hostCount);
+        // dropped, nothing else happens.
+        state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, (uint64_t)state->hostCount);
         state->hostCount = 0;
         return;
     }

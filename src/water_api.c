@@ -542,8 +542,8 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetWaterInfoWork(const mvfxContext*
     infoOut->scale = place.scale;
     infoOut->size[0] = live->effect->waters[water].def.size[0];
     infoOut->size[1] = live->effect->waters[water].def.size[1];
-    infoOut->stepsSlowed = live->waters[water].stepsSlowed;
-    infoOut->facesHeld = live->waters[water].facesHeld;
+    infoOut->slowedStepCount = live->waters[water].slowedStepCount;
+    infoOut->heldFaceCount = live->waters[water].heldFaceCount;
     infoOut->volumePoured = live->waters[water].volumePoured;
     return mvfx_success;
 }

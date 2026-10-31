@@ -19,7 +19,7 @@ void mvfxBeginPlanStep(mvfxInstance* instance);
 void mvfxEndPlanStep(mvfxInstance* instance);
 
 // Plans an emitter's step: its births owed up to the clock appended to its
-// plan, those past the plan's room refused, its cursors and counters
+// plan, those past the plan's room dropped, its cursors and counters
 // moved on as the CPU path's step moves them.
 void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter);
 

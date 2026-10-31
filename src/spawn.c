@@ -289,11 +289,11 @@ void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter)
     state->distanceSkip = owed - take;
     if (state->distanceSkip > 0.0)
     {
-        // At most 2^63 counted, so a jump's refusals never wrap a count.
+        // At most 2^63 counted, so a jump's dropped births never wrap a count.
         uint64_t skipped =
             state->distanceSkip < 0x1p63 ? (uint64_t)state->distanceSkip : (uint64_t)1 << 63u;
         state->owed = mvfxSaturatingAdd(state->owed, skipped);
-        state->refused = mvfxSaturatingAdd(state->refused, skipped);
+        state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, skipped);
     }
 }
 

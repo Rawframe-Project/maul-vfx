@@ -162,7 +162,7 @@ extern "C"
 
 // For an emitter that spawns from events, the statistics record's words
 // holding the serials its event births took (two words), then the step's
-// event births refused (past its spawning's capacity) and births past its
+// event births dropped (past its spawning's capacity) and births past its
 // births' room (twice its capacity).
 #define MVFX_GPU_EVENT_SERIALS 34
 
@@ -176,14 +176,14 @@ extern "C"
 // For an emitter that finds its neighbors (mvfxNeighborDef) or is a
 // liquid (mvfxLiquidDef), the statistics record's word counting the
 // queries its cap stopped since the instance was last cleared
-// (mvfxEmitterStats.neighborsCapped on the CPU path).
-#define MVFX_GPU_NEIGHBORS_CAPPED 46
+// (mvfxEmitterStats.cappedNeighborQueryCount on the CPU path).
+#define MVFX_GPU_CAPPED_NEIGHBOR_QUERY_COUNT 46
 
 // For an emitter with particle contacts (mvfxContactDef), the statistics
 // record's word counting the particles whose contacts in a step's first
 // pass were more than the most, since the instance was last cleared
-// (mvfxEmitterStats.contactsCapped on the CPU path).
-#define MVFX_GPU_CONTACTS_CAPPED 47
+// (mvfxEmitterStats.contactCappedParticleCount on the CPU path).
+#define MVFX_GPU_CONTACT_CAPPED_PARTICLE_COUNT 47
 
 // For an emitter with plexus links (mvfxPlexusDef), the statistics
 // record's words holding the step's links (the first of the links
@@ -195,28 +195,28 @@ extern "C"
 
 // For an emitter of units that tear (mvfxUnitDef.tearStrain), the
 // statistics record's word counting their tears since the instance was
-// last cleared (mvfxEmitterStats.torn on the CPU path).
-#define MVFX_GPU_TORN 50
+// last cleared (mvfxEmitterStats.tearCount on the CPU path).
+#define MVFX_GPU_TEAR_COUNT 50
 
 // For an emitter of units that collide with themselves
 // (mvfxUnitDef.selfThickness), the statistics record's word counting the
 // points with more candidates than the most since the instance was last
-// cleared (mvfxEmitterStats.selfContactsCapped on the CPU path).
-#define MVFX_GPU_SELF_CAPPED 51
+// cleared (mvfxEmitterStats.selfContactCappedPointCount on the CPU path).
+#define MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT 51
 
 // For an emitter of rigid particles, the statistics record's word counting
 // their contacts dropped past the most a body takes since the instance was
-// last cleared (mvfxEmitterStats.rigidContactsCapped on the CPU path; a
+// last cleared (mvfxEmitterStats.rigidContactsDropped on the CPU path; a
 // contact is decided on places, so one at the margin of a surface may
 // count on one path only).
-#define MVFX_GPU_RIGID_CAPPED 52
+#define MVFX_GPU_RIGID_CONTACTS_DROPPED 52
 
 // For an emitter of rigid hulls, the statistics record's word counting
 // their polytope searches stopped at their cap since the instance was last
-// cleared (mvfxEmitterStats.rigidSearchesCapped on the CPU path; the GPU's
+// cleared (mvfxEmitterStats.rigidSearchStopCount on the CPU path; the GPU's
 // searches run in binary32, so one near its cap may stop on one path
 // only).
-#define MVFX_GPU_RIGID_SEARCHES 53
+#define MVFX_GPU_RIGID_SEARCH_STOP_COUNT 53
 
 // The words of an emitter's statistics record (for an emitter whose
 // ribbons pin a head, its words from 39 hold the head, which

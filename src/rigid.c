@@ -364,8 +364,8 @@ static void Prepare(const mvfxRigidSolve* s, int32_t i)
     };
     mvfxBodyContacts list = {.count = 0};
     mvfxGatherBodyContacts(&surfaces, &pose, &shape, &list);
-    state->rigidContactsCapped += (uint64_t)list.capped;
-    state->rigidSearchesCapped += (uint64_t)list.searchesCapped;
+    state->rigidContactsDropped += (uint64_t)list.capped;
+    state->rigidSearchStopCount += (uint64_t)list.searchesCapped;
     SpeedsOf(&b, list.items, list.count);
     mvfxBodyContact* items = state->rigidContacts + (size_t)i * MVFX_MAX_RIGID_CONTACTS;
     memcpy(items, list.items, (size_t)list.count * sizeof list.items[0]);

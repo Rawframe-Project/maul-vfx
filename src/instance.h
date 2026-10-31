@@ -3,7 +3,7 @@
 //
 // An instance as the step runs it: the effect it plays, its transform, seed
 // and clock, and per emitter the particles alive and the counts of what it
-// owed and refused. Everything lives in one block allocated when the
+// owed and dropped. Everything lives in one block allocated when the
 // instance is created; nothing grows after, so a step never allocates.
 
 #ifndef MAUL_VFX_SRC_INSTANCE_H
@@ -130,7 +130,7 @@ typedef struct mvfxEmitterState
     size_t arrayBytes;
     int32_t count;
     uint64_t owed;
-    uint64_t refused;
+    uint64_t birthsDropped;
     mvfxRateCursor rate;
     mvfxBurstCursor* bursts;
     // The mesh a mesh shape spawns from: the effect's, or the instance's
@@ -140,19 +140,19 @@ typedef struct mvfxEmitterState
     // from it.
     double anchor[3];
     // A planned instance's plan: room for twice the capacity's births, the
-    // births written, those refused, and the anchor before the plan; and
+    // births written, those dropped, and the anchor before the plan; and
     // room for the host's queue's particles, those written.
     mvfxPlannedBirth* plan;
     int32_t planCount;
-    uint64_t planRefused;
+    uint64_t planDropped;
     double planAnchor[3];
     mvfxPlannedHostBirth* planHosts;
     int32_t planHostCount;
     // For an effect with a liquid gas, each of the plan's steps' first
-    // birth, and its serials owed and births refused by its end.
+    // birth, and its serials owed and births dropped by its end.
     int32_t planStepFirst[MVFX_MAX_PLAN_STEPS];
     uint64_t planStepOwed[MVFX_MAX_PLAN_STEPS];
-    uint64_t planStepRefused[MVFX_MAX_PLAN_STEPS];
+    uint64_t planStepDropped[MVFX_MAX_PLAN_STEPS];
     // The latest tick a planned birth dies at: the emitter holds
     // particles elsewhere until then, as far as the core knows.
     int64_t lastDeath;
@@ -165,10 +165,10 @@ typedef struct mvfxEmitterState
     // Its kill rules as resolved for the step, and the particles they
     // killed.
     struct mvfxResolvedKillRule* killRules;
-    uint64_t killed;
+    uint64_t killCount;
     // The particles killed for a value a host module left them, and those
     // of this step's marks not yet taken out.
-    uint64_t valuesKilled;
+    uint64_t valueKillCount;
     int32_t valuesMarked;
     // Its colliders as resolved for the step (the effect's, then the
     // instance's when it takes them).
@@ -193,10 +193,10 @@ typedef struct mvfxEmitterState
     uint64_t eventsDropped;
     // Its grid (for an emitter queried), and the queries that were capped.
     mvfxNeighborGrid grid;
-    uint64_t neighborsCapped;
+    uint64_t cappedNeighborQueryCount;
     // Its contacts' room, and the particles whose contacts were capped.
     mvfxContactRoom contacts;
-    uint64_t contactsCapped;
+    uint64_t contactCappedParticleCount;
     // Its plexus links, and those dropped.
     mvfxPlexusRoom plexus;
     uint64_t linksDropped;
@@ -223,7 +223,7 @@ typedef struct mvfxEmitterState
     int32_t attachFrameCount;
     float* attachTargets;
     // Its units' stretch constraints torn.
-    uint64_t torn;
+    uint64_t tearCount;
     // Its units' self-collision room: a grid of the places at the step's
     // start (keeping no values), the places at a substep's start and each
     // point's move in a substep's pass (three arrays of the capacity each),
@@ -271,9 +271,9 @@ typedef struct mvfxEmitterState
     float* selfMoves;
     int32_t* selfPairs;
     int32_t* selfCounts;
-    uint64_t selfContactsCapped;
-    uint64_t rigidContactsCapped;
-    uint64_t rigidSearchesCapped;
+    uint64_t selfContactCappedPointCount;
+    uint64_t rigidContactsDropped;
+    uint64_t rigidSearchStopCount;
     // Its liquid's room.
     mvfxLiquidRoom liquid;
     // The id of its current ribbon by the counter: breaks advance it.
@@ -293,7 +293,7 @@ typedef struct mvfxEmitterState
     int32_t hostCount;
     // Distance births: the fraction of one the travel owes past the last
     // (below 1), and the step's plan: the integral the step adds, how many
-    // of its births are refused at the start (a jump past the capacity),
+    // of its births are dropped at the start (a jump past the capacity),
     // how many it takes, and the next of those to be born.
     double distanceCarry;
     double distanceDelta;
@@ -413,7 +413,7 @@ typedef struct mvfxInstance
 } mvfxInstance;
 
 // a + b, held at UINT64_MAX: an emitter's counts never wrap, even after
-// jumps whose refusals are counted in the billions of billions.
+// jumps whose dropped births are counted in the billions of billions.
 static inline uint64_t mvfxSaturatingAdd(uint64_t a, uint64_t b)
 {
     return a > UINT64_MAX - b ? UINT64_MAX : a + b;

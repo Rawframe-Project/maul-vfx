@@ -46,9 +46,9 @@ static void TestLifecycle(void)
     CHECK(mvfxCreateInstance(context, &def, &instance) == mvfx_success, "created");
     CHECK(mvfxInstance_IsValid(context, instance), "valid");
     CHECK(mvfxDestroyEffect(context, effect) == mvfx_errorBusy, "its effect is busy");
-    mvfxEmitterStats stats = {.status = 9, .live = 1, .owed = 1, .refused = 1};
+    mvfxEmitterStats stats = {.status = 9, .live = 1, .owed = 1, .birthsDropped = 1};
     CHECK(mvfxInstance_GetEmitterStats(context, instance, 0, &stats) == mvfx_success, "stats");
-    CHECK(stats.live == 0 && stats.owed == 0 && stats.refused == 0, "nothing before a step");
+    CHECK(stats.live == 0 && stats.owed == 0 && stats.birthsDropped == 0, "nothing before a step");
     CHECK(stats.status == mvfx_emitterActive, "active from the start");
     CHECK(mvfxDestroyInstance(context, instance) == mvfx_success, "destroyed");
     CHECK(!mvfxInstance_IsValid(context, instance), "stale after");

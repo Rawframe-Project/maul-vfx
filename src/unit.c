@@ -251,7 +251,7 @@ static bool TearEdge(mvfxInstance* instance, int32_t emitter, const Points* p, i
         return false;
     }
     p->torn[a] |= bit;
-    instance->emitters[emitter].torn += 1u;
+    instance->emitters[emitter].tearCount += 1u;
     float length = mvfxLengthOf(d[0], d[1], d[2]);
     float middle[3];
     float along[3];

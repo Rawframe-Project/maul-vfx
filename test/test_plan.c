@@ -283,7 +283,7 @@ static void Compare(mvfxOffscreen offscreen, int32_t compared, const char* what)
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
         // The planned twin's clock is the CPU twin's, whose last step ended
         // at its peek's end tick.
-        same = same && plan.start + plan.ticks == s_peeked.endTick && plan.refused == 0 &&
+        same = same && plan.start + plan.ticks == s_peeked.endTick && plan.birthsDropped == 0 &&
                BatchesWhole(&plan);
         planned_ticks += plan.ticks;
         births += plan.birthCount;
@@ -328,12 +328,12 @@ static void TestRoom(void)
     {
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
-        refused += plan.refused;
+        refused += plan.birthsDropped;
         births += plan.birthCount;
     }
     mvfxEmitterStats stats;
     CHECK(mvfxInstance_GetEmitterStats(context, planned, 0, &stats) == mvfx_success, "stats");
-    CHECK(births == 4 && refused == 8 && stats.owed == 12 && stats.refused == 8,
+    CHECK(births == 4 && refused == 8 && stats.owed == 12 && stats.birthsDropped == 8,
           "the capacity's births at one tick");
     mvfxDestroyContext(context);
 
@@ -347,7 +347,7 @@ static void TestRoom(void)
     CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
     CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
     CHECK(mvfxInstance_GetEmitterStats(context, planned, 0, &stats) == mvfx_success, "stats");
-    CHECK(plan.birthCount == 8 && plan.refused == stats.owed - 8 && stats.owed > 90,
+    CHECK(plan.birthCount == 8 && plan.birthsDropped == stats.owed - 8 && stats.owed > 90,
           "twice the capacity in a plan");
     mvfxDestroyContext(context);
 
@@ -371,7 +371,7 @@ static void TestRoom(void)
     {
         CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
-        refused += plan.refused;
+        refused += plan.birthsDropped;
         births += plan.birthCount;
     }
     CHECK(births == 4 && refused == 8, "the capacity's units at one tick");
@@ -713,11 +713,12 @@ static void TestHostBirths(void)
     // Both plans owe the same births: those the lower one lacks are its
     // refused, the host's among them.
     int32_t owed = plan.birthCount;
-    CHECK(plan.refused == 0, "the full plan refuses none");
+    CHECK(plan.birthsDropped == 0, "the full plan refuses none");
     CHECK(mvfxInstance_GetEmitterPlan(context, lowered, 0, &plan) == mvfx_success &&
               plan.capacity == 4 && plan.hostBirthCount == 4 &&
-              plan.refused == (uint64_t)(owed - plan.birthCount) && plan.births[3].host == 3 &&
-              plan.births[4].host == UINT32_MAX && plan.births[4].serialLow == 6,
+              plan.birthsDropped == (uint64_t)(owed - plan.birthCount) &&
+              plan.births[3].host == 3 && plan.births[4].host == UINT32_MAX &&
+              plan.births[4].serialLow == 6,
           "past the capacity, the host's particles are refused");
     mvfxDestroyContext(context);
 }
@@ -872,7 +873,7 @@ static int32_t CompareBeam(const mvfxEmitterDef* emitter, const int64_t* steps, 
         static mvfxEmitterPlan plan;
         CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "plan");
         int64_t clock = plan.start + plan.ticks;
-        same = plan.refused == 0 && BatchesWhole(&plan) && SameBeam(&plan, emitter, clock) &&
+        same = plan.birthsDropped == 0 && BatchesWhole(&plan) && SameBeam(&plan, emitter, clock) &&
                (plan.birthCount == 0 || plan.birthCount == emitter->beam.segments + 1);
         births += plan.birthCount;
         Gather(&plan, clock);

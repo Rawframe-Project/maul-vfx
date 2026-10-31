@@ -56,7 +56,7 @@ void mvfxPlanWaters(mvfxInstance* instance)
         {
             mvfxWaterPlan plan;
             StepPlan(instance, w, s, &plan);
-            state->stepsSlowed += plan.slowed && plan.substeps > 0 ? 1u : 0u;
+            state->slowedStepCount += plan.slowed && plan.substeps > 0 ? 1u : 0u;
         }
         // The simulation fills it at this step.
         state->filled = true;
@@ -268,7 +268,7 @@ mvfxResult mvfxInstance_SetWaterHolds(mvfxContext* context, mvfxInstanceId insta
 static MVFX_NOINLINE mvfxResult mvfxInstance_SetWaterCountsWork(mvfxContext* context,
                                                                 mvfxInstanceId instance,
                                                                 int32_t water, int64_t tick,
-                                                                float reach, uint64_t facesHeld,
+                                                                float reach, uint64_t heldFaceCount,
                                                                 double volumePoured)
 {
     if (context == nullptr)
@@ -294,7 +294,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetWaterCountsWork(mvfxContext* con
     if (tick > state->countedTick)
     {
         state->reach = reach;
-        state->facesHeld += facesHeld;
+        state->heldFaceCount += heldFaceCount;
         state->volumePoured += volumePoured;
         state->countedTick = tick;
     }
@@ -302,12 +302,12 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetWaterCountsWork(mvfxContext* con
 }
 
 mvfxResult mvfxInstance_SetWaterCounts(mvfxContext* context, mvfxInstanceId instance, int32_t water,
-                                       int64_t tick, float reach, uint64_t facesHeld,
+                                       int64_t tick, float reach, uint64_t heldFaceCount,
                                        double volumePoured)
 {
     uint64_t env = mvfxFloatEnvEnter();
     mvfxResult result = mvfxInstance_SetWaterCountsWork(context, instance, water, tick, reach,
-                                                        facesHeld, volumePoured);
+                                                        heldFaceCount, volumePoured);
     mvfxFloatEnvLeave(env);
     return result;
 }

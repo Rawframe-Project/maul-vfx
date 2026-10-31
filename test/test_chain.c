@@ -150,7 +150,7 @@ static void TestBirths(void)
     CHECK(placed && Stats().owed == 2 && Stats().live == 10, "units born whole, owed in units");
     Spawn(3, roots, NULL);
     Steps(1, 1);
-    CHECK(Stats().live == 20 && Stats().refused == 1, "the capacity in units");
+    CHECK(Stats().live == 20 && Stats().birthsDropped == 1, "the capacity in units");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -269,7 +269,7 @@ static void TestDistance(void)
           "moved");
     Steps(1, MVFX_TICKS_PER_SECOND / 60);
     Read();
-    CHECK(s_scene.count == 6 && Stats().owed == 20 && Stats().refused == 18 &&
+    CHECK(s_scene.count == 6 && Stats().owed == 20 && Stats().birthsDropped == 18 &&
               s_scene.records[0].position[0] > 18.0f && s_scene.records[3].position[0] > 18.0f,
           "a jump's last units born");
     mvfxDestroyContext(s_scene.context);
@@ -308,7 +308,7 @@ static double FarGap(float stretchCompliance, float damping)
     Spawn(1, root, NULL);
     Steps(2, MVFX_TICKS_PER_SECOND / 60);
     Read();
-    bool finite = moved && s_scene.count == 2 && Stats().killed == 0;
+    bool finite = moved && s_scene.count == 2 && Stats().killCount == 0;
     for (int32_t i = 0; finite && i < 2; ++i)
     {
         for (int32_t k = 0; k < 3; ++k)
@@ -355,7 +355,7 @@ static void TestFull(void)
     Steps(1, MVFX_TICKS_PER_SECOND / 4);
     CHECK(Stats().live == 6, "two units alive");
     Steps(1, MVFX_TICKS_PER_SECOND / 2);
-    CHECK(Stats().live == 6 && Stats().refused == 1 && Stats().owed == 4,
+    CHECK(Stats().live == 6 && Stats().birthsDropped == 1 && Stats().owed == 4,
           "in tick order, the room in units");
     mvfxDestroyContext(s_scene.context);
 }
@@ -381,7 +381,7 @@ static void TestKill(void)
     Spawn(2, roots, NULL);
     Steps(1, 1);
     Read();
-    CHECK(Stats().live == 4 && Stats().killed == 4 && s_scene.records[0].serial == 4,
+    CHECK(Stats().live == 4 && Stats().killCount == 4 && s_scene.records[0].serial == 4,
           "a kill of one point kills its unit");
     mvfxDestroyContext(s_scene.context);
 }
@@ -458,7 +458,7 @@ static void TestKillInSubsteps(void)
     Steps(1, MVFX_TICKS_PER_SECOND / 60);
     CHECK(Stats().live == 2, "short of it");
     Steps(1, MVFX_TICKS_PER_SECOND / 60);
-    CHECK(Stats().live == 0 && Stats().killed == 2, "killed in a substep");
+    CHECK(Stats().live == 0 && Stats().killCount == 2, "killed in a substep");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -494,7 +494,8 @@ static void TestLifeLossKeepsUnitsWhole(void)
         whole = whole && Stats().live == 3;
     }
     Steps(1, MVFX_TICKS_PER_SECOND / 60);
-    CHECK(whole && Stats().live == 0 && Stats().killed == 0, "the chain ends whole, at its root's");
+    CHECK(whole && Stats().live == 0 && Stats().killCount == 0,
+          "the chain ends whole, at its root's");
     mvfxDestroyContext(s_scene.context);
 }
 

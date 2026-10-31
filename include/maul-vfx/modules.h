@@ -287,8 +287,8 @@ extern "C"
     // mvfxSpawnRequest's colors and sizes). The source steps first
     // (an effect's emitters step in an order its links make; a cycle is
     // refused); the source's capacity of events bounds the spawns, and so
-    // do capacity a step and the emitter's own room, the rest counted
-    // refused. Spawns follow the emitter's delay, loops and a stop, as its
+    // do capacity a step and the emitter's own room, the rest dropped and
+    // counted. Spawns follow the emitter's delay, loops and a stop, as its
     // rate does. The count and every value a birth draws (its life,
     // velocity, size, colour and the rest) follow from its event alone:
     // the event's particle's serial, its tick and the birth's place among
@@ -316,7 +316,7 @@ extern "C"
         // The most births from events a step, from 1 to
         // MVFX_MAX_EMITTER_CAPACITY (with units, a count of units, at most
         // the units the emitter's capacity holds); past it the latest by
-        // tick are refused.
+        // tick are dropped.
         int32_t capacity;
     } mvfxEventSpawn;
 
@@ -343,7 +343,7 @@ extern "C"
         float radius;
         // The most a query counts, from 1 to MVFX_MAX_NEIGHBORS, in the
         // grid's order; a query that finds more stops there, counted
-        // (mvfxEmitterStats.neighborsCapped).
+        // (mvfxEmitterStats.cappedNeighborQueryCount).
         int32_t maxNeighbors;
     } mvfxNeighborDef;
 
@@ -467,7 +467,7 @@ extern "C"
         int32_t iterations;
         // The most contacts one particle takes in a pass, from 1 to
         // MVFX_MAX_NEIGHBORS, in the grid's order; a particle with more is
-        // counted (mvfxEmitterStats.contactsCapped).
+        // counted (mvfxEmitterStats.contactCappedParticleCount).
         int32_t maxContacts;
         // The share of the closing speed a contact sends back, and the share
         // of the sliding speed it takes, each 0 to 1.
@@ -636,7 +636,7 @@ extern "C"
     // momentum than the spin cap about every axis would, or is past 2^60
     // radians a second (where the step's binary32 squares overflow), or for
     // a body of no volume past the cap on an axis, is killed and counted in
-    // mvfxEmitterStats.valuesKilled. A rigid body's angular velocity is not
+    // mvfxEmitterStats.valueKillCount. A rigid body's angular velocity is not
     // held to MVFX_MAX_SPIN on each axis, because its own step takes it
     // past that: a sphere 1e-20 across rolling at 1e-9 turns at 1e11
     // radians a second, and a body spun at the cap about every axis

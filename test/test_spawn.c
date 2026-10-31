@@ -543,7 +543,8 @@ static uint64_t Hash(const Scene* scene)
     memset(particles, 0, sizeof particles);
     int32_t count = ReadParticles(scene->context, scene->instance, 0, particles, 40);
     mvfxEmitterStats stats = Stats(scene);
-    uint64_t counts[5] = {(uint64_t)count, stats.owed, stats.refused, stats.killed, stats.live};
+    uint64_t counts[5] = {(uint64_t)count, stats.owed, stats.birthsDropped, stats.killCount,
+                          stats.live};
     uint64_t hash = 14695981039346656037u;
     const unsigned char* bytes[2] = {(const unsigned char*)particles, (const unsigned char*)counts};
     const size_t sizes[2] = {sizeof particles, sizeof counts};
@@ -586,7 +587,7 @@ static void TestRestartReplays(void)
         CHECK(mvfxContext_StepTicks(scene.context, spans[i]) == mvfx_success, "step");
         hashes[i] = Hash(&scene);
     }
-    CHECK(Stats(&scene).refused > 0, "the capacity was reached");
+    CHECK(Stats(&scene).birthsDropped > 0, "the capacity was reached");
     CHECK(mvfxInstance_Stop(scene.context, scene.instance, mvfx_stopEmitting) == mvfx_success,
           "stop");
     CHECK(mvfxInstance_Restart(scene.context, scene.instance) == mvfx_success, "restart");
