@@ -1,6 +1,7 @@
 # A throwaway probe for #65 (not to merge): rhi_kernels and rhi_sim on
-# D3D12 on the redistributable WARP 1.0.22 beside the tests, under the
-# Agility SDK 1.620.1's debug layer, on the hosted windows-2025 runner.
+# D3D12 under the Agility SDK 1.620.1's debug layer, on the hosted
+# windows-2025 runner: on the redistributable WARP 1.0.22 beside the tests,
+# on the system's WARP, and on 1.0.22 with a 256 MB stack.
 name: ci
 
 on:
@@ -14,11 +15,15 @@ defaults:
 
 jobs:
   windows-d3d12:
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [windows-rhi-d3d12, windows-rhi-d3d12-system, windows-rhi-d3d12-stack]
     uses: Rawframe-Project/.github/.github/workflows/cpp.yml@8414d388d2116b581c5c5d8f6641e1da4d863244 # v0.0.42
     permissions:
       contents: read
     with:
-      preset: windows-rhi-d3d12
+      preset: ${{ matrix.preset }}
       runner: windows-2025
       setup: tools/ci_agility.sh
       timeout: 120
