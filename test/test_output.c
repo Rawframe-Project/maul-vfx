@@ -361,9 +361,11 @@ static void TestRecords(void)
               r->size == 0x3C00 && fabsf(r->age - 0.25f) <= 1e-6f && r->serial == 0 &&
               r->frame == 0 && r->velocity[0] == 16384 && r->velocity[1] == 0,
           "its colour, size, age, serial, frame, velocity");
+    Record marker;
+    memset(&marker, 0xEE, sizeof marker);
     CHECK(records[1].serial == 1 && records[1].velocity[0] == -8192 && r->pad0 == 0xEEEE &&
-              r->pad1 == 0xEEEE && records[2].serial == 0xEEEEEEEEu,
-          "the second; padding and the rest untouched");
+              r->pad1 == 0xEEEE && memcmp(&records[2], &marker, sizeof marker) == 0,
+          "the second; padding and every byte of the record past them untouched");
     // A buffer of one takes the first; none at all, the count.
     memset(records, 0xEE, sizeof records);
     CHECK(mvfxInstance_WriteParticles(scene.context, scene.instance, 0, layout, &view, NULL, 0,

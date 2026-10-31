@@ -404,6 +404,9 @@ static void TestPathText(void)
     CHECK(PathInto(&refusal, (int64_t)strlen(path), &length, &clean) == mvfx_success &&
               length == (int64_t)strlen(path) && clean,
           "exactly the room it needs, not terminated");
+    CHECK(PathInto(&refusal, 64, &length, &clean) == mvfx_success &&
+              length == (int64_t)strlen(path) && clean,
+          "more room than it needs: the bytes past the length untouched");
     CHECK(PathInto(&refusal, 10, &length, &clean) == mvfx_errorCapacity &&
               length == (int64_t)strlen(path) && clean,
           "too little room: the length needed, the room zeroed");
