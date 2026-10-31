@@ -38,7 +38,7 @@ Run the `pr`, `full` and `extended` tiers, the lavapipe presets and fuzzing thro
 
 ## Invariants
 
-- **Determinism.** Only the `<math.h>` functions in `tools/libm-allowed.txt`; sine, cosine, exponential and power come from `src/elementary.c`. No contraction or fast math. Random numbers come from pcg4d of a seed, a salt, a serial and a counter, never from state that follows draw order. Every parallel item writes only its own slots; solver passes are gathers. A change meant to change results updates `test/test_golden.c` and the changelog.
+- **Determinism.** Only the `<math.h>` functions in `tools/libm-allowed.txt`; sine, cosine, exponential and power come from `src/elementary.c`. No contraction or fast math. Random numbers come from pcg4d of a seed, a salt, a serial and a counter, never from state that follows draw order. Every parallel item writes only its own slots; solver passes are gathers. A change meant to change results updates `test/test_golden.c` and says so in its pull request body, which the release notes carry.
 - **Time.** Ticks of 2^-20 seconds. A def's times are rounded to ticks once, when its effect is made.
 - **The effect file.** `MVFX_FILE_VERSION` rises with any change to a file's bytes. A def struct's fields are the file's fields: changing one means `tools/gen_file.py`, the fixtures and, before 1.0, nothing else.
 - **Versions.** The library version lives in `include/maul-vfx/base.h` between the release-please markers; only release-please changes it. Maul RHI's version is pinned in `cmake/Rhi.cmake`.
