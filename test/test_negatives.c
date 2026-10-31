@@ -1429,7 +1429,7 @@ static void TestAssetNames(void)
     def.emitters = &emitter;
     def.emitterCount = 1;
     static unsigned char bytes[4096];
-    static unsigned char memory[1 << 16];
+    static _Alignas(16) unsigned char memory[1 << 16];
     static unsigned char written[4096];
     int64_t size = 0;
     CHECK(mvfxWriteEffect(&def, NULL, 0, bytes, sizeof bytes, &size, NULL).result == mvfx_success,
@@ -1487,7 +1487,7 @@ static mvfxResult KindCall(int32_t c, int32_t value)
     static const double point[3] = {0, 0, 0};
     static const float pixel[3] = {0.5f, 0.0f, 1.0f};
     static unsigned char bytes[4096];
-    static unsigned char memory[1 << 16];
+    static _Alignas(16) unsigned char memory[1 << 16];
     mvfxGridDef grid = mvfxDefaultGridDef();
     grid.size[0] = 2;
     grid.size[1] = 2;
