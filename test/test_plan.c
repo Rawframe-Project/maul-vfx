@@ -1503,7 +1503,7 @@ static bool SameKillRule(const mvfxPlannedKillRule* p, const mvfxKillRule* def, 
     double ticks = ceil((double)def->minimumAge * (double)MVFX_TICKS_PER_SECOND);
     bool same = p->kind == def->kind && Near(p->radius, (double)def->radius * sigma) &&
                 Near(p->speed, (double)def->speed * sigma) &&
-                p->minimumAgeTicks == (uint64_t)ticks && p->collisions == def->collisions &&
+                p->minimumAgeTicks == (int64_t)ticks && p->collisions == def->collisions &&
                 Near3(p->center, center) && Near3(p->normal, normal) && Near4(p->rotation, turn);
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -1551,7 +1551,7 @@ static void TestModulesAndKills(void)
     mvfxEffectId effect = Effect(context, &emitter);
     mvfxInstanceId cpu = Instance(context, effect, false);
     mvfxInstanceId planned = Instance(context, effect, true);
-    const uint64_t ticks[3] = {0, 349526, 262144};
+    const int64_t ticks[3] = {0, 349526, 262144};
     bool same = true;
     for (int32_t s = 0; s < 6 && same; ++s)
     {

@@ -45,7 +45,7 @@ static mvfxPlannedKillRule PlannedKillRule(const mvfxResolvedKillRule* r)
         .kind = r->kind,
         .radius = r->radius,
         .speed = r->speed,
-        .minimumAgeTicks = (uint64_t)ceil((double)r->minimumAge * (double)MVFX_TICKS_PER_SECOND),
+        .minimumAgeTicks = (int64_t)ceil((double)r->minimumAge * (double)MVFX_TICKS_PER_SECOND),
         .collisions = r->collisions,
     };
     for (int32_t k = 0; k < 3; ++k)
