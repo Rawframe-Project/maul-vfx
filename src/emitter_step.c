@@ -322,7 +322,7 @@ static void RemoveKilled(mvfxInstance* instance, int32_t emitter)
     int32_t gone = state->count - kept;
     int32_t values = state->valuesMarked < gone ? state->valuesMarked : gone;
     state->valueKillCount = mvfxSaturatingAdd(state->valueKillCount, (uint64_t)values);
-    state->killed = mvfxSaturatingAdd(state->killed, (uint64_t)(gone - values));
+    state->killCount = mvfxSaturatingAdd(state->killCount, (uint64_t)(gone - values));
     state->valuesMarked = 0;
     state->count = kept;
 }
@@ -396,7 +396,7 @@ static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDea
         state->owed = mvfxSaturatingAdd(state->owed, 1);
         if (heap->count >= UnitCapacity(instance, emitter))
         {
-            state->refused = mvfxSaturatingAdd(state->refused, 1);
+            state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, 1);
             continue;
         }
         int64_t death = mvfxDeathTick(
@@ -441,7 +441,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
         state->owed = mvfxSaturatingAdd(state->owed, 1);
         if (heap.count >= UnitCapacity(instance, emitter))
         {
-            state->refused = mvfxSaturatingAdd(state->refused, 1);
+            state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, 1);
             continue;
         }
         int64_t death = mvfxDeathTick(start, mvfxInverseLifeOf(instance, emitter, k, start));
@@ -475,7 +475,7 @@ static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
             }
         }
         state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)count);
-        state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)(count - taken));
+        state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, (uint64_t)(count - taken));
     }
     AcceptEventBirthsBy(instance, emitter, &heap, instance->clock, &next, &accepted);
     // Every accepted birth outlives the step, so it is still in the heap.
@@ -502,7 +502,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     {
         // Left out at the instance's quality level: the host's spawns are
         // refused, nothing else happens.
-        state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)state->hostCount);
+        state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, (uint64_t)state->hostCount);
         state->hostCount = 0;
         return;
     }

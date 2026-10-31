@@ -130,7 +130,7 @@ typedef struct mvfxEmitterState
     size_t arrayBytes;
     int32_t count;
     uint64_t owed;
-    uint64_t refused;
+    uint64_t birthsDropped;
     mvfxRateCursor rate;
     mvfxBurstCursor* bursts;
     // The mesh a mesh shape spawns from: the effect's, or the instance's
@@ -165,7 +165,7 @@ typedef struct mvfxEmitterState
     // Its kill rules as resolved for the step, and the particles they
     // killed.
     struct mvfxResolvedKillRule* killRules;
-    uint64_t killed;
+    uint64_t killCount;
     // The particles killed for a value a host module left them, and those
     // of this step's marks not yet taken out.
     uint64_t valueKillCount;
@@ -223,7 +223,7 @@ typedef struct mvfxEmitterState
     int32_t attachFrameCount;
     float* attachTargets;
     // Its units' stretch constraints torn.
-    uint64_t torn;
+    uint64_t tearCount;
     // Its units' self-collision room: a grid of the places at the step's
     // start (keeping no values), the places at a substep's start and each
     // point's move in a substep's pass (three arrays of the capacity each),

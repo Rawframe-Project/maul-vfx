@@ -293,7 +293,7 @@ void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter)
         uint64_t skipped =
             state->distanceSkip < 0x1p63 ? (uint64_t)state->distanceSkip : (uint64_t)1 << 63u;
         state->owed = mvfxSaturatingAdd(state->owed, skipped);
-        state->refused = mvfxSaturatingAdd(state->refused, skipped);
+        state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, skipped);
     }
 }
 

@@ -104,7 +104,7 @@ static void WriteLived(mvfxInstance* instance, int32_t emitter, uint64_t serial,
     if (state->planCount >= 2 * UnitCapacity(instance, emitter))
     {
         state->planRefused = mvfxSaturatingAdd(state->planRefused, 1u);
-        state->refused = mvfxSaturatingAdd(state->refused, 1u);
+        state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, 1u);
         return;
     }
     bool elsewhere = NumberedElsewhere(instance, emitter);
@@ -198,7 +198,7 @@ static void PlanHostBirths(mvfxInstance* instance, int32_t emitter)
     uint64_t refused = (uint64_t)(state->hostCount - taken);
     state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)state->hostCount);
     state->planRefused = mvfxSaturatingAdd(state->planRefused, refused);
-    state->refused = mvfxSaturatingAdd(state->refused, refused);
+    state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, refused);
     state->hostCount = 0;
 }
 
@@ -274,7 +274,7 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
     {
         // Left out at the instance's quality level: the host's particles
         // are refused.
-        state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)state->hostCount);
+        state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, (uint64_t)state->hostCount);
         state->hostCount = 0;
         return;
     }
@@ -300,7 +300,7 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
         }
         state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)count);
         state->planRefused = mvfxSaturatingAdd(state->planRefused, (uint64_t)(count - taken));
-        state->refused = mvfxSaturatingAdd(state->refused, (uint64_t)(count - taken));
+        state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, (uint64_t)(count - taken));
     }
     mvfxSaveBirths(instance, &births);
     PlanStrike(instance, emitter);

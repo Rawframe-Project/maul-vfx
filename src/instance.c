@@ -675,10 +675,10 @@ static void ResetEmitter(mvfxInstance* instance, int32_t e)
     mvfxEmitterState* state = &instance->emitters[e];
     state->count = 0;
     state->owed = 0;
-    state->refused = 0;
+    state->birthsDropped = 0;
     state->rate = (mvfxRateCursor){0};
     state->hostCount = 0;
-    state->killed = 0;
+    state->killCount = 0;
     state->valueKillCount = 0;
     state->valuesMarked = 0;
     state->queryCount = 0;
@@ -690,7 +690,7 @@ static void ResetEmitter(mvfxInstance* instance, int32_t e)
     state->contactsDropped = 0;
     state->plexus.linkCount = 0;
     state->linksDropped = 0;
-    state->torn = 0;
+    state->tearCount = 0;
     state->selfContactsDropped = 0;
     state->rigidContactsDropped = 0;
     state->rigidSearchStopCount = 0;
@@ -811,11 +811,11 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         const mvfxEmitterState* state = &instance->emitters[e];
         hash = mvfxHash64(hash, &state->count, (int64_t)sizeof state->count);
         hash = mvfxHash64(hash, &state->owed, (int64_t)sizeof state->owed);
-        hash = mvfxHash64(hash, &state->refused, (int64_t)sizeof state->refused);
+        hash = mvfxHash64(hash, &state->birthsDropped, (int64_t)sizeof state->birthsDropped);
         hash = mvfxHash64(hash, &state->neighborsDropped, (int64_t)sizeof state->neighborsDropped);
         hash = mvfxHash64(hash, &state->contactsDropped, (int64_t)sizeof state->contactsDropped);
         hash = mvfxHash64(hash, &state->linksDropped, (int64_t)sizeof state->linksDropped);
-        hash = mvfxHash64(hash, &state->torn, (int64_t)sizeof state->torn);
+        hash = mvfxHash64(hash, &state->tearCount, (int64_t)sizeof state->tearCount);
         hash = mvfxHash64(hash, &state->selfContactsDropped,
                           (int64_t)sizeof state->selfContactsDropped);
         hash = mvfxHash64(hash, &state->rigidContactsDropped,
