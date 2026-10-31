@@ -197,7 +197,6 @@
       "configurePreset": "windows-rhi-d3d12",
       "configuration": "Debug",
       "description": "rhi_kernels on WARP, which must be found as a D3D12 adapter, under the Agility SDK's debug layer and GPU-based validation, whose errors fail it; its in-place remainders are WARP's expected failure. The suites that build a simulation (the harness suites, guide_rhi, sample_gpu) are left out: WARP faults compiling the simulation's kernels (#65). The validation's resource state tracking is off, as in Maul RHI's windows-d3d12 cell: it reports false errors on a device whose objects were made and released before.",
-      "output": { "outputOnFailure": true, "verbosity": "verbose" },
       "filter": { "include": { "name": "^(rhi_kernels|rhi_sim)$" } },
       "environment": {
         "MVFX_RHI_REQUIRED": "d3d12",
