@@ -153,8 +153,8 @@ static void TestInstanceIndices(void)
     static const mvfxTubeDef tube = {.sides = 3};
     static const double point[3] = {0, 0, 0};
     static const float zero[3] = {0, 0, 0};
-    static unsigned char records[256];
-    static unsigned char scratch[4096];
+    static _Alignas(16) unsigned char records[256];
+    static _Alignas(16) unsigned char scratch[4096];
     static uint32_t indices[64];
     static float floats[64];
     const mvfxExpandBuffers expand = {
@@ -286,10 +286,10 @@ static void TestCounts(void)
     // Counts, capacities, sizes and ticks, of 32 and of 64 bits.
     static const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
     static const double point[3] = {0, 0, 0};
-    static unsigned char records[256];
-    static unsigned char scratch[4096];
+    static _Alignas(16) unsigned char records[256];
+    static _Alignas(16) unsigned char scratch[4096];
     static float floats[4 * 4 * 4 * 3];
-    static unsigned char bytes[64];
+    static _Alignas(16) unsigned char bytes[64];
     static char text[16];
     const mvfxAttachFrame frame = {.rotation = {0, 0, 0, 1}};
     const mvfxSceneAnswer answer = {0};
@@ -1243,7 +1243,7 @@ static void TestCallStructs(void)
     // the call shown to succeed with them valid.
     static const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
     static const double point[3] = {0, 0, 0};
-    static unsigned char records[256];
+    static _Alignas(16) unsigned char records[256];
     static uint32_t indices[64];
     static float floats[64];
     static const float pixel[3] = {0.5f, 0.0f, 1.0f};
@@ -1331,9 +1331,9 @@ static void TestCallBuffers(void)
     static const mvfxView view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
     static const double origin[3] = {0, 0, 0};
     static const mvfxTubeDef tube = {.sides = 3};
-    static unsigned char points[256];
+    static _Alignas(16) unsigned char points[256];
     static mvfxRibbon ribbons[4];
-    static unsigned char vertices[256];
+    static _Alignas(16) unsigned char vertices[256];
     static uint32_t indices[64];
     static float positions[64];
     static const float pixel[3] = {0.5f, 0.0f, 1.0f};
@@ -1428,9 +1428,9 @@ static void TestAssetNames(void)
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = &emitter;
     def.emitterCount = 1;
-    static unsigned char bytes[4096];
+    static _Alignas(16) unsigned char bytes[4096];
     static _Alignas(16) unsigned char memory[1 << 16];
-    static unsigned char written[4096];
+    static _Alignas(16) unsigned char written[4096];
     int64_t size = 0;
     CHECK(mvfxWriteEffect(&def, NULL, 0, bytes, sizeof bytes, &size, NULL).result == mvfx_success,
           "a file to read");
@@ -1486,7 +1486,7 @@ static mvfxResult KindCall(int32_t c, int32_t value)
     static float floats[64];
     static const double point[3] = {0, 0, 0};
     static const float pixel[3] = {0.5f, 0.0f, 1.0f};
-    static unsigned char bytes[4096];
+    static _Alignas(16) unsigned char bytes[4096];
     static _Alignas(16) unsigned char memory[1 << 16];
     mvfxGridDef grid = mvfxDefaultGridDef();
     grid.size[0] = 2;
