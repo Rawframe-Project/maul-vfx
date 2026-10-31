@@ -11,6 +11,7 @@
 #include "maul-vfx/output.h"
 #include "maul-vfx/plan.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 
 enum
@@ -29,12 +30,20 @@ typedef struct Host
 
 static Host s_host;
 
+// Memory aligned by hand (not every C library has aligned_alloc), the
+// block's start kept before it.
 static void* Alloc(size_t size, size_t alignment, void* context)
 {
     (void)context;
     s_host.allocs += 1;
-    size_t rounded = (size + alignment - 1) / alignment * alignment;
-    return aligned_alloc(alignment, rounded);
+    uint8_t* raw = malloc(size + alignment + sizeof(void*));
+    if (raw == NULL)
+    {
+        return NULL;
+    }
+    uintptr_t at = ((uintptr_t)(raw + sizeof(void*)) + alignment - 1) & ~(uintptr_t)(alignment - 1);
+    ((void**)at)[-1] = raw;
+    return (void*)at;
 }
 
 static void Free(void* memory, size_t size, size_t alignment, void* context)
@@ -43,7 +52,7 @@ static void Free(void* memory, size_t size, size_t alignment, void* context)
     (void)alignment;
     (void)context;
     s_host.frees += 1;
-    free(memory);
+    free(((void**)memory)[-1]);
 }
 
 // Runs every range at once, and hands back a handle for finishTask.
