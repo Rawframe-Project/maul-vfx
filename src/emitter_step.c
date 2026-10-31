@@ -501,7 +501,7 @@ void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter)
     if (state->capacity == 0)
     {
         // Left out at the instance's quality level: the host's spawns are
-        // refused, nothing else happens.
+        // dropped, nothing else happens.
         state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, (uint64_t)state->hostCount);
         state->hostCount = 0;
         return;

@@ -915,7 +915,8 @@ extern "C"
         // (counts rounded to nearest, halves up); from 0 to 1.
         float rateScale;
         // Bit e leaves emitter e out: it has no particles, spawns nothing,
-        // and the host's spawns into it are refused and counted.
+        // and the host's spawns into it are dropped and counted
+        // (mvfxEmitterStats.birthsDropped).
         uint64_t omitted;
     } mvfxQualityLevel;
 

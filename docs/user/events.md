@@ -6,7 +6,7 @@ Events are written in a fixed order each step, up to the emitter's `eventCapacit
 
 ## Sub-emitters
 
-Another emitter of the same effect spawns from an emitter's events (`mvfxEventSpawn`): from each event of a kind, a number of births drawn between a minimum and a maximum, at the event's place and tick, taking a share of its velocity and, if asked, its colour and size, held to what the spawning emitter's particles may store ([limits](effects.md#limits-of-what-particles-show)). The source must write that kind of event. Sources step before the emitters that spawn from them, so a step's events spawn in the same step. A step's births from events are bounded by the spawning emitter's `capacity` for them; past it the latest by tick are refused and counted.
+Another emitter of the same effect spawns from an emitter's events (`mvfxEventSpawn`): from each event of a kind, a number of births drawn between a minimum and a maximum, at the event's place and tick, taking a share of its velocity and, if asked, its colour and size, held to what the spawning emitter's particles may store ([limits](effects.md#limits-of-what-particles-show)). The source must write that kind of event. Sources step before the emitters that spawn from them, so a step's events spawn in the same step. A step's births from events are bounded by the spawning emitter's `capacity` for them; past it the latest by tick are dropped and counted (`birthsDropped`).
 
 Fireworks are rockets whose deaths spawn sparks, and markers the program places itself:
 

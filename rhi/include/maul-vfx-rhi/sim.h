@@ -162,7 +162,7 @@ extern "C"
 
 // For an emitter that spawns from events, the statistics record's words
 // holding the serials its event births took (two words), then the step's
-// event births refused (past its spawning's capacity) and births past its
+// event births dropped (past its spawning's capacity) and births past its
 // births' room (twice its capacity).
 #define MVFX_GPU_EVENT_SERIALS 34
 
