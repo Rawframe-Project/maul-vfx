@@ -2257,13 +2257,13 @@ static uint32_t s_capped;
 static bool SameCapped(int32_t e)
 {
     mvfxEmitterStats stats;
-    uint32_t capped = s_record[MVFX_GPU_NEIGHBORS_DROPPED];
+    uint32_t capped = s_record[MVFX_GPU_CAPPED_NEIGHBOR_QUERY_COUNT];
     bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
-                stats.neighborsDropped == capped;
+                stats.cappedNeighborQueryCount == capped;
     if (!same)
     {
         printf("neighbor queries capped: GPU %u, the CPU path's %llu\n", capped,
-               (unsigned long long)stats.neighborsDropped);
+               (unsigned long long)stats.cappedNeighborQueryCount);
     }
     s_capped = capped;
     return same;
@@ -2278,13 +2278,13 @@ static uint32_t s_contactsCapped;
 static bool SameContactsCapped(int32_t e)
 {
     mvfxEmitterStats stats;
-    uint32_t capped = s_record[MVFX_GPU_CONTACTS_DROPPED];
+    uint32_t capped = s_record[MVFX_GPU_CONTACT_CAPPED_PARTICLE_COUNT];
     bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
-                stats.contactsDropped == capped;
+                stats.contactCappedParticleCount == capped;
     if (!same)
     {
         printf("contacts capped: GPU %u, the CPU path's %llu\n", capped,
-               (unsigned long long)stats.contactsDropped);
+               (unsigned long long)stats.contactCappedParticleCount);
     }
     s_contactsCapped = capped > s_contactsCapped ? capped : s_contactsCapped;
     return same;
@@ -2299,13 +2299,13 @@ static uint32_t s_selfCapped;
 static bool SameSelfCapped(int32_t e)
 {
     mvfxEmitterStats stats;
-    uint32_t capped = s_record[MVFX_GPU_SELF_CONTACTS_DROPPED];
+    uint32_t capped = s_record[MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT];
     bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
-                stats.selfContactsDropped == capped;
+                stats.selfContactCappedPointCount == capped;
     if (!same)
     {
         printf("self-contacts capped: GPU %u, the CPU path's %llu\n", capped,
-               (unsigned long long)stats.selfContactsDropped);
+               (unsigned long long)stats.selfContactCappedPointCount);
     }
     s_selfCapped = capped > s_selfCapped ? capped : s_selfCapped;
     return same;
@@ -2487,13 +2487,15 @@ static bool SameSkipped(const mvfxEmitterDef* def, int32_t e)
                     {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 2, 0},
                     {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 3, 0},
                     {def->ribbon.ids == mvfx_ribbonNone, MVFX_GPU_RIBBON_BREAKS, 0},
-                    {!def->neighbors.enable, MVFX_GPU_NEIGHBORS_DROPPED, stats.neighborsDropped},
-                    {!def->contacts.enable, MVFX_GPU_CONTACTS_DROPPED, stats.contactsDropped},
+                    {!def->neighbors.enable, MVFX_GPU_CAPPED_NEIGHBOR_QUERY_COUNT,
+                     stats.cappedNeighborQueryCount},
+                    {!def->contacts.enable, MVFX_GPU_CONTACT_CAPPED_PARTICLE_COUNT,
+                     stats.contactCappedParticleCount},
                     {!def->plexus.enable, MVFX_GPU_LINKS, 0},
                     {!def->plexus.enable, MVFX_GPU_LINKS_DROPPED, stats.linksDropped},
                     {!(def->unit.tearStrain > 0.0f), MVFX_GPU_TEAR_COUNT, stats.tearCount},
-                    {!(def->unit.selfThickness > 0.0f), MVFX_GPU_SELF_CONTACTS_DROPPED,
-                     stats.selfContactsDropped},
+                    {!(def->unit.selfThickness > 0.0f), MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT,
+                     stats.selfContactCappedPointCount},
                     {!rigid, MVFX_GPU_RIGID_CONTACTS_DROPPED, stats.rigidContactsDropped},
                     {!rigid, MVFX_GPU_RIGID_SEARCH_STOP_COUNT, stats.rigidSearchStopCount}};
     bool same = true;

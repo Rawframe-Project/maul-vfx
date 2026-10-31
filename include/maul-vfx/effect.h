@@ -565,7 +565,7 @@ extern "C"
         // found once a step, those within the thickness plus twice the
         // farthest a point goes in the step at its speed and gravity, at most
         // selfContacts of them (1 to MVFX_MAX_NEIGHBORS; a point with more is
-        // counted, mvfxEmitterStats.selfContactsDropped); in each substep
+        // counted, mvfxEmitterStats.selfContactCappedPointCount); in each substep
         // after the constraints, each pair closer than the thickness is
         // parted and its sliding over the substep slowed by up to
         // selfFriction (0 to 1) times its overlap, all pairs from the same
@@ -740,7 +740,7 @@ extern "C"
     // the liquid from the next. Lengths are in the particles' space (a
     // world-space emitter's scale with its instance). A particle counts at
     // most maxNeighbors neighbors in the grid's order, those past it
-    // counted (mvfxEmitterStats.neighborsDropped, once a step).
+    // counted (mvfxEmitterStats.cappedNeighborQueryCount, once a step).
     // mvfxDefaultEmitterDef sets a spacing of 0.1, a kernel of 2, a
     // relaxation of 0.01, viscosity of 0.01 and 64 neighbors.
     // How a liquid moves.

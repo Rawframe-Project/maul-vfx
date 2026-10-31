@@ -449,7 +449,7 @@ void mvfxStepLiquid(mvfxInstance* instance, int32_t emitter)
         // Counted once a step, in its first substep.
         capped += s == 0 ? over : 0u;
     }
-    state->neighborsDropped += capped;
+    state->cappedNeighborQueryCount += capped;
 }
 
 void mvfxMoveGridLiquid(mvfxInstance* instance, int32_t emitter)

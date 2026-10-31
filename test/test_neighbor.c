@@ -183,7 +183,7 @@ static uint64_t Capped(const Scene* scene, int32_t emitter)
     CHECK(mvfxInstance_GetEmitterStats(scene->context, scene->instance, emitter, &stats) ==
               mvfx_success,
           "stats");
-    return stats.neighborsDropped;
+    return stats.cappedNeighborQueryCount;
 }
 
 static void TestClouds(void)

@@ -67,7 +67,7 @@ An effect file refused by `mvfxReadEffect` or `mvfxCreateEffectFromBytes` comes 
 - **A lower quality level:** the context's particle budget lowered the instance's quality (`mvfxInstance_GetQuality`), which scales capacities and rates and may leave emitters out.
 - **`status`:** an emitter that has stopped (its loops ended, or the instance was stopped) spawns no more.
 
-The other counts (`eventsDropped`, `queriesDropped`, `neighborsDropped`, `contactsDropped`, `linksDropped` and the rest) each name the capacity that dropped work.
+The other counts (`eventsDropped`, `queriesDropped`, `cappedNeighborQueryCount`, `contactCappedParticleCount`, `linksDropped` and the rest) each name the capacity that dropped work.
 
 ## Results that differ
 

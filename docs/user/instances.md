@@ -91,4 +91,4 @@ Between steps the program may:
 
 ## What an emitter did
 
-`mvfxInstance_GetEmitterStats` reads an emitter's live count and what it has done since the instance began: the births it owed, those its capacity refused, those its kill rules killed, those killed for a value a host module left past its limit, and every count of work a capacity dropped (events, scene queries, neighbors, contacts, links, torn constraints). Nothing is dropped silently: a non-zero count says which capacity to raise.
+`mvfxInstance_GetEmitterStats` reads an emitter's live count and what it has done since the instance began: the births it owed, those its capacity dropped, those its kill rules killed, those killed for a value a host module left past its limit, and every count of work a capacity dropped (events, scene queries, neighbors, contacts, links, torn constraints). Nothing is dropped silently: a non-zero count says which capacity to raise.

@@ -193,10 +193,10 @@ typedef struct mvfxEmitterState
     uint64_t eventsDropped;
     // Its grid (for an emitter queried), and the queries that were capped.
     mvfxNeighborGrid grid;
-    uint64_t neighborsDropped;
+    uint64_t cappedNeighborQueryCount;
     // Its contacts' room, and the particles whose contacts were capped.
     mvfxContactRoom contacts;
-    uint64_t contactsDropped;
+    uint64_t contactCappedParticleCount;
     // Its plexus links, and those dropped.
     mvfxPlexusRoom plexus;
     uint64_t linksDropped;
@@ -271,7 +271,7 @@ typedef struct mvfxEmitterState
     float* selfMoves;
     int32_t* selfPairs;
     int32_t* selfCounts;
-    uint64_t selfContactsDropped;
+    uint64_t selfContactCappedPointCount;
     uint64_t rigidContactsDropped;
     uint64_t rigidSearchStopCount;
     // Its liquid's room.

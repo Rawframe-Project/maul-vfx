@@ -686,12 +686,12 @@ static void ResetEmitter(mvfxInstance* instance, int32_t e)
     state->eventCount = 0;
     state->eventStepFirst = 0;
     state->eventsDropped = 0;
-    state->neighborsDropped = 0;
-    state->contactsDropped = 0;
+    state->cappedNeighborQueryCount = 0;
+    state->contactCappedParticleCount = 0;
     state->plexus.linkCount = 0;
     state->linksDropped = 0;
     state->tearCount = 0;
-    state->selfContactsDropped = 0;
+    state->selfContactCappedPointCount = 0;
     state->rigidContactsDropped = 0;
     state->rigidSearchStopCount = 0;
     state->hasBounds = false;
@@ -812,12 +812,14 @@ uint64_t mvfxHashInstance(const mvfxInstance* instance, uint64_t seed)
         hash = mvfxHash64(hash, &state->count, (int64_t)sizeof state->count);
         hash = mvfxHash64(hash, &state->owed, (int64_t)sizeof state->owed);
         hash = mvfxHash64(hash, &state->birthsDropped, (int64_t)sizeof state->birthsDropped);
-        hash = mvfxHash64(hash, &state->neighborsDropped, (int64_t)sizeof state->neighborsDropped);
-        hash = mvfxHash64(hash, &state->contactsDropped, (int64_t)sizeof state->contactsDropped);
+        hash = mvfxHash64(hash, &state->cappedNeighborQueryCount,
+                          (int64_t)sizeof state->cappedNeighborQueryCount);
+        hash = mvfxHash64(hash, &state->contactCappedParticleCount,
+                          (int64_t)sizeof state->contactCappedParticleCount);
         hash = mvfxHash64(hash, &state->linksDropped, (int64_t)sizeof state->linksDropped);
         hash = mvfxHash64(hash, &state->tearCount, (int64_t)sizeof state->tearCount);
-        hash = mvfxHash64(hash, &state->selfContactsDropped,
-                          (int64_t)sizeof state->selfContactsDropped);
+        hash = mvfxHash64(hash, &state->selfContactCappedPointCount,
+                          (int64_t)sizeof state->selfContactCappedPointCount);
         hash = mvfxHash64(hash, &state->rigidContactsDropped,
                           (int64_t)sizeof state->rigidContactsDropped);
         hash = mvfxHash64(hash, &state->rigidSearchStopCount,

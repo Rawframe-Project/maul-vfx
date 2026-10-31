@@ -176,14 +176,14 @@ extern "C"
 // For an emitter that finds its neighbors (mvfxNeighborDef) or is a
 // liquid (mvfxLiquidDef), the statistics record's word counting the
 // queries its cap stopped since the instance was last cleared
-// (mvfxEmitterStats.neighborsDropped on the CPU path).
-#define MVFX_GPU_NEIGHBORS_DROPPED 46
+// (mvfxEmitterStats.cappedNeighborQueryCount on the CPU path).
+#define MVFX_GPU_CAPPED_NEIGHBOR_QUERY_COUNT 46
 
 // For an emitter with particle contacts (mvfxContactDef), the statistics
 // record's word counting the particles whose contacts in a step's first
 // pass were more than the most, since the instance was last cleared
-// (mvfxEmitterStats.contactsDropped on the CPU path).
-#define MVFX_GPU_CONTACTS_DROPPED 47
+// (mvfxEmitterStats.contactCappedParticleCount on the CPU path).
+#define MVFX_GPU_CONTACT_CAPPED_PARTICLE_COUNT 47
 
 // For an emitter with plexus links (mvfxPlexusDef), the statistics
 // record's words holding the step's links (the first of the links
@@ -201,8 +201,8 @@ extern "C"
 // For an emitter of units that collide with themselves
 // (mvfxUnitDef.selfThickness), the statistics record's word counting the
 // points with more candidates than the most since the instance was last
-// cleared (mvfxEmitterStats.selfContactsDropped on the CPU path).
-#define MVFX_GPU_SELF_CONTACTS_DROPPED 51
+// cleared (mvfxEmitterStats.selfContactCappedPointCount on the CPU path).
+#define MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT 51
 
 // For an emitter of rigid particles, the statistics record's word counting
 // their contacts dropped past the most a body takes since the instance was

@@ -343,7 +343,7 @@ extern "C"
         float radius;
         // The most a query counts, from 1 to MVFX_MAX_NEIGHBORS, in the
         // grid's order; a query that finds more stops there, counted
-        // (mvfxEmitterStats.neighborsDropped).
+        // (mvfxEmitterStats.cappedNeighborQueryCount).
         int32_t maxNeighbors;
     } mvfxNeighborDef;
 
@@ -467,7 +467,7 @@ extern "C"
         int32_t iterations;
         // The most contacts one particle takes in a pass, from 1 to
         // MVFX_MAX_NEIGHBORS, in the grid's order; a particle with more is
-        // counted (mvfxEmitterStats.contactsDropped).
+        // counted (mvfxEmitterStats.contactCappedParticleCount).
         int32_t maxContacts;
         // The share of the closing speed a contact sends back, and the share
         // of the sliding speed it takes, each 0 to 1.

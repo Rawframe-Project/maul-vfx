@@ -6,7 +6,7 @@ The words this library uses in its headers, code and documentation, with the mea
 |---|---|
 | **anchor** | The point a world-space emitter's particle places are offsets from, near its instance; moved to the instance when it has gone far. |
 | **attribute plan** | The list of particle attributes an emitter stores, made when its effect is compiled from the values its def uses. |
-| **birth** | A particle coming into being at a tick, with a serial. A birth that finds the emitter full is refused and counted. |
+| **birth** | A particle coming into being at a tick, with a serial. A birth that finds the emitter full is dropped and counted (`birthsDropped`). |
 | **budget** | The context's cap on the sum of its instances' emitter capacities (`mvfxContextLimits.particles`). |
 | **capacity** | The most of something an object holds at once, fixed when it is made: particles, events, scene queries, births from events. |
 | **context** | The owner object: the host's allocator and task hooks, and the tables of everything made through it. |

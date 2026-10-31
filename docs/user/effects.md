@@ -6,7 +6,7 @@ An effect is a def compiled once by `mvfxCreateEffect`: its emitters, gases and 
 
 An emitter spawns particles and decides how they live. Start from `mvfxDefaultEmitterDef`, which spawns 64 particles a second into a pool of 1,024 in world space, and set what the effect needs.
 
-**Capacity.** `capacity` is the most particles the emitter holds at once. A birth past it is refused and counted (`mvfxEmitterStats`), never stored somewhere else.
+**Capacity.** `capacity` is the most particles the emitter holds at once. A birth past it is dropped and counted (`mvfxEmitterStats.birthsDropped`), never stored somewhere else.
 
 **Spawning.** The births an emitter owes come from its `rate` (shaped over a loop by `rateCurve`), its `bursts` (a count drawn per firing, cycles, an interval and a probability), the distance its instance moved (`ratePerDistance`), another emitter's events ([events](events.md)) and the program's own requests (`mvfxInstance_Spawn`, up to `hostSpawnCapacity` between steps). `startDelay`, `duration` and `loops` set when it spawns: no duration spawns without end. Each birth happens at its exact tick, whatever the steps, and moves for the rest of its step from there.
 

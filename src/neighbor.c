@@ -265,7 +265,7 @@ void mvfxStoreNeighbors(mvfxInstance* instance, int32_t emitter, int32_t particl
                         const mvfxNeighborSums* sums, const float place[3], const float velocity[3])
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
-    state->neighborsDropped += sums->capped ? 1u : 0u;
+    state->cappedNeighborQueryCount += sums->capped ? 1u : 0u;
     float* counts = mvfxAttributeArray(instance, emitter, mvfx_attributeNeighborCount);
     counts[particle] = (float)sums->count;
     bool any = sums->count > 0;

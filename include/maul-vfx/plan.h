@@ -338,7 +338,7 @@ extern "C"
         double anchorAfter[3];
         // The births owed, in tick order. Past the plan's room (the
         // capacity's births at one tick, twice the capacity in a plan; in
-        // units for an emitter of units, a birth a unit) a birth is refused
+        // units for an emitter of units, a birth a unit) a birth is dropped
         // here, still owed; birthsDropped counts them. For an
         // emitter that spawns from events they are its own and the host's
         // only: the simulation builds the births events give and numbers
@@ -1045,7 +1045,7 @@ extern "C"
     /// (mvfxInstance_GetPlanSteps), as the CPU path takes that step: its
     /// span; the instance's move over the first step alone, standing still
     /// after it; its births, their ticks and deaths from its start; the
-    /// serials owed and births refused by its end; its forces resolved at
+    /// serials owed and births dropped by its end; its forces resolved at
     /// its start; the rest as at the plan's end. With one step it is the
     /// plan mvfxInstance_GetEmitterPlan returns. The births stay valid
     /// until the context's next step or the instance's destruction.

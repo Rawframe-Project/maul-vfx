@@ -11,7 +11,7 @@ Objects are named by ids: a 1-based slot in the context's table and the generati
 ## One block per object
 
 - **An effect** compiles into one block ([src/effect.h](../../src/effect.h)): its header, its emitters with their checked values, the tables its curves and gradients bake into, its gases' and water surfaces' defs, and each emitter's attribute plan. The def's arrays are not referenced after creation.
-- **An instance** allocates everything it will hold in one block ([src/instance.h](../../src/instance.h)): each emitter's particle arrays at its capacity (at the instance's quality level), its event buffer, its scene queries, its neighbor grid, its units' and rigid bodies' working storage, its gases' and water surfaces' fields, and the scratch its step needs. Capacities are fixed at creation; a birth past one is refused and counted, never stored elsewhere.
+- **An instance** allocates everything it will hold in one block ([src/instance.h](../../src/instance.h)): each emitter's particle arrays at its capacity (at the instance's quality level), its event buffer, its scene queries, its neighbor grid, its units' and rigid bodies' working storage, its gases' and water surfaces' fields, and the scratch its step needs. Capacities are fixed at creation; a birth past one is dropped and counted, never stored elsewhere.
 - **Grids, meshes and layouts** are a block each, sized from their defs.
 
 Block layouts are computed with checked arithmetic ([src/allocator.h](../../src/allocator.h)): a size that would overflow is refused with `mvfx_errorCapacity` before anything is allocated. For alignments beyond `max_align_t`, the C library's functions are asked for a larger block and the aligned part of it is used.

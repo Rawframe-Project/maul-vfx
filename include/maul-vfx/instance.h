@@ -256,7 +256,7 @@ extern "C"
 
     /// Queues particles for an emitter of an instance: they are born at the
     /// start of the next step, before its other births, each taking a serial
-    /// and room like any birth (refused, and counted, when the emitter is
+    /// and room like any birth (dropped, and counted, when the emitter is
     /// full); a planned instance's plan carries them (mvfxEmitterPlan's
     /// hostBirths). The values are copied: the arrays may be released at
     /// once.
@@ -653,10 +653,10 @@ extern "C"
         int32_t live;
         int32_t asleep;
         // Particles it owed by now, from its rate and its bursts: spawned,
-        // refused, and those whose life ended within the step they were
+        // dropped, and those whose life ended within the step they were
         // born in.
         uint64_t owed;
-        // Particles its capacity refused.
+        // Births its capacity dropped: owed, with no room to be born.
         uint64_t birthsDropped;
         // Particles its kill rules (and attractors' kill radii, contacts that
         // kill, its host modules' kills) killed.
@@ -670,16 +670,16 @@ extern "C"
         // Events its capacity of them dropped.
         uint64_t eventsDropped;
         // Neighbor queries that reached their most neighbors.
-        uint64_t neighborsDropped;
+        uint64_t cappedNeighborQueryCount;
         // Particles whose contacts in a pass were more than the most.
-        uint64_t contactsDropped;
+        uint64_t contactCappedParticleCount;
         // Plexus links past the most an emitter keeps or a particle owns.
         uint64_t linksDropped;
         // Units' stretch constraints torn.
         uint64_t tearCount;
         // Points of units with more self-collision candidates than
         // selfContacts, once a step each.
-        uint64_t selfContactsDropped;
+        uint64_t selfContactCappedPointCount;
         // Rigid particles' contacts past MVFX_MAX_RIGID_CONTACTS in a
         // substep, the shallowest dropped.
         uint64_t rigidContactsDropped;

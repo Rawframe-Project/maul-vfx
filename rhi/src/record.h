@@ -23,10 +23,10 @@
 // ribbons the GPU's breaks (MVFX_GPU_RIBBON_BREAKS); then for an emitter
 // whose ribbons pin a head the step's transfer pass's again: whether the
 // head shows at the step's end and its place in the world (binary64);
-// then the GPU's: the neighbor caps (MVFX_GPU_NEIGHBORS_DROPPED), the
-// contact caps (MVFX_GPU_CONTACTS_DROPPED), the step's links and the links
+// then the GPU's: the neighbor caps (MVFX_GPU_CAPPED_NEIGHBOR_QUERY_COUNT), the
+// contact caps (MVFX_GPU_CONTACT_CAPPED_PARTICLE_COUNT), the step's links and the links
 // dropped (MVFX_GPU_LINKS, MVFX_GPU_LINKS_DROPPED), the tears
-// (MVFX_GPU_TEAR_COUNT), the self-contacts' caps (MVFX_GPU_SELF_CONTACTS_DROPPED) and the
+// (MVFX_GPU_TEAR_COUNT), the self-contacts' caps (MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT) and the
 // rigid contacts' (MVFX_GPU_RIGID_CONTACTS_DROPPED). The layout plan budgets the
 // record at 64 words.
 static_assert(MVFX_GPU_STATISTICS_WORDS <= 64, "the statistics record within its 64 words");

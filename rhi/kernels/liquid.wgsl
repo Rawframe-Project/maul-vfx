@@ -24,7 +24,7 @@ const NONE: u32 = 0xFFFFFFFFu;
 // The alive word of a particle ended before the moves (sim/step.wgsl's).
 const LIVE_ENDED: u32 = 2u;
 // The statistics word counting the particles whose neighbors were capped
-// (the record's MVFX_GPU_NEIGHBORS_DROPPED).
+// (the record's MVFX_GPU_CAPPED_NEIGHBOR_QUERY_COUNT).
 const STATISTICS_CAPPED: u32 = 46u;
 
 // A liquid's numbers: the particle buffer's capacity and where a

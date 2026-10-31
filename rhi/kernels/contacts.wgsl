@@ -32,7 +32,7 @@ const SLOP_REACH: f32 = 1.00100004673;
 const REST_REACH: f32 = 1.00049996376;
 
 // The statistics record's word counting the particles whose contacts in
-// the first pass were more than the most (MVFX_GPU_CONTACTS_DROPPED).
+// the first pass were more than the most (MVFX_GPU_CONTACT_CAPPED_PARTICLE_COUNT).
 const STATISTICS_CONTACTS_CAPPED: u32 = 47u;
 
 // The count buffer's words: the particles the grid holds (the sort's
