@@ -111,6 +111,8 @@ extern "C"
     /// @param assetCount  Its length, at least 0.
     /// @param memoryOut   Receives the def's arrays, aligned to 16 bytes;
     ///                    NULL when capacity is 0. The def points into it.
+    ///                    It must not overlap the bytes: an overlap is
+    ///                    refused.
     /// @param capacity    Its size in bytes, at least 0.
     /// @param neededOut   Receives the bytes of memory the def needs, also
     ///                    when the capacity is too small; 0 on another
@@ -126,7 +128,8 @@ extern "C"
     ///                    field the validator refuses; on success,
     ///                    mvfx_success and no field.
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument,
-    ///         memory not aligned or an invalid asset table; `mvfx_errorLimit`
+    ///         memory not aligned or overlapping the bytes, or an invalid
+    ///         asset table; `mvfx_errorLimit`
     ///         for a name in the table longer than MVFX_MAX_ASSET_NAME;
     ///         `mvfx_errorFormat` for a file that is not one (a wrong
     ///         magic, size or hash, a section out of place, a tag out of
