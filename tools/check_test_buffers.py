@@ -9,7 +9,10 @@ An array of unsigned char or uint8_t has an alignment of 1, and where it
 lands decides the rest: AddressSanitizer aligns globals on Linux, so a
 missing alignment passes there and fails on another platform. Every
 array of unsigned char or uint8_t declared in test/ (static, local or a
-member) therefore states one, with _Alignas or alignas.
+member) therefore states one, with _Alignas or alignas. The guide's tests
+(test_guide*.c) are left out: their code is the user documentation's, as
+a host writes it, and a buffer there that needs an alignment states it in
+the documentation too.
 
 Usage: check_test_buffers.py [--self-test]
 """
@@ -61,6 +64,8 @@ def main(argv):
         return self_test()
     found = []
     for path in sorted((ROOT / "test").glob("*.[ch]")):
+        if path.name.startswith("test_guide"):
+            continue
         found += findings(str(path.relative_to(ROOT)), path.read_text(encoding="utf-8"))
     for f in found:
         print(f)
