@@ -1,7 +1,7 @@
 # Written by tools/gen_kernels.py and read by its --check: the Maul RHI
 # release whose tools cooked these containers, the flags its DXC
 # compiles passed, and each container's SHA-256.
-maul-rhi 0.13.0
+maul-rhi 0.14.0
 dxc-flags -Gis -Qstrip_reflect -Qstrip_debug
 container contacts 19b242eb7a8486a16b59498dbd01866d1bf9023bb7b273bd8fa552d4d41e52af
 container gas 96b7075787f25cc9e9fb33ed65e7f8c53dbe5184b31a983e056afb84442fe517
