@@ -314,10 +314,11 @@ static void TestRefused(void)
 static void TestCount(void)
 {
     // Fibonacci spheres of 200 and 500 points (MVFX_MAX_HULL_COUNT): every
-    // point a vertex, counted past the most a hull keeps; one of 1,500
-    // past what a count holds, refused with a count of 0; a flat set
-    // refused.
+    // point a vertex, counted past the most a hull keeps, none built; one
+    // of 1,500 past what a count holds, refused with a count of 0; a flat
+    // set counted 0, no hull built.
     static float ball[3 * 1500];
+    mvfxHull hull;
     bool counted = true;
     for (int32_t total = 200; total <= 1500; total += total == 500 ? 1000 : 300)
     {
@@ -330,17 +331,19 @@ static void TestCount(void)
             ball[3 * i + 1] = r * sinf(angle);
             ball[3 * i + 2] = z;
         }
-        int32_t vertices = -1;
-        mvfxResult result = mvfxCountHullVertices(ball, total, &s_allocator, &vertices);
-        counted =
-            counted && (total > MVFX_MAX_HULL_COUNT ? result == mvfx_errorLimit && vertices == 0
-                                                    : result == mvfx_success && vertices == total);
+        mvfxHullMeasure m = {.count = -1};
+        counted = counted &&
+                  mvfxMeasureHull(ball, total, &s_allocator, &m, &hull) == mvfx_success &&
+                  m.built == mvfx_errorLimit &&
+                  (total > MVFX_MAX_HULL_COUNT ? m.counted == mvfx_errorLimit && m.count == 0
+                                               : m.counted == mvfx_success && m.count == total);
     }
     const float flat[15] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0.5f, 0.5f, 0};
-    int32_t none = -1;
-    bool refused =
-        mvfxCountHullVertices(flat, 5, &s_allocator, &none) == mvfx_errorInvalid && none == 0;
-    CHECK(counted && refused, "hull vertices counted");
+    mvfxHullMeasure none = {.count = -1};
+    bool flatNone = mvfxMeasureHull(flat, 5, &s_allocator, &none, &hull) == mvfx_success &&
+                    none.counted == mvfx_success && none.count == 0 &&
+                    none.built == mvfx_errorInvalid;
+    CHECK(counted && flatNone, "hull vertices counted");
 }
 
 int main(void)

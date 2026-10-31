@@ -740,12 +740,33 @@ static mvfxResult Finish(const Build* b, mvfxHull* out)
     return mvfx_success;
 }
 
-mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator* allocator,
-                         mvfxHull* out)
+// Counts the points the live triangles have, each once: their owner no
+// longer needed.
+static int32_t CountVertices(Build* b)
 {
+    for (int32_t i = 0; i < b->count; ++i)
+    {
+        b->owner[i] = 0;
+    }
+    int32_t count = 0;
+    for (int32_t f = 0; f < b->faceCount; ++f)
+    {
+        for (int32_t k = 0; b->faces[f].alive && k < 3; ++k)
+        {
+            count += b->owner[b->faces[f].v[k]] == 0 ? 1 : 0;
+            b->owner[b->faces[f].v[k]] = 1;
+        }
+    }
+    return count;
+}
+
+mvfxResult mvfxMeasureHull(const float* points, int32_t count, const mvfxAllocator* allocator,
+                           mvfxHullMeasure* measure, mvfxHull* out)
+{
+    *measure = (mvfxHullMeasure){.counted = mvfx_success, .built = mvfx_errorInvalid};
     if (count < 4)
     {
-        return mvfx_errorInvalid;
+        return mvfx_success;
     }
     Build* b = mvfxAllocate(allocator, sizeof(Build), _Alignof(Build));
     int32_t* owner = mvfxAllocate(allocator, (size_t)count * sizeof(int32_t), _Alignof(int32_t));
@@ -756,49 +777,23 @@ mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator
         b->points = points;
         b->count = count;
         b->owner = owner;
+        mvfxResult made = Triangles(b);
         // Past a build's faces is past the most vertices too: the
         // mvfx_errorLimit of MVFX_MAX_HULL_VERTICES.
-        result = Triangles(b);
-        result = result == mvfx_success ? Finish(b, out) : result;
+        measure->built = made == mvfx_success ? Finish(b, out) : made;
+        measure->counted = made == mvfx_errorLimit ? made : mvfx_success;
+        measure->count = made == mvfx_success ? CountVertices(b) : 0;
+        result = mvfx_success;
     }
     mvfxRelease(allocator, owner, (size_t)count * sizeof(int32_t), _Alignof(int32_t));
     mvfxRelease(allocator, b, sizeof(Build), _Alignof(Build));
     return result;
 }
 
-mvfxResult mvfxCountHullVertices(const float* points, int32_t count, const mvfxAllocator* allocator,
-                                 int32_t* out)
+mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator* allocator,
+                         mvfxHull* out)
 {
-    *out = 0;
-    if (count < 4)
-    {
-        return mvfx_errorInvalid;
-    }
-    Build* b = mvfxAllocate(allocator, sizeof(Build), _Alignof(Build));
-    int32_t* owner = mvfxAllocate(allocator, (size_t)count * sizeof(int32_t), _Alignof(int32_t));
-    mvfxResult result = mvfx_errorCapacity;
-    if (b != nullptr && owner != nullptr)
-    {
-        memset(b, 0, sizeof *b);
-        b->points = points;
-        b->count = count;
-        b->owner = owner;
-        result = Triangles(b);
-    }
-    // Each point a live triangle has, once: its owner no longer needed.
-    for (int32_t i = 0; result == mvfx_success && i < count; ++i)
-    {
-        owner[i] = 0;
-    }
-    for (int32_t f = 0; result == mvfx_success && f < b->faceCount; ++f)
-    {
-        for (int32_t k = 0; b->faces[f].alive && k < 3; ++k)
-        {
-            *out += owner[b->faces[f].v[k]] == 0 ? 1 : 0;
-            owner[b->faces[f].v[k]] = 1;
-        }
-    }
-    mvfxRelease(allocator, owner, (size_t)count * sizeof(int32_t), _Alignof(int32_t));
-    mvfxRelease(allocator, b, sizeof(Build), _Alignof(Build));
-    return result;
+    mvfxHullMeasure measure;
+    mvfxResult result = mvfxMeasureHull(points, count, allocator, &measure, out);
+    return result == mvfx_success ? measure.built : result;
 }

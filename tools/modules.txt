@@ -22,7 +22,7 @@ noise: field_path fpenv random refusal
 tasks: fpenv
 slots: allocator invariant
 direction: elementary random
-mesh: allocator direction random refusal
+mesh: allocator direction hull random refusal
 shape: direction elementary field_path mesh random refusal
 velocity: direction elementary refusal shape
 value: curve gradient random refusal
@@ -75,7 +75,7 @@ planner: attach birth emitter_step instance integrate spawn
 context: allocator effect grid instance invariant layout mesh slots tasks
 convex: direction hull
 effect_api: allocator context effect effect_check effect_parts field_path fpenv grid grid_api hull mesh mesh_api slots
-mesh_api: allocator context fpenv hull mesh slots
+mesh_api: context fpenv hull mesh slots
 grid_api: context grid slots
 gas: allocator collide defaults force gas_lattice refusal
 gas_lattice:

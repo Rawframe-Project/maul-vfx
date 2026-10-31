@@ -9,6 +9,7 @@
 #ifndef MAUL_VFX_SRC_MESH_H
 #define MAUL_VFX_SRC_MESH_H
 
+#include "hull.h"
 #include "random.h"
 
 #include "maul-vfx/mesh.h"
@@ -33,6 +34,11 @@ typedef struct mvfxMesh
     double* edgeSums;
     double* triangleSums;
     double* tetrahedronSums;
+    // The hull of the positions it was made with, which new positions
+    // leave as it is; the hull itself when a rigid particle takes it, else
+    // NULL.
+    mvfxHullMeasure hullMeasure;
+    mvfxHull* hull;
     // The effects and instances that spawn from it.
     int64_t users;
     // A serial new at its creation and each change of its positions.
@@ -53,8 +59,8 @@ mvfxResult mvfxCheckMeshDef(const mvfxMeshDef* def);
 // past MVFX_MAX_EXTENT.
 mvfxResult mvfxCheckPositions(const float* positions, const float* normals, int32_t vertexCount);
 
-// Builds a mesh from a valid def in one block from allocator; NULL when
-// the allocator fails.
+// Builds a mesh from a valid def in one block from allocator, with its
+// hull; NULL when the allocator fails.
 mvfxMesh* mvfxBuildMesh(const mvfxMeshDef* def, const mvfxAllocator* allocator);
 
 // Gives a mesh valid new positions and normals and rebuilds its normals

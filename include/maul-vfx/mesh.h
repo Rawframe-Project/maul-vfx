@@ -68,7 +68,14 @@ extern "C"
 
     /// Creates a mesh: checks the def, copies it, and builds its edges (each
     /// pair of vertices a triangle joins, once), its normals unless given,
-    /// and the sums that choose an element by length, area or volume.
+    /// the sums that choose an element by length, area or volume, and the
+    /// convex hull of its positions that mvfxMesh_GetHullCenter,
+    /// mvfxMesh_GetHullVertexCount and rigid hull particles read.
+    ///
+    /// mvfxCreateMesh builds the hull, about 1 ms per 1,000 positions,
+    /// with a scratch of about 105 KB plus 4 bytes a vertex from the
+    /// context's allocator, released before it returns. The mesh keeps
+    /// 3.4 KB for the hull when a rigid particle takes it.
     ///
     /// @param context  The context that will own the mesh.
     /// @param def      The def, from mvfxDefaultMeshDef.
@@ -147,7 +154,8 @@ extern "C"
 
     /// Gives a mesh new positions (and normals) for the same vertices, as a
     /// skinned mesh moves, and rebuilds what is drawn from them. Steps after
-    /// spawn from the new positions.
+    /// spawn from the new positions. The hull stays that of the positions
+    /// the mesh was created with.
     ///
     /// @param context      The context that owns the mesh.
     /// @param mesh         The mesh.
@@ -168,10 +176,10 @@ extern "C"
                                                              const float* normals,
                                                              int32_t vertexCount);
 
-    /// Gives the centroid of the convex hull of a mesh's vertices, the
-    /// place of a rigid hull particle (mvfx_rigidHull) in the mesh's frame:
-    /// a host draws the mesh at the particle's pose, scaled by its size and
-    /// moved by minus this centroid scaled likewise.
+    /// Gives the centroid of the convex hull of the positions a mesh was
+    /// created with, the place of a rigid hull particle (mvfx_rigidHull) in
+    /// the mesh's frame: a host draws the mesh at the particle's pose,
+    /// scaled by its size and moved by minus this centroid scaled likewise.
     ///
     /// A mesh from a model file may have no hull a rigid particle takes:
     /// vertices that span no volume, or a hull of more than
@@ -184,21 +192,22 @@ extern "C"
     ///                   failure.
     /// @param centerOut  Receives x, y and z; zeros without a hull or on
     ///                   failure.
-    /// @return `mvfx_success`, with or without a hull; `mvfx_errorStale` for
-    ///         an id that names no live mesh; `mvfx_errorInvalid` for a NULL
-    ///         argument, which counts as misuse when the context is given;
-    ///         `mvfx_errorCapacity` when the allocator fails.
+    /// @return `mvfx_success`, with or without a hull; `mvfx_errorInvalid`
+    ///         for a NULL argument; `mvfx_errorStale` for an id that names no
+    ///         live mesh.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_GetHullCenter(mvfxContext* context, mvfxMeshId mesh,
-                                                              bool* hullOut, float centerOut[3]);
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_GetHullCenter(const mvfxContext* context,
+                                                              mvfxMeshId mesh, bool* hullOut,
+                                                              float centerOut[3]);
 
 // The most vertices of a hull mvfxMesh_GetHullVertexCount counts.
 #define MVFX_MAX_HULL_COUNT 500
 
-    /// Counts the vertices of the convex hull of a mesh's vertices, past
-    /// the MVFX_MAX_HULL_VERTICES a rigid hull particle takes: an editor
-    /// tells an artist by how much to simplify a mesh refused for one.
+    /// Counts the vertices of the convex hull of the positions a mesh was
+    /// created with, past the MVFX_MAX_HULL_VERTICES a rigid hull particle
+    /// takes: an editor tells an artist by how much to simplify a mesh
+    /// refused for one.
     ///
     /// @param context   The context that owns the mesh.
     /// @param mesh      The mesh.
@@ -206,16 +215,14 @@ extern "C"
     ///                  volume, which have no hull; 0 on failure, so an
     ///                  editor given `mvfx_errorLimit` reports "more than
     ///                  MVFX_MAX_HULL_COUNT", never the 0.
-    /// @return `mvfx_success`, 0 among its counts; `mvfx_errorStale` for an
-    ///         id that names no live mesh; `mvfx_errorInvalid` for a NULL
-    ///         argument, which counts as misuse when the context is given;
-    ///         `mvfx_errorLimit` for a hull past what a count holds,
+    /// @return `mvfx_success`, 0 among its counts; `mvfx_errorInvalid` for a
+    ///         NULL argument; `mvfx_errorStale` for an id that names no live
+    ///         mesh; `mvfx_errorLimit` for a hull past what a count holds,
     ///         never fewer than MVFX_MAX_HULL_COUNT vertices (some hulls of
-    ///         a few more are still counted); `mvfx_errorCapacity` when the
-    ///         allocator fails.
+    ///         a few more are still counted).
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
-    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_GetHullVertexCount(mvfxContext* context,
+    MVFX_NODISCARD MVFX_API mvfxResult mvfxMesh_GetHullVertexCount(const mvfxContext* context,
                                                                    mvfxMeshId mesh,
                                                                    int32_t* countOut);
 

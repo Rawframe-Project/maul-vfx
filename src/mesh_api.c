@@ -5,7 +5,6 @@
 
 #include "mesh_api.h"
 
-#include "allocator.h"
 #include "context.h"
 #include "fpenv.h"
 #include "hull.h"
@@ -157,13 +156,9 @@ mvfxResult mvfxMesh_GetView(const mvfxContext* context, mvfxMeshId mesh, mvfxMes
     return mvfx_success;
 }
 
-static MVFX_NOINLINE mvfxResult mvfxMesh_GetHullCenterWork(mvfxContext* context, mvfxMeshId mesh,
-                                                           bool* hullOut, float centerOut[3])
+mvfxResult mvfxMesh_GetHullCenter(const mvfxContext* context, mvfxMeshId mesh, bool* hullOut,
+                                  float centerOut[3])
 {
-    if (mvfxRefusesHostCall(context))
-    {
-        return mvfx_errorBusy;
-    }
     hullOut != nullptr ? (void)(*hullOut = false) : (void)0;
     for (int32_t k = 0; centerOut != nullptr && k < 3; ++k)
     {
@@ -171,7 +166,6 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_GetHullCenterWork(mvfxContext* context,
     }
     if (context == nullptr || hullOut == nullptr || centerOut == nullptr)
     {
-        context != nullptr ? mvfxCountMisuse(context) : (void)0;
         return mvfx_errorInvalid;
     }
     const mvfxMesh* live = mvfxContextMesh(context, mesh);
@@ -179,61 +173,31 @@ static MVFX_NOINLINE mvfxResult mvfxMesh_GetHullCenterWork(mvfxContext* context,
     {
         return mvfx_errorStale;
     }
-    mvfxHull* hull = mvfxAllocate(&context->allocator, sizeof(mvfxHull), alignof(mvfxHull));
-    mvfxResult built = hull == nullptr ? mvfx_errorCapacity
-                                       : mvfxBuildHull(live->positions, live->vertexCount,
-                                                       &context->allocator, hull);
-    for (int32_t k = 0; k < 3; ++k)
-    {
-        centerOut[k] = built == mvfx_success ? hull->centroid[k] : 0.0f;
-    }
-    mvfxRelease(&context->allocator, hull, sizeof(mvfxHull), alignof(mvfxHull));
     // Vertices that span no volume, or whose hull is past what a rigid
     // particle takes, are a model's data: no hull, not an error.
-    *hullOut = built == mvfx_success;
-    return built == mvfx_errorInvalid || built == mvfx_errorLimit ? mvfx_success : built;
-}
-
-mvfxResult mvfxMesh_GetHullCenter(mvfxContext* context, mvfxMeshId mesh, bool* hullOut,
-                                  float centerOut[3])
-{
-    uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxMesh_GetHullCenterWork(context, mesh, hullOut, centerOut);
-    mvfxFloatEnvLeave(env);
-    return result;
-}
-
-static MVFX_NOINLINE mvfxResult mvfxMesh_GetHullVertexCountWork(mvfxContext* context,
-                                                                mvfxMeshId mesh, int32_t* countOut)
-{
-    if (mvfxRefusesHostCall(context))
+    *hullOut = live->hull != nullptr;
+    for (int32_t k = 0; live->hull != nullptr && k < 3; ++k)
     {
-        return mvfx_errorBusy;
+        centerOut[k] = live->hull->centroid[k];
     }
+    return mvfx_success;
+}
+
+mvfxResult mvfxMesh_GetHullVertexCount(const mvfxContext* context, mvfxMeshId mesh,
+                                       int32_t* countOut)
+{
+    countOut != nullptr ? (void)(*countOut = 0) : (void)0;
     if (context == nullptr || countOut == nullptr)
     {
-        context != nullptr ? mvfxCountMisuse(context) : (void)0;
-        countOut != nullptr ? (void)(*countOut = 0) : (void)0;
         return mvfx_errorInvalid;
     }
-    *countOut = 0;
     const mvfxMesh* live = mvfxContextMesh(context, mesh);
     if (live == nullptr)
     {
         return mvfx_errorStale;
     }
-    mvfxResult counted =
-        mvfxCountHullVertices(live->positions, live->vertexCount, &context->allocator, countOut);
-    // Vertices that span no volume have no hull: none of its vertices.
-    return counted == mvfx_errorInvalid ? mvfx_success : counted;
-}
-
-mvfxResult mvfxMesh_GetHullVertexCount(mvfxContext* context, mvfxMeshId mesh, int32_t* countOut)
-{
-    uint64_t env = mvfxFloatEnvEnter();
-    mvfxResult result = mvfxMesh_GetHullVertexCountWork(context, mesh, countOut);
-    mvfxFloatEnvLeave(env);
-    return result;
+    *countOut = live->hullMeasure.count;
+    return live->hullMeasure.counted;
 }
 
 mvfxMesh* mvfxContextMesh(const mvfxContext* context, mvfxMeshId mesh)

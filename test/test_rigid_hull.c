@@ -283,6 +283,48 @@ static void State(const float inertia[6], float momentum[3], float* energy)
     MomentumOf(inertia, q, w, momentum, energy);
 }
 
+static void TestCreatedPositions(void)
+{
+    // A hull is that of the positions its mesh was created with: the
+    // corner tetrahedron moved to twice its size keeps its center and its
+    // count, and an effect made after takes it, of a volume of 1/6, not
+    // 8/6. A flat mesh moved to span a volume still has no hull.
+    OpenContext();
+    mvfxMeshId corner = MeshOf(s_corner, 4);
+    float twice[12];
+    for (int32_t i = 0; i < 12; ++i)
+    {
+        twice[i] = 2.0f * s_corner[i];
+    }
+    CHECK(mvfxMesh_SetPositions(s_scene.context, corner, twice, NULL, 4) == mvfx_success, "moved");
+    float center[3];
+    bool hull = false;
+    int32_t count = 0;
+    CHECK(mvfxMesh_GetHullCenter(s_scene.context, corner, &hull, center) == mvfx_success && hull &&
+              fabsf(center[0] - 1.25f) <= 1e-5f && fabsf(center[1] - 2.25f) <= 1e-5f &&
+              fabsf(center[2] - 3.25f) <= 1e-5f &&
+              mvfxMesh_GetHullVertexCount(s_scene.context, corner, &count) == mvfx_success &&
+              count == 4,
+          "the hull's center and count as created");
+    static const float unit[3] = {1, 1, 1};
+    static const float turn[3] = {0, 0, 0};
+    const mvfxEmitterDef emitter = Rigid(mvfx_rigidHull, corner, unit, turn, false);
+    CHECK(EffectOf(&emitter, 1, &s_scene.effect) == mvfx_success, "effect");
+    View(0);
+    CHECK(s_view.hullVertexCount == 4 && fabsf(s_view.hullVolume - 1.0f / 6.0f) <= 1e-6f,
+          "an effect made after the move takes the hull as created");
+    static const float flat[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0};
+    mvfxMeshId plane = MeshOf(flat, 4);
+    CHECK(mvfxMesh_SetPositions(s_scene.context, plane, s_corner, NULL, 4) == mvfx_success,
+          "moved to span a volume");
+    const mvfxEmitterDef onPlane = Rigid(mvfx_rigidHull, plane, unit, turn, false);
+    mvfxEffectId refused = {0};
+    CHECK(mvfxMesh_GetHullCenter(s_scene.context, plane, &hull, center) == mvfx_success && !hull &&
+              EffectOf(&onPlane, 1, &refused) == mvfx_errorInvalid,
+          "a flat mesh moved to span a volume still has no hull");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestFreeSpin(void)
 {
     // The lopsided hull spun at (2, 3, -1) without gravity: its angular
@@ -714,7 +756,8 @@ static void TestCrest(void)
 static void TestVertexCount(void)
 {
     // A mesh of 100 points on a ball, refused as a hull, counted: 100 for
-    // its artist to bring under the most; arguments refused.
+    // its artist to bring under the most; one of 1,500, past the count;
+    // arguments refused.
     OpenContext();
     static float ball[300];
     for (int32_t i = 0; i < 100; ++i)
@@ -753,10 +796,27 @@ static void TestVertexCount(void)
         mvfxMesh_GetHullCenter(s_scene.context, mesh, NULL, center) == mvfx_errorInvalid &&
         mvfxMesh_GetHullCenter(s_scene.context, (mvfxMeshId){0}, &hull, center) ==
             mvfx_errorStale &&
-        mvfxContext_GetMisuse(s_scene.context) == misuse + 2;
+        mvfxContext_GetMisuse(s_scene.context) == misuse;
+    // One of 1,500 points is past what a count holds: refused with a count
+    // of 0 and no misuse, since a model file's mesh may be that big.
+    static float big[3 * 1500];
+    for (int32_t i = 0; i < 1500; ++i)
+    {
+        float z = 1.0f - (2.0f * (float)i + 1.0f) / 1500.0f;
+        float r = sqrtf(1.0f - z * z);
+        float angle = 2.3999632f * (float)i;
+        big[3 * i] = r * cosf(angle);
+        big[3 * i + 1] = r * sinf(angle);
+        big[3 * i + 2] = z;
+    }
+    mvfxMeshId huge = MeshOf(big, 1500);
+    count = 1;
+    bool past = mvfxMesh_GetHullVertexCount(s_scene.context, huge, &count) == mvfx_errorLimit &&
+                count == 0 && mvfxContext_GetMisuse(s_scene.context) == misuse;
     CHECK(counted, "a hull's vertices counted past the most, with no center");
+    CHECK(past, "a hull past what a count holds refused, with a count of 0");
     CHECK(none, "a flat mesh: no hull, no misuse");
-    CHECK(refused, "NULL arguments counted as misuse, a stale mesh not");
+    CHECK(refused, "NULL arguments and a stale mesh refused, no misuse counted on a const context");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -814,6 +874,7 @@ int main(void)
 {
     TestLikeABox();
     TestOffCenter();
+    TestCreatedPositions();
     TestFreeSpin();
     TestOnColliders();
     TestMeeting();
