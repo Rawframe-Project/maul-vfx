@@ -63,7 +63,7 @@ Follow the [repository standard's Tests section](https://github.com/Rawframe-Pro
 
 ## Documentation
 
-Follow the [repository standard's Documentation section](https://github.com/Rawframe-Project/.github/blob/main/docs/repository-standard.md#documentation). A change in what a host must do or can rely on updates its page of `docs/user/` and, if it is in a snippet, the matching code in `test/test_guide*.c`. Measured limits of a solver live in the header comment of the field they concern. The API reference is generated into the documentation site; never commit it.
+Follow the [repository standard's Documentation section](https://github.com/Rawframe-Project/.github/blob/main/docs/repository-standard.md#documentation). A change in what a host must do or can rely on updates its page of `docs/user/` and, if it is in a snippet, the matching code in `test/test_guide*.c`. Measured limits of a solver live in the header comment of the field they concern. A public function whose output has the element type of one of its inputs says in its header whether they may overlap, and checks it if they may not; `tools/check_overlap.py` refuses one that is silent. The API reference is generated into the documentation site; never commit it.
 
 ## Pull requests
 
