@@ -578,16 +578,14 @@ static void TestLivesAndParameters(void)
     CHECK(mvfxInstance_GetParameter(scene.context, scene.instance, 5, read) == mvfx_errorInvalid &&
               read[0] == 0.0f,
           "zeroed on failure");
-    // The sets' refusals counted; the read, taking a const context, counts
-    // none.
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 4, "each counted");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 5, "each counted");
     mvfxInstanceId stale = scene.instance;
     stale.generation += 1;
     CHECK(mvfxInstance_SetParameter(scene.context, stale, 0, zero) == mvfx_errorStale, "stale");
     CHECK(mvfxInstance_GetParameter(scene.context, stale, 0, read) == mvfx_errorStale, "stale");
     CHECK(mvfxInstance_SetParameter(NULL, scene.instance, 0, zero) == mvfx_errorInvalid,
           "no context");
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 4, "stale ids are not misuse");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 5, "stale ids are not misuse");
     mvfxDestroyContext(scene.context);
 
     // A parameter's life past the longest is held to it.

@@ -258,9 +258,10 @@ static bool Filled(const void* buffer, size_t size, unsigned char value)
 
 static void TestRefusals(void)
 {
-    // A smoke gas, its outputs cleared; each spoiled call (scratch too
-    // small a capacity error, the others invalid); then a valid call over
-    // nothing. The scratch a 3D and a 2D surface take. A planned
+    // A smoke gas, its outputs cleared, the scratch's refusal counted as
+    // misuse; each spoiled call (scratch too small a capacity error, the
+    // others invalid, a NULL scratch output counted); then a valid call
+    // over nothing. The scratch a 3D and a 2D surface take. A planned
     // instance's surface: its scratch, its mesh refused, the counts
     // cleared.
     CHECK(Open(8, 8, 0.1f, 0.1f, mvfx_gasSmoke), "opened");
@@ -269,8 +270,10 @@ static void TestRefusals(void)
     int64_t v = -1;
     int64_t i = -1;
     const double zero[3] = {0.0, 0.0, 0.0};
+    uint64_t misuse = mvfxContext_GetMisuse(s_context);
     bool right = mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, &bytes) ==
                      mvfx_errorInvalid &&
+                 mvfxContext_GetMisuse(s_context) == misuse + 1 &&
                  mvfxInstance_WriteSurfaceMesh(s_context, s_instance, 0, zero, 0.0f, &b, &v, &i) ==
                      mvfx_errorInvalid &&
                  bytes == 0 && v == 0 && i == 0;
@@ -284,8 +287,12 @@ static void TestRefusals(void)
             Filled(s_indices, sizeof s_indices, 0);
     mvfxDestroyContext(s_context);
     CHECK(Open(8, 8, 0.1f, 0.1f, mvfx_gasSurface), "opened");
+    misuse = mvfxContext_GetMisuse(s_context);
     right =
         right &&
+        mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, NULL) ==
+            mvfx_errorInvalid &&
+        mvfxContext_GetMisuse(s_context) == misuse + 1 &&
         mvfxInstance_GetSurfaceMeshScratchBytes(s_context, s_instance, 0, &bytes) == mvfx_success &&
         bytes == 32 * 64;
     for (int32_t c = 0; c < 11; ++c)

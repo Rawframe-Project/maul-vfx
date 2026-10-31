@@ -287,9 +287,11 @@ static void TestChecks(void)
           "a level it does not have, counted");
     CHECK(NewInstance(context, effect, 2, &instance) == mvfx_success, "its last level");
     int32_t level = 0;
+    misuse = mvfxContext_GetMisuse(context);
     CHECK(mvfxInstance_GetQuality(context, instance, NULL) == mvfx_errorInvalid &&
-              mvfxInstance_GetQuality(NULL, instance, &level) == mvfx_errorInvalid,
-          "the query refused");
+              mvfxInstance_GetQuality(NULL, instance, &level) == mvfx_errorInvalid &&
+              mvfxContext_GetMisuse(context) == misuse + 1,
+          "the query refused, counted with a context");
     mvfxInstanceId stale = instance;
     stale.generation += 1;
     CHECK(mvfxInstance_GetQuality(context, stale, &level) == mvfx_errorStale, "stale");

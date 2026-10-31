@@ -515,6 +515,10 @@ mvfxResult mvfxInstance_GetSortScratchBytes(const mvfxContext* context, mvfxInst
     }
     if (context == nullptr || bytesOut == nullptr)
     {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse((mvfxContext*)context);
+        }
         return mvfx_errorInvalid;
     }
     const mvfxInstance* live = mvfxContextInstance(context, instance);
@@ -524,6 +528,7 @@ mvfxResult mvfxInstance_GetSortScratchBytes(const mvfxContext* context, mvfxInst
     }
     if (emitter < 0 || emitter >= live->effect->emitterCount)
     {
+        mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
     }
     const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];

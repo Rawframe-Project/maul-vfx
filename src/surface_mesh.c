@@ -20,7 +20,6 @@
 #include "gas.h"
 #include "gas_api.h"
 #include "instance.h"
-#include "instance_api.h"
 #include "marching_table.h"
 #include "refusal.h"
 
@@ -387,13 +386,13 @@ static int64_t ScratchBytes(const mvfxCompiledGas* gas)
 
 // The live instance with a surface gas of that index, else NULL with the
 // result (misuse counted for a gas not a surface).
-static const mvfxInstance* FindSurface(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                                       mvfxResult* result)
+static const mvfxInstance* FindSurface(const mvfxContext* context, mvfxInstanceId instance,
+                                       int32_t gas, mvfxResult* result)
 {
     const mvfxInstance* live = mvfxFindGas(context, instance, gas, result);
     if (live != nullptr && live->effect->gases[gas].def.kind != mvfx_gasSurface)
     {
-        mvfxCountMisuse(context);
+        mvfxCountMisuse((mvfxContext*)context);
         *result = mvfx_errorInvalid;
         return nullptr;
     }
@@ -408,18 +407,15 @@ mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(const mvfxContext* context,
     {
         *bytesOut = 0;
     }
-    if (context == nullptr || bytesOut == nullptr)
-    {
-        return mvfx_errorInvalid;
-    }
-    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    mvfxResult result = mvfx_success;
+    const mvfxInstance* live = FindSurface(context, instance, gas, &result);
     if (live == nullptr)
     {
-        return mvfx_errorStale;
+        return result;
     }
-    if (gas < 0 || gas >= live->effect->gasCount ||
-        live->effect->gases[gas].def.kind != mvfx_gasSurface)
+    if (bytesOut == nullptr)
     {
+        mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
     }
     *bytesOut = ScratchBytes(&live->effect->gases[gas]);

@@ -832,14 +832,14 @@ mvfxResult mvfxInstance_SetColliders(mvfxContext* context, mvfxInstanceId instan
 
 // The live instance an id names and whether a parameter index is in
 // range, counting misuse; the result the call returns otherwise.
-static mvfxResult FindParameter(mvfxContext* context, mvfxInstanceId instance, int32_t parameter,
-                                const void* value, mvfxInstance** liveOut)
+static mvfxResult FindParameter(const mvfxContext* context, mvfxInstanceId instance,
+                                int32_t parameter, const void* value, mvfxInstance** liveOut)
 {
     if (context == nullptr || value == nullptr)
     {
         if (context != nullptr)
         {
-            mvfxCountMisuse(context);
+            mvfxCountMisuse((mvfxContext*)context);
         }
         return mvfx_errorInvalid;
     }
@@ -850,7 +850,7 @@ static mvfxResult FindParameter(mvfxContext* context, mvfxInstanceId instance, i
     }
     if (parameter < 0 || parameter >= (*liveOut)->effect->parameterCount)
     {
-        mvfxCountMisuse(context);
+        mvfxCountMisuse((mvfxContext*)context);
         return mvfx_errorInvalid;
     }
     return mvfx_success;
@@ -900,18 +900,11 @@ mvfxResult mvfxInstance_GetParameter(const mvfxContext* context, mvfxInstanceId 
             valueOut[c] = 0.0f;
         }
     }
-    if (context == nullptr || valueOut == nullptr)
+    mvfxInstance* live = nullptr;
+    mvfxResult result = FindParameter(context, instance, parameter, valueOut, &live);
+    if (result != mvfx_success)
     {
-        return mvfx_errorInvalid;
-    }
-    const mvfxInstance* live = mvfxContextInstance(context, instance);
-    if (live == nullptr)
-    {
-        return mvfx_errorStale;
-    }
-    if (parameter < 0 || parameter >= live->effect->parameterCount)
-    {
-        return mvfx_errorInvalid;
+        return result;
     }
     for (int32_t c = 0; c < 4; ++c)
     {
@@ -983,6 +976,10 @@ mvfxResult mvfxInstance_GetQuality(const mvfxContext* context, mvfxInstanceId in
     }
     if (context == nullptr || levelOut == nullptr)
     {
+        if (context != nullptr)
+        {
+            mvfxCountMisuse((mvfxContext*)context);
+        }
         return mvfx_errorInvalid;
     }
     const mvfxInstance* live = mvfxContextInstance(context, instance);

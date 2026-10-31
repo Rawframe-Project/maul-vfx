@@ -381,17 +381,18 @@ static void WriteBack(const mvfxModuleCall* call, void* user)
     // The reads taking a const context answer, never busy: the quality
     // and the sort scratch (none for this emitter); the parameter and the
     // surface mesh's scratch refused as invalid, the effect having neither
-    // a parameter nor a gas.
+    // a parameter nor a gas, each refusal counted as misuse.
     float values[4];
     int32_t level = -1;
     int64_t bytes = -1;
     int64_t meshBytes = -1;
+    uint64_t misuse = mvfxContext_GetMisuse(target);
     s_answered =
         mvfxInstance_GetParameter(target, i, 0, values) == mvfx_errorInvalid &&
         mvfxInstance_GetQuality(target, i, &level) == mvfx_success && level == 0 &&
         mvfxInstance_GetSortScratchBytes(target, i, 0, &bytes) == mvfx_success && bytes == 0 &&
         mvfxInstance_GetSurfaceMeshScratchBytes(target, i, 0, &meshBytes) == mvfx_errorInvalid &&
-        meshBytes == 0;
+        meshBytes == 0 && mvfxContext_GetMisuse(target) == misuse + 2;
 }
 
 static const mvfxHostModule s_writeBack = {.stage = mvfx_stageAfterMotion, .function = WriteBack};

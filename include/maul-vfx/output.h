@@ -275,7 +275,8 @@ extern "C"
     /// @param bytesOut  Receives the bytes; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
     ///         nothing live; `mvfx_errorInvalid` for a NULL context or out
-    ///         parameter or an emitter out of range.
+    ///         parameter or an emitter out of range, which counts as misuse
+    ///         when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.
@@ -902,7 +903,8 @@ extern "C"
     /// @param bytesOut  Receives the bytes; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an instance that names
     ///         nothing live; `mvfx_errorInvalid` for a NULL context or out
-    ///         parameter, or a gas out of range or not a surface.
+    ///         parameter, or a gas out of range or not a surface, which
+    ///         counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time,
     /// except that outputs may run on several threads at once.

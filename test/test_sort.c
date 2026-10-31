@@ -269,9 +269,7 @@ static void TestScratch(void)
               mvfxInstance_GetSortScratchBytes(c, i, 0, NULL) == mvfx_errorInvalid &&
               mvfxInstance_GetSortScratchBytes(NULL, i, 0, &bytes) == mvfx_errorInvalid,
           "the query refused");
-    // The writes' refusals counted; the query, taking a const context,
-    // counts none.
-    CHECK(mvfxContext_GetMisuse(c) == misuse + 8, "each counted");
+    CHECK(mvfxContext_GetMisuse(c) == misuse + 10, "each counted");
     mvfxInstanceId stale = i;
     stale.generation += 1;
     CHECK(mvfxInstance_GetSortScratchBytes(c, stale, 0, &bytes) == mvfx_errorStale, "stale");

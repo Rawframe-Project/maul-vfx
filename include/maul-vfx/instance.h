@@ -617,7 +617,7 @@ extern "C"
     /// @param valueOut   Receives four floats; zeroed on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL argument or an index
-    ///         out of range.
+    ///         out of range, which counts as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetParameter(const mvfxContext* context,
@@ -756,7 +756,8 @@ extern "C"
     /// @param instance  The instance.
     /// @param levelOut  Receives its level: 0 the full one; 0 on failure.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
-    ///         instance; `mvfx_errorInvalid` for a NULL argument.
+    ///         instance; `mvfx_errorInvalid` for a NULL argument, which counts
+    ///         as misuse when the context is given.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetQuality(const mvfxContext* context,
