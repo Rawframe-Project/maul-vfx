@@ -595,7 +595,7 @@ static void TestStateRefusals(void)
                                  .hull = plane};
     effectDef.emitters = &rigid;
     mvfxEffectId refused = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &refused, NULL) == mvfx_errorInvalid &&
+    CHECK(mvfxCreateEffect(context, &effectDef, &refused, NULL) == mvfx_errorUnsupported &&
               IsNull(&refused, sizeof refused) && mvfxContext_GetMisuse(context) == misuse,
           "a mesh with no hull refused for a rigid body, not misuse");
 

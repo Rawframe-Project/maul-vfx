@@ -200,7 +200,7 @@ static void FreeHulls(mvfxContext* context, mvfxHull* hulls[MVFX_MAX_EMITTERS])
 }
 
 // Copies the hull each hull emitter's mesh keeps; mvfx_errorStale for a
-// mesh that is gone, mvfx_errorInvalid for one whose vertices span no
+// mesh that is gone, mvfx_errorUnsupported for one whose vertices span no
 // volume, mvfx_errorLimit for one whose hull has too many vertices. The
 // mesh's vertices are data a correct program meets (a model file's), so
 // that is never misuse.
