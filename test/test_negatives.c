@@ -418,16 +418,14 @@ static void MakeDefs(Defs* d)
     d->effect.waterCount = 1;
 }
 
-// An index or count field of an effect def: the path a refusal of it
-// names, and a value the def takes once the row has turned on what the
-// field belongs to. A count is named as the array it counts, and a
-// maxCount or a last below its minCount or first as that one, whose
-// comment states the rule between them. A neighbor source out of range is
-// named as the emitters: the emitters' order, refused first, takes it for
-// a cycle.
 // A row's valid value that leaves the field as the def is made.
 #define KEEP INT32_MAX
 
+// An index, count or kind field of an effect def: the path a refusal of it
+// names, and a value the def takes once the row has turned on what the
+// field belongs to. A count is named as the array it counts, and a
+// maxCount or a last below its minCount or first as that one, whose
+// comment states the rule between them.
 typedef struct Row
 {
     const char* path;
@@ -506,7 +504,7 @@ static const Row s_rows[] = {
     {"emitters[0].killRules[0].collisions", 1, 0},
     {"emitters[1].eventSpawn.source", 0, 0},
     {"emitters[1].eventSpawn.capacity", 4, 0},
-    {"emitters", -1, -2},
+    {"emitters[0].neighbors.source", -1, -2},
     {"emitters[0].neighbors.maxNeighbors", 4, 0},
     {"emitters[0].steering.seek.parameter", 1, 0},
     {"emitters[0].steering.flee.parameter", 1, 0},

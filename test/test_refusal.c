@@ -108,6 +108,12 @@ static const Case s_cases[] = {
      "emitters[0].forces[0].strength.curve.keys[1].value", 0, -1, -1},
     {"a wind's cubic curve dipping below 0", mvfx_errorInvalid,
      "emitters[0].forces[0].strength.curve.keys[0].interpolation", 0, -1, -1},
+    {"a neighbor source past the emitters", mvfx_errorInvalid, "emitters[0].neighbors.source", 0,
+     -1, -1},
+    {"a neighbor source below -1", mvfx_errorInvalid, "emitters[0].neighbors.source", 0, -1, -1},
+    {"a neighbor source in another space, in a cycle", mvfx_errorInvalid,
+     "emitters[0].neighbors.source", 0, -1, -1},
+    {"a unit kind past the last", mvfx_errorInvalid, "emitters[0].unit.kind", 0, -1, -1},
 };
 
 // Makes case k's def from valid parts.
@@ -251,6 +257,35 @@ static void Break(Parts* p, int32_t k)
                                                 .curve = {.keys = p->keys, .keyCount = 2}}};
         e[0].forces = p->forces;
         e[0].forceCount = 1;
+        break;
+    case 26:
+    case 27:
+    case 28:
+        // Out of range either way, or an emitter in another space that
+        // spawns from this one's births: the source named, not the
+        // emitters' order.
+        e[0].neighbors = (mvfxNeighborDef){.enable = true,
+                                           .source = k == 26   ? 2
+                                                     : k == 27 ? -2
+                                                               : 1,
+                                           .radius = 1.0f,
+                                           .maxNeighbors = 4};
+        if (k == 28)
+        {
+            e[1].space = e[0].space == mvfx_spaceWorld ? mvfx_spaceLocal : mvfx_spaceWorld;
+            e[0].events = mvfx_eventMaskBirth;
+            e[0].eventCapacity = 4;
+            e[1].eventSpawn = (mvfxEventSpawn){.enable = true,
+                                               .source = 0,
+                                               .kind = mvfx_eventBirth,
+                                               .minCount = 1,
+                                               .maxCount = 1,
+                                               .capacity = 4};
+        }
+        break;
+    case 29:
+        // Before its shape: a default unit's direction would refuse first.
+        e[0].unit.kind = mvfx_unitSheet + 1;
         break;
     default:
         p->source = (mvfxGasSource){.shape = mvfx_gasBox, .halfExtents = {1, 1, 1}};
