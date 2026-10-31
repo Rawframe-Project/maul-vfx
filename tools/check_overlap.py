@@ -10,7 +10,9 @@ and says so or checks for the overlap and refuses it. This lists every
 public function (MVFX_API and MVFX_RHI_API in include/ and rhi/include/)
 with an output parameter, a pointer or array not const, whose element type
 is an input parameter's, a const pointer or array, and refuses each one
-whose documentation does not say "overlap". A pointer to a pointer is an
+whose documentation does not say "overlap". Every byte type (void, char,
+signed and unsigned char, int8_t, uint8_t) counts as one element type, as
+any buffer of bytes may lie over another. A pointer to a pointer is an
 output of a pointer, which no input is. Buffers a struct parameter points
 to are not compared.
 
@@ -25,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 HEADERS = ("include/maul-vfx/*.h", "rhi/include/maul-vfx-rhi/*.h")
 DECLARATION = re.compile(r"MVFX(?:_RHI)?_API\b[^;(]*?\b(mvfx\w+)\s*\(([^;{]*?)\)\s*;", re.S)
 PARAMETER = re.compile(r"^(?P<type>.*?)\b(?P<name>\w+)\s*(?P<array>\[[^\]]*\])?$")
+BYTES = {"void", "char", "signedchar", "unsignedchar", "int8_t", "uint8_t"}
 
 
 def parameters(text):
@@ -43,8 +46,10 @@ def parameters(text):
 
 
 def element(kind):
-    """A pointer's or array's element type, const and stars left out."""
-    return re.sub(r"\bconst\b|\*|\s", "", kind)
+    """A pointer's or array's element type, const and stars left out, every
+    byte type one."""
+    bare = re.sub(r"\bconst\b|\*|\s", "", kind)
+    return "bytes" if bare in BYTES else bare
 
 
 def documentation(text, start):
@@ -94,15 +99,29 @@ def self_test():
         "\n"
         "    /// Other types, a pointer's pointer and a by-value input.\n"
         "    MVFX_API int mvfxApart(const double* points, float* valuesOut,\n"
-        "                       const mvfxEvent** eventsOut, float scale);\n")
+        "                           const mvfxEvent** eventsOut, float scale);\n"
+        "\n"
+        "    /// Bytes of two spellings.\n"
+        "    MVFX_API int mvfxBytes(const uint8_t* bytes, unsigned char* out);\n"
+        "\n"
+        "    /// A pointer to a pointer of an input's type is no output of it.\n"
+        "    MVFX_API int mvfxHandle(const mvfxEvent* events, mvfxEvent** handleOut);\n"
+        "\n"
+        "    /// A value of an input's type is no output.\n"
+        "    MVFX_API int mvfxValue(const float* values, float scale);\n"
+        "\n"
+        "    /// The GPU part's declarations count too.\n"
+        "    MVFX_NODISCARD MVFX_RHI_API int mvfxGpuCopy(const uint32_t* from, uint32_t* to);\n")
     found = [(f, pairs, stated) for _, f, pairs, stated in findings("self", text)]
     expected = [("mvfxStated", [("memoryOut", "bytes")], True),
                 ("mvfxUnstated", [("valuesOut", "from")], False),
-                ("mvfxArray", [("out", "in")], False)]
+                ("mvfxArray", [("out", "in")], False),
+                ("mvfxBytes", [("out", "bytes")], False),
+                ("mvfxGpuCopy", [("to", "from")], False)]
     if found != expected:
         print("check_overlap self-test: found", found)
         return 1
-    print("overlap self-test: the 3 expected functions, one stated")
+    print("overlap self-test: the 5 expected functions, one stated")
     return 0
 
 
