@@ -284,7 +284,8 @@ static void TestCircleAndLine(void)
 
 static void TestBoxVolume(void)
 {
-    // Its volume: uniform per axis, the normal along the nearest face.
+    // Its volume: uniform per axis, the normal out through the nearest
+    // face.
     mvfxShape box = BaseShape(mvfx_shapeBox);
     box.halfExtents[0] = 1.0f;
     box.halfExtents[1] = 2.0f;
@@ -309,10 +310,10 @@ static void TestBoxVolume(void)
                 axis = k;
             }
         }
-        nearest = nearest && fabsf(s_normals[3 * i + axis]) == 1.0f;
+        nearest = nearest && s_normals[3 * i + axis] == (p[axis] < 0.0f ? -1.0f : 1.0f);
     }
     CHECK(inside, "within the box");
-    CHECK(nearest, "the normal along the nearest face");
+    CHECK(nearest, "the normal out through the nearest face");
     for (int32_t k = 0; k < 3; ++k)
     {
         CHECK(NearMean(sums[k] / SAMPLES, 0.5, sqrt(1.0 / 12.0)), "uniform along each axis");

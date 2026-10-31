@@ -4,9 +4,11 @@
 // Curl noise as a turbulence force gives it, read as particles' velocities
 // after a step from rest: the bake into a periodic grid is the force's
 // curl bit for bit within the period, with no seam where it repeats, and
-// writes nothing when it refuses; octaves, gain, seeds and scroll; the
-// field continuous across a cell's face and without divergence; the
-// lattice's 32-bit wrap, and a place 2^52 out at the highest frequency.
+// writes nothing when it refuses, and takes the longest period; octaves
+// (each its own noise, at the lacunarity times the last's frequency),
+// gain, seeds and scroll; the field continuous across a cell's face and
+// without divergence; the lattice's 32-bit wrap, and a place 2^52 out at
+// the highest frequency.
 
 #include "particles.h"
 #include "test_harness.h"
@@ -144,6 +146,9 @@ static void TestBakeRefusals(const mvfxNoise* baked, const int32_t size[3])
         mvfxBakeCurlNoise(&noise, BAKE_PERIOD, empty, s_baked, BAKE_VALUES) == mvfx_errorInvalid &&
         mvfxBakeCurlNoise(&noise, BAKE_PERIOD, size, s_baked, BAKE_VALUES - 1) == mvfx_errorInvalid;
     CHECK(refused && s_baked[0] == 12345.0f, "refusals write nothing");
+    const int32_t point[3] = {1, 1, 1};
+    CHECK(mvfxBakeCurlNoise(&noise, MVFX_MAX_NOISE_PERIOD, point, s_baked, 3) == mvfx_success,
+          "the longest period bakes");
 }
 
 // Whether a place in the bake's grid lies, at every octave, outside its
@@ -247,6 +252,80 @@ static void TestOctavesAndSeeds(void)
     seeded.seed = 2u;
     Bake(&seeded, b);
     CHECK(memcmp(a, b, sizeof a) != 0, "seeds differ");
+}
+
+// The root mean square of a curl's change along X over h, from its values
+// at count pairs of places, the second of each h past the first.
+static double Steepness(const float* curls, int32_t count, double h)
+{
+    double sum = 0.0;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        for (int32_t c = 0; c < 3; ++c)
+        {
+            double d = ((double)curls[3 * (2 * i + 1) + c] - (double)curls[3 * (2 * i) + c]) / h;
+            sum += d * d;
+        }
+    }
+    return sqrt(sum / (3.0 * count));
+}
+
+static void TestOctaveFrequencies(void)
+{
+    // The second octave alone, two octaves at gain 1 less the first, at
+    // pairs of places h apart along X spread over [-8, 8)^3: at a
+    // lacunarity of 3 it changes three times as fast as the first, and at
+    // 2 it is not the first again at twice the place.
+    enum
+    {
+        PAIRS = 256
+    };
+    const double h = 0x1p-8;
+    static double places[PAIRS * 2 * 3];
+    static double twice[PAIRS * 2 * 3];
+    for (int32_t i = 0; i < PAIRS; ++i)
+    {
+        double* p = &places[6 * i];
+        p[0] = floor((fmod(0.7548776662466927 * (i + 1), 1.0) * 16.0 - 8.0) * 256.0) / 256.0;
+        p[1] = floor((fmod(0.5698402909980532 * (i + 1), 1.0) * 16.0 - 8.0) * 256.0) / 256.0;
+        p[2] = floor((fmod(0.3141592653589793 * (i + 1) + 0.25, 1.0) * 16.0 - 8.0) * 256.0) / 256.0;
+        p[3] = p[0] + h;
+        p[4] = p[1];
+        p[5] = p[2];
+    }
+    for (int32_t i = 0; i < PAIRS * 2 * 3; ++i)
+    {
+        twice[i] = 2.0 * places[i];
+    }
+    static float first[PAIRS * 2 * 3];
+    static float both[PAIRS * 2 * 3];
+    static float second[PAIRS * 2 * 3];
+    mvfxNoise one = s_noise;
+    one.frequency = 1.0f;
+    one.octaves = 1;
+    mvfxNoise two = one;
+    two.octaves = 2;
+    two.gain = 1.0f;
+    two.lacunarity = 3.0f;
+    Curls(&one, s_zero, 0.0, places, 2 * PAIRS, first);
+    Curls(&two, s_zero, 0.0, places, 2 * PAIRS, both);
+    for (int32_t i = 0; i < PAIRS * 2 * 3; ++i)
+    {
+        second[i] = both[i] - first[i];
+    }
+    double ratio = Steepness(second, PAIRS, h) / Steepness(first, PAIRS, h);
+    CHECK(ratio >= 2.4 && ratio <= 3.6, "each octave lacunarity times the last's frequency");
+
+    two.lacunarity = 2.0f;
+    static float doubled[PAIRS * 2 * 3];
+    Curls(&two, s_zero, 0.0, places, 2 * PAIRS, both);
+    Curls(&one, s_zero, 0.0, twice, 2 * PAIRS, doubled);
+    float apart = 0.0f;
+    for (int32_t i = 0; i < PAIRS * 2 * 3; ++i)
+    {
+        apart = fmaxf(apart, fabsf(both[i] - first[i] - doubled[i]));
+    }
+    CHECK(apart > 0.1f, "each octave its own noise, not the first again");
 }
 
 static bool Near(const float* a, const float* b, float tolerance)
@@ -354,6 +433,7 @@ int main(void)
 {
     TestBake();
     TestOctavesAndSeeds();
+    TestOctaveFrequencies();
     TestScroll();
     TestWrapAndFar();
     TestContinuousAndDivergenceFree();
