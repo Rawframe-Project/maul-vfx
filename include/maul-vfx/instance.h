@@ -321,8 +321,8 @@ extern "C"
     /// @param stepSeconds   Each step's length, above 0 and at most
     ///                      MVFX_MAX_STEP_SECONDS, one tick at least.
     /// @param maxSteps      At least 1.
-    /// @param remainingOut  Receives the span left, exactly as ticks; may be
-    ///                      NULL.
+    /// @param remainingOut  Receives the span left, exactly as ticks; 0 on
+    ///                      failure; may be NULL.
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no
     ///         live instance; `mvfx_errorUnsupported` for a planned
     ///         instance; `mvfx_errorInvalid` for a NULL context or a value

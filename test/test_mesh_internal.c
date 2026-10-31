@@ -47,8 +47,8 @@ static void TestHullKept(void)
     CHECK(solid != NULL && solid->hull != NULL && solid->hullMeasure.count == 8 &&
               solid->hull->vertexCount == 8,
           "a cube's mesh keeps its hull");
-    CHECK(sheet != NULL && sheet->hull == NULL && sheet->hullMeasure.built == mvfx_errorInvalid &&
-              sheet->hullMeasure.count == 0 &&
+    CHECK(sheet != NULL && sheet->hull == NULL &&
+              sheet->hullMeasure.built == mvfx_errorUnsupported && sheet->hullMeasure.count == 0 &&
               solid->blockBytes >= sheet->blockBytes + sizeof(mvfxHull),
           "a flat mesh keeps no hull");
     mvfxReleaseMesh(solid, &allocator);
