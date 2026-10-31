@@ -407,6 +407,9 @@ if(MAUL_VFX_BUILD_TESTS)
         # Host code calling back into a simulation, refused.
         maul_add_test(rhi_host_calls)
         target_link_libraries(test_rhi_host_calls PRIVATE maul-vfx-rhi)
+        # The calls that take a context, given a NULL one.
+        maul_add_test(rhi_not_misuse)
+        target_link_libraries(test_rhi_not_misuse PRIVATE maul-vfx-rhi)
         # The guide's GPU part blocks on a device.
         maul_add_test(guide_rhi)
         target_link_libraries(test_guide_rhi PRIVATE maul-vfx-rhi)
