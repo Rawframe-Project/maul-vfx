@@ -96,7 +96,7 @@ void mvfxAddParameterReach(const mvfxEmitterDef* def, double reach[MVFX_MAX_PARA
 }
 
 // Whether a source is an emitter of the effect already placed: one out of
-// range never is, so its def is refused here, before any check of it.
+// range never is (mvfxCheckEffectDef refuses it by its field first).
 static bool IsPlaced(const bool placed[MVFX_MAX_EMITTERS], int32_t source, int32_t count)
 {
     return source >= 0 && source < count && placed[source];

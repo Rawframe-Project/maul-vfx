@@ -801,6 +801,21 @@ static mvfxResult CheckEventSpawn(const mvfxFieldPath* at, const mvfxEffectDef* 
                                  mvfxWithinBound(spawn->capacity <= MVFX_MAX_EMITTER_CAPACITY));
 }
 
+// Whether an emitter's neighbor source is its own (-1 or its index) or an
+// emitter of the effect in its space. Checked here, before the emitters'
+// order, which would take a source out of range or in another space for a
+// cycle and refuse the emitters as a whole.
+static mvfxResult CheckNeighborSource(const mvfxFieldPath* at, const mvfxEffectDef* def, int32_t i)
+{
+    const mvfxNeighborDef* neighbors = &def->emitters[i].neighbors;
+    int32_t source = neighbors->source;
+    bool valid = !neighbors->enable || source == -1 ||
+                 (source >= 0 && source < def->emitterCount &&
+                  def->emitters[source].space == def->emitters[i].space);
+    mvfxFieldPath neighborsAt = mvfxFieldIn(at, MVFX_TAG_EMITTER_DEF_NEIGHBORS, -1);
+    return mvfxRefuseField(&neighborsAt, MVFX_TAG_NEIGHBOR_DEF_SOURCE, mvfxRequire(valid));
+}
+
 // Whether an effect's quality levels are valid: a count in range, scales
 // in range, and only its own emitters left out.
 static mvfxResult CheckQualityLevels(const mvfxFieldPath* root, const mvfxEffectDef* def)
@@ -867,6 +882,7 @@ static mvfxResult CheckEmitter(const mvfxFieldPath* root, const mvfxEffectDef* d
     mvfxResult checked = CheckEmitterDef(&at, emitter);
     checked = checked != mvfx_success ? checked : CheckValues(&at, emitter, def->parameterCount);
     checked = checked != mvfx_success ? checked : CheckEventSpawn(&at, def, i);
+    checked = checked != mvfx_success ? checked : CheckNeighborSource(&at, def, i);
     checked = checked != mvfx_success ? checked : CheckBeam(&at, emitter, def->parameterCount);
     return checked != mvfx_success
                ? checked

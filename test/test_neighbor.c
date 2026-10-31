@@ -437,6 +437,7 @@ static void TestChecks(void)
     emitters[1].neighbors.source = 1;
     emitters[0].neighbors.enable = false;
     emitters[0].neighbors.radius = NAN;
+    emitters[0].neighbors.source = 1000;
     CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success,
           "the bounds; its own index; a def not enabled unread");
     static const mvfxLayoutField wrong[3] = {
