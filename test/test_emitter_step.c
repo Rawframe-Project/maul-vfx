@@ -69,7 +69,7 @@ static Scene HostBirths(float shortest, float longest)
     base.capacity = PEEK_MOST;
     base.hostSpawnCapacity = PEEK_MOST;
     base.rate = 0.0f;
-    base.lifetime = mvfxRangeSource(shortest, longest);
+    base.lifetime = mvfxMakeRangeSource(shortest, longest);
     base.events = mvfx_eventMaskDeath;
     base.eventCapacity = PEEK_MOST;
     mvfxEmitterDef emitter = Peeking(&base);

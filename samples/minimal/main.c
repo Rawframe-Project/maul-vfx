@@ -35,7 +35,7 @@ int main(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = 128;
     emitter.rate = 50.0f;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     emitter.velocity.mode = mvfx_directionCone;
     emitter.velocity.direction[0] = 0.0f;
     emitter.velocity.direction[1] = 1.0f;

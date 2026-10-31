@@ -223,7 +223,7 @@ static void TestShallow(Gpu* gpu, mvfxGpu* kernels)
 static mvfxEmitterDef Floating(void)
 {
     mvfxEmitterDef emitter = Sprite();
-    emitter.lifetime = mvfxRangeSource(0.5f, 0.9f);
+    emitter.lifetime = mvfxMakeRangeSource(0.5f, 0.9f);
     emitter.water = (mvfxWaterCoupling){
         .enable = true, .radius = 0.08f, .push = 0.03f, .buoyancy = 2.0f, .drag = 3.0f};
     return emitter;
@@ -356,7 +356,7 @@ static void TestHeld(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef pouring = mvfxDefaultEmitterDef();
     pouring.capacity = 64;
     pouring.rate = 480.0f;
-    pouring.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    pouring.lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     pouring.shape = (mvfxShape){.kind = mvfx_shapePoint,
                                 .rotation = {0, 0, 0, 1},
                                 .offset = {0x1p-20f, 0x1p-15f, 0x1p-20f}};
@@ -385,7 +385,7 @@ static void TestSplit(Gpu* gpu, mvfxGpu* kernels)
     emitter.capacity = 512;
     emitter.rate = 300.0f;
     emitter.burstCount = 0;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.shape.radius = 0.1f;
     emitter.velocity.direction[1] = -1.0f;
     emitter.velocity.speed = (mvfxRange){1.0f, 1.5f};

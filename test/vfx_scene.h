@@ -193,7 +193,7 @@ static inline void BuildRigidScene(mvfxContext* context)
         emitter->bursts = &throws;
         emitter->burstCount = 1;
         emitter->capacity = 24;
-        emitter->lifetime = mvfxRangeSource(2.0f, 2.0f);
+        emitter->lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
         emitter->shape.kind = mvfx_shapeSphere;
         emitter->shape.radius = 0.5f;
         emitter->velocity.speed = (mvfxRange){1.0f, 3.0f};
@@ -255,7 +255,7 @@ static inline void BuildRigidScene(mvfxContext* context)
     resting->bursts = &setDown;
     resting->burstCount = 1;
     resting->capacity = 2;
-    resting->lifetime = mvfxRangeSource(30.0f, 30.0f);
+    resting->lifetime = mvfxMakeRangeSource(30.0f, 30.0f);
     resting->shape.offset[1] = 0.25f;
     resting->velocity.speed = (mvfxRange){0.0f, 0.0f};
     resting->motion.gravity[1] = -9.81f;
@@ -392,7 +392,7 @@ static inline void BuildGasScene(mvfxContext* context)
     mvfxEmitterDef motes = mvfxDefaultEmitterDef();
     motes.capacity = 64;
     motes.rate = 40.0f;
-    motes.lifetime = mvfxRangeSource(0.4f, 0.6f);
+    motes.lifetime = mvfxMakeRangeSource(0.4f, 0.6f);
     motes.shape.kind = mvfx_shapeSphere;
     motes.shape.radius = 0.2f;
     motes.shape.offset[1] = 0.4f;
@@ -445,7 +445,7 @@ static inline void BuildLiquidScene(mvfxContext* context)
         mvfxEmitterDef* liquid = &liquids[e];
         liquid->capacity = e == 0 ? 96 : 64;
         liquid->rate = 60.0f;
-        liquid->lifetime = mvfxRangeSource(1.2f, 1.6f);
+        liquid->lifetime = mvfxMakeRangeSource(1.2f, 1.6f);
         liquid->velocity.speed = (mvfxRange){0.2f, 0.6f};
         liquid->motion.gravity[1] = -9.81f;
         liquid->collision.enable = true;
@@ -535,7 +535,7 @@ static inline mvfxEmitterDef WaterFall(int32_t water, float rate, float y,
     emitter.space = mvfx_spaceLocal;
     emitter.capacity = 256;
     emitter.rate = rate;
-    emitter.lifetime = mvfxRangeSource(3.0f, 4.0f);
+    emitter.lifetime = mvfxMakeRangeSource(3.0f, 4.0f);
     emitter.shape = (mvfxShape){.kind = mvfx_shapeBox,
                                 .offset = {0.0f, y + 0.6f, 0.0f},
                                 .rotation = {0.0f, 0.0f, 0.0f, 1.0f},
@@ -649,7 +649,7 @@ static inline void BuildScene(mvfxContext* context)
     // its noise moving, struck again every 0.3 seconds.
     emitters[4].rate = 0.0f;
     emitters[4].capacity = 7;
-    emitters[4].lifetime = mvfxRangeSource(0.3f, 0.3f);
+    emitters[4].lifetime = mvfxMakeRangeSource(0.3f, 0.3f);
     emitters[4].color = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.5f, 0.7f, 1.0f, 1.0f}, .max = {0.7f, 0.9f, 1.0f, 1.0f}};
     emitters[4].ribbon.ids = mvfx_ribbonOne;
@@ -674,15 +674,15 @@ static inline void BuildScene(mvfxContext* context)
     emitters[0].color = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.3f, 0.5f, 0.4f}, .max = {0.9f, 0.7f, 0.6f, 1.0f}};
     emitters[0].rate = 37.5f;
-    emitters[0].lifetime = mvfxRangeSource(0.25f, 1.5f);
+    emitters[0].lifetime = mvfxMakeRangeSource(0.25f, 1.5f);
     emitters[1].capacity = 64;
     // Each emitter's quads turn their own way.
     emitters[0].sprite = (mvfxSpriteDef){.billboard = mvfx_billboardDirectional, .stretch = 0.3f};
     emitters[1].sprite.billboard = mvfx_billboardAxisY;
     emitters[2].sprite.billboard = mvfx_billboardRotated;
     emitters[3].sprite.billboard = mvfx_billboardFixed;
-    emitters[2].angle = mvfxRangeSource(0.0f, 6.2831853f);
-    emitters[2].spin = mvfxRangeSource(-2.0f, 2.0f);
+    emitters[2].angle = mvfxMakeRangeSource(0.0f, 6.2831853f);
+    emitters[2].spin = mvfxMakeRangeSource(-2.0f, 2.0f);
     emitters[3].orientationMode = mvfx_orientationRandom;
     // Three emitters drawn in three orders.
     emitters[0].sortMode = mvfx_sortBackToFront;
@@ -714,7 +714,7 @@ static inline void BuildScene(mvfxContext* context)
                                   .alphaKeyCount = 2}};
     emitters[1].meshIndex = (mvfxFrameStart){.mode = mvfx_frameRandom, .first = 1, .last = 6};
     emitters[1].rate = 2000.0f;
-    emitters[1].lifetime = mvfxRangeSource(0.01f, 0.05f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.01f, 0.05f);
     emitters[0].shape.kind = mvfx_shapeSphere;
     emitters[0].shape.radius = 1.5f;
     emitters[0].shape.thickness = 0.3f;
@@ -745,7 +745,7 @@ static inline void BuildScene(mvfxContext* context)
     emitters[1].motion.gravity[2] = 3.0f;
     emitters[1].motion.gravitySpace = mvfx_spaceLocal;
     emitters[1].motion.drag = 1.5f;
-    emitters[1].motion.dragScale = mvfxRangeSource(0.25f, 2.0f);
+    emitters[1].motion.dragScale = mvfxMakeRangeSource(0.25f, 2.0f);
     emitters[2].motion.drag = 30.0f;
     // Forces: an attractor in a sphere, with a kill radius, in the
     // emitter's space on the first; a vortex in a tube
@@ -968,7 +968,7 @@ static inline void BuildScene(mvfxContext* context)
     // Seven a second, so it spawns within the scene's 1.4 seconds and
     // fills.
     emitters[2].rate = 7.0f;
-    emitters[2].lifetime = mvfxRangeSource(5.0f, 9.0f);
+    emitters[2].lifetime = mvfxMakeRangeSource(5.0f, 9.0f);
     // The fourth throws sparks from the first's collisions, and the third
     // spawns from the sparks' deaths too, so it steps after them.
     emitters[3].rate = 0.0f;
@@ -982,7 +982,7 @@ static inline void BuildScene(mvfxContext* context)
     emitters[3].boundsMax[0] = 5.0f;
     emitters[3].boundsMax[1] = 6.0f;
     emitters[3].boundsMax[2] = 2.0f;
-    emitters[3].lifetime = mvfxRangeSource(0.05f, 0.3f);
+    emitters[3].lifetime = mvfxMakeRangeSource(0.05f, 0.3f);
     emitters[3].velocity.speed = (mvfxRange){0.5f, 1.5f};
     emitters[3].events = mvfx_eventMaskDeath;
     // Each collision's sparks draw a ribbon of their own.
@@ -1038,7 +1038,7 @@ static inline void BuildScene(mvfxContext* context)
     lives[0].rate = 400.0f;
     lives[0].rateCurve = (mvfxCurve){rise, 3, mvfx_tangentsMonotone};
     lives[0].duration = 0.75f;
-    lives[0].lifetime = mvfxRangeSource(0.05f, 0.3f);
+    lives[0].lifetime = mvfxMakeRangeSource(0.05f, 0.3f);
     // An attractor whose strength follows the loop's age, peaking mid-loop.
     static const mvfxCurveKey pulse[3] = {
         {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
@@ -1060,7 +1060,7 @@ static inline void BuildScene(mvfxContext* context)
     lives[1].startDelay = 0.2f;
     lives[1].duration = 0.5f;
     lives[1].loops = 3;
-    lives[1].lifetime = mvfxRangeSource(0.1f, 0.6f);
+    lives[1].lifetime = mvfxMakeRangeSource(0.1f, 0.6f);
     lives[0].shape.kind = mvfx_shapeCircle;
     lives[0].shape.radius = 2.0f;
     lives[0].shape.thickness = 0.5f;
@@ -1082,7 +1082,7 @@ static inline void BuildScene(mvfxContext* context)
     lives[2].capacity = 30;
     lives[2].rate = 50.0f;
     lives[2].startDelay = 1.0f;
-    lives[2].lifetime = mvfxRangeSource(0.2f, 0.9f);
+    lives[2].lifetime = mvfxMakeRangeSource(0.2f, 0.9f);
     mvfxEffectDef livesDef = mvfxDefaultEffectDef();
     livesDef.emitters = lives;
     livesDef.emitterCount = 3;
@@ -1128,7 +1128,7 @@ static inline void BuildScene(mvfxContext* context)
         meshEmitters[i] = mvfxDefaultEmitterDef();
         meshEmitters[i].capacity = 24;
         meshEmitters[i].rate = 30.0f + 10.0f * (float)i;
-        meshEmitters[i].lifetime = mvfxRangeSource(0.2f, 0.7f);
+        meshEmitters[i].lifetime = mvfxMakeRangeSource(0.2f, 0.7f);
         meshEmitters[i].shape.kind = mvfx_shapeMesh;
         meshEmitters[i].shape.mesh = mesh;
         meshEmitters[i].shape.meshMode = modes[i];
@@ -1158,7 +1158,7 @@ static inline void BuildScene(mvfxContext* context)
                                                .min = {1, 1, 1, 1},
                                                .max = {1, 1, 1, 1},
                                                .gradient = {warm, 2, fade, 2}};
-    meshEmitters[0].spin = mvfxRangeSource(-3.0f, 3.0f);
+    meshEmitters[0].spin = mvfxMakeRangeSource(-3.0f, 3.0f);
     meshEmitters[1].orientationMode = mvfx_orientationEuler;
     meshEmitters[1].orientation =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 0}, .max = {3.1f, 1.0f, 6.2f}};
@@ -1246,7 +1246,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEmitters[0].bursts = &ropes;
     chainEmitters[0].burstCount = 1;
     chainEmitters[0].capacity = 6 * 8;
-    chainEmitters[0].lifetime = mvfxRangeSource(1.2f, 1.2f);
+    chainEmitters[0].lifetime = mvfxMakeRangeSource(1.2f, 1.2f);
     chainEmitters[0].shape.kind = mvfx_shapeSphere;
     chainEmitters[0].shape.radius = 1.0f;
     chainEmitters[0].motion.gravity[1] = -9.81f;
@@ -1267,7 +1267,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEmitters[1].space = mvfx_spaceLocal;
     chainEmitters[1].rate = 3.0f;
     chainEmitters[1].capacity = 4 * 6;
-    chainEmitters[1].lifetime = mvfxRangeSource(0.8f, 1.6f);
+    chainEmitters[1].lifetime = mvfxMakeRangeSource(0.8f, 1.6f);
     chainEmitters[1].velocity.speed = (mvfxRange){1.0f, 3.0f};
     chainEmitters[1].motion.gravity[1] = -4.0f;
     chainEmitters[1].motion.drag = 0.6f;
@@ -1293,7 +1293,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEmitters[5].space = mvfx_spaceLocal;
     chainEmitters[5].rate = 0.0f;
     chainEmitters[5].capacity = 16;
-    chainEmitters[5].lifetime = mvfxRangeSource(0.3f, 0.5f);
+    chainEmitters[5].lifetime = mvfxMakeRangeSource(0.3f, 0.5f);
     chainEmitters[5].velocity.speed = (mvfxRange){0.5f, 1.5f};
     chainEmitters[5].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                    .source = 1,
@@ -1315,7 +1315,7 @@ static inline void BuildScene(mvfxContext* context)
     chainEmitters[2].burstCount = 1;
     chainEmitters[2].hostSpawnCapacity = 1;
     chainEmitters[2].capacity = 3 * 5 * 4;
-    chainEmitters[2].lifetime = mvfxRangeSource(1.5f, 1.5f);
+    chainEmitters[2].lifetime = mvfxMakeRangeSource(1.5f, 1.5f);
     chainEmitters[2].motion.gravity[1] = -9.81f;
     chainEmitters[2].motion.drag = 0.8f;
     static const mvfxForce gust = {
@@ -1346,7 +1346,7 @@ static inline void BuildScene(mvfxContext* context)
     // let go when it dies.
     chainEmitters[3].rate = 2.5f;
     chainEmitters[3].capacity = 4;
-    chainEmitters[3].lifetime = mvfxRangeSource(0.6f, 1.0f);
+    chainEmitters[3].lifetime = mvfxMakeRangeSource(0.6f, 1.0f);
     chainEmitters[3].velocity.speed = (mvfxRange){2.0f, 3.0f};
     chainEmitters[3].events = mvfx_eventMaskBirth;
     chainEmitters[3].eventCapacity = 4;
@@ -1354,7 +1354,7 @@ static inline void BuildScene(mvfxContext* context)
         .kind = mvfx_sourceRange, .min = {0, 1.0f, -2.0f, 0}, .max = {0, 3.0f, 2.0f, 0}};
     chainEmitters[4].rate = 0.0f;
     chainEmitters[4].capacity = 4 * 3;
-    chainEmitters[4].lifetime = mvfxRangeSource(1.6f, 1.6f);
+    chainEmitters[4].lifetime = mvfxMakeRangeSource(1.6f, 1.6f);
     chainEmitters[4].motion.gravity[1] = -6.0f;
     chainEmitters[4].eventSpawn = (mvfxEventSpawn){.enable = true,
                                                    .source = 3,

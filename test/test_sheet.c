@@ -76,7 +76,7 @@ static mvfxEmitterDef Sheet(int32_t points, int32_t rows)
     emitter.rate = 0.0f;
     emitter.capacity = 4 * points * rows;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.motion.gravity[1] = -9.81f;
     emitter.unit = (mvfxUnitDef){.kind = mvfx_unitSheet,
                                  .points = points,

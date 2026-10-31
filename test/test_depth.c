@@ -51,7 +51,7 @@ static mvfxEmitterDef Seeing(void)
     emitter.rate = 0.0f;
     emitter.capacity = 8;
     emitter.hostSpawnCapacity = 8;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.collision = (mvfxCollision){.enable = true,
                                         .restitution = 1.0f,
                                         .enableDepthImage = true,

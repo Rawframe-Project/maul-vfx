@@ -114,7 +114,7 @@ int main(int argc, char** argv)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.capacity = CAPACITY;
     emitter.rate = 100.0f;
-    emitter.lifetime = mvfxRangeSource(1.5f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1.5f, 2.0f);
     emitter.shape.kind = mvfx_shapeSphere;
     emitter.shape.radius = 1.0f;
     emitter.shape.thickness = 0.5f;

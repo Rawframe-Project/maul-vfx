@@ -50,7 +50,7 @@ static mvfxEmitterDef Emitter(int32_t capacity)
     emitter.rate = 600.0f;
     emitter.bursts = s_bursts;
     emitter.burstCount = 2;
-    emitter.lifetime = mvfxRangeSource(0.3f, 0.5f);
+    emitter.lifetime = mvfxMakeRangeSource(0.3f, 0.5f);
     emitter.shape = (mvfxShape){.kind = mvfx_shapeSphere, .rotation = {0, 0, 0, 1}, .radius = 0.5f};
     emitter.motion.gravity[1] = -9.8f;
     return emitter;
@@ -437,7 +437,7 @@ static void TestFinished(void)
     emitter.bursts =
         &(const mvfxBurst){.minCount = 1, .maxCount = 1, .cycles = 1, .probability = 1.0f};
     emitter.burstCount = 1;
-    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     effect = Effect(context, &emitter);
     alike = true;
     finishedAt =
@@ -453,7 +453,7 @@ static void TestCleared(void)
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxEmitterDef emitter = Emitter(1000);
-    emitter.lifetime = mvfxRangeSource(2.0f, 3.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 3.0f);
     mvfxEffectId effect = Effect(context, &emitter);
     mvfxInstanceId cpu = Instance(context, effect, false);
     mvfxInstanceId planned = Instance(context, effect, true);
@@ -567,7 +567,7 @@ static void TestHighWords(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     mvfxEmitterDef emitter = Emitter(1000);
     emitter.burstCount = 0;
-    emitter.lifetime = mvfxRangeSource(5000.0f, 6000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(5000.0f, 6000.0f);
     mvfxInstanceId cpu = Instance(context, PeekedEffect(context, &emitter), false);
     mvfxInstanceId planned = Instance(context, Effect(context, &emitter), true);
     uint64_t first = (1ull << 32u) - 20u;
@@ -899,7 +899,7 @@ static void TestBeams(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.capacity = 6;
-    emitter.lifetime = mvfxRangeSource(0.05f, 0.2f);
+    emitter.lifetime = mvfxMakeRangeSource(0.05f, 0.2f);
     emitter.ribbon.ids = mvfx_ribbonOne;
     emitter.beam = (mvfxBeamDef){.enable = true,
                                  .segments = 5,
@@ -916,12 +916,12 @@ static void TestBeams(void)
     CHECK(births > 6 * 20, "a planned beam's strikes are the stepped one's");
     // Lives far shorter than a step: past 64 strikes the next is struck at
     // the step's end.
-    emitter.lifetime = mvfxRangeSource(0.001f, 0.004f);
+    emitter.lifetime = mvfxMakeRangeSource(0.001f, 0.004f);
     int64_t seconds[4] = {MVFX_TICKS_PER_SECOND, 3, MVFX_TICKS_PER_SECOND, STEP_TICKS};
     births = CompareBeam(&emitter, seconds, 4, -1);
     CHECK(births >= 6 * 3, "64 strikes a step, as the stepped beam's");
     // Stopped, no strike follows the one living.
-    emitter.lifetime = mvfxRangeSource(0.05f, 0.2f);
+    emitter.lifetime = mvfxMakeRangeSource(0.05f, 0.2f);
     births = CompareBeam(&emitter, steps, 64, 30);
     CHECK(births > 0, "a stopped planned beam strikes as the stepped one");
 }
@@ -1139,7 +1139,7 @@ static void TestView(void)
     parts[count].def.color =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {1, 1, 1, 1}, .max = {1, 1, 1, 1}};
     parts[count++].bit = MVFX_FEATURE_COLOR;
-    parts[count].def.angle = mvfxRangeSource(0.0f, 1.0f);
+    parts[count].def.angle = mvfxMakeRangeSource(0.0f, 1.0f);
     parts[count++].bit = MVFX_FEATURE_ANGLE;
     parts[count].def.orientationMode = mvfx_orientationRandom;
     parts[count++].bit = MVFX_FEATURE_ORIENTATION;
@@ -1500,7 +1500,9 @@ static bool SameKillRule(const mvfxPlannedKillRule* p, const mvfxKillRule* def, 
     FramePoint(f, def->center, center);
     FrameVector(f, def->normal, 1.0, normal);
     FrameTurn(f, def->rotation, turn);
-    double ticks = ceil((double)def->minimumAge * (double)MVFX_TICKS_PER_SECOND);
+    double ticks = def->kind == mvfx_killSlower
+                       ? ceil((double)def->minimumAge * (double)MVFX_TICKS_PER_SECOND)
+                       : 0.0;
     bool same = p->kind == def->kind && Near(p->radius, (double)def->radius * sigma) &&
                 Near(p->speed, (double)def->speed * sigma) &&
                 p->minimumAgeTicks == (int64_t)ticks && p->collisions == def->collisions &&
@@ -1603,6 +1605,31 @@ static void TestModulesAndKills(void)
               m->orbitRate.value == 2.0f && view.rotationSpeed.value == 1.0f &&
               view.rotationSpeed.curve == NULL,
           "the view's velocity modules");
+    mvfxDestroyContext(context);
+}
+
+static void TestKillAgeOnlyWhereRead(void)
+{
+    // Only a rule that kills the slower reads its least age, so the other
+    // kinds leave it unchecked: a sphere's not a number or past every
+    // tick count is accepted, and the plan gives it 0 ticks.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = Emitter(16);
+    const mvfxKillRule rules[2] = {
+        {.kind = mvfx_killInsideSphere, .radius = 1, .minimumAge = NAN},
+        {.kind = mvfx_killOutsideSphere, .radius = 1, .minimumAge = 1e30f}};
+    emitter.killRules = rules;
+    emitter.killRuleCount = 2;
+    mvfxEffectId effect = Effect(context, &emitter);
+    mvfxInstanceId planned = Instance(context, effect, true);
+    CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+    static mvfxEmitterPlan plan;
+    CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
+    CHECK(plan.killRuleCount == 2 && plan.killRules[0].minimumAgeTicks == 0 &&
+              plan.killRules[1].minimumAgeTicks == 0,
+          "an age no kind reads planned as 0 ticks");
     mvfxDestroyContext(context);
 }
 
@@ -1840,6 +1867,7 @@ int main(void)
     TestForces();
     TestColliders();
     TestModulesAndKills();
+    TestKillAgeOnlyWhereRead();
     TestOverLifeView();
     TestDepth();
     return s_failures == 0 ? 0 : 1;

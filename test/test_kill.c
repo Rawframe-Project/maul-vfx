@@ -43,7 +43,7 @@ static mvfxEmitterDef Held(const mvfxKillRule* rules, int32_t count)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.killRules = rules;
     emitter.killRuleCount = count;
     return emitter;

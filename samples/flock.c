@@ -44,7 +44,7 @@ static mvfxEffectId MakeEffect(mvfxContext* context)
     birds.rate = 0.0f;
     birds.bursts = &flock;
     birds.burstCount = 1;
-    birds.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    birds.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     birds.shape.kind = mvfx_shapeSphere;
     birds.shape.offset[0] = HALF;
     birds.shape.radius = 1.5f;

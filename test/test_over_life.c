@@ -54,7 +54,7 @@ static mvfxEmitterDef Held(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+    emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
     return emitter;
 }
 
@@ -257,7 +257,7 @@ static void TestCustomAndRotation(void)
     // Spin 2 at half its rate over life: half a radian over half a second;
     // an angular velocity of 2 about Z likewise, half a turn of a radian.
     emitter = Held();
-    emitter.spin = mvfxRangeSource(2.0f, 2.0f);
+    emitter.spin = mvfxMakeRangeSource(2.0f, 2.0f);
     emitter.angularVelocity =
         (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 2, 0}, .max = {0, 0, 2, 0}};
     emitter.overLife.rotation = (mvfxRotationOverLife){.enable = true, .scale = {.value = 0.5f}};

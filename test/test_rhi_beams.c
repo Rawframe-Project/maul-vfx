@@ -23,7 +23,7 @@ static mvfxEmitterDef Beam(int32_t segments)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.capacity = segments + 1;
-    emitter.lifetime = mvfxRangeSource(0.2f, 0.3f);
+    emitter.lifetime = mvfxMakeRangeSource(0.2f, 0.3f);
     emitter.motion.gravity[1] = -9.8f;
     emitter.ribbon.ids = mvfx_ribbonOne;
     emitter.ribbon.texture = mvfx_ribbonTileByDistance;
@@ -115,7 +115,7 @@ static void TestMost(Gpu* gpu, mvfxGpu* kernels)
 {
     // The most segments: 1,025 points, five a run of the workgroup.
     mvfxEmitterDef emitter = Beam(MVFX_MAX_BEAM_SEGMENTS);
-    emitter.lifetime = mvfxRangeSource(0.05f, 0.1f);
+    emitter.lifetime = mvfxMakeRangeSource(0.05f, 0.1f);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,

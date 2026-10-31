@@ -531,7 +531,7 @@ static int Idle(void)
     mvfxEmitterDef brief = Sprite(16, 100.0f);
     brief.duration = 0.05f;
     brief.loops = 1;
-    brief.lifetime = mvfxRangeSource(0.05f, 0.05f);
+    brief.lifetime = mvfxMakeRangeSource(0.05f, 0.05f);
     seconds = TimeSteps(&brief, MANY, 60, &live);
     if (seconds.seconds < 0.0 || live != 0)
     {

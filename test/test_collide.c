@@ -49,7 +49,7 @@ static mvfxEmitterDef Held(const mvfxCollider* colliders, int32_t count, int32_t
     emitter.rate = 0.0f;
     emitter.capacity = capacity;
     emitter.hostSpawnCapacity = capacity;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.collision = (mvfxCollision){.enable = true, .restitution = 1.0f};
     emitter.colliders = colliders;
     emitter.colliderCount = count;
@@ -299,7 +299,7 @@ static void TestCountAtBirth(void)
     // no collisions.
     static const mvfxCollider floor = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
     mvfxEmitterDef emitter = Held(&floor, 1, 4);
-    emitter.lifetime = mvfxRangeSource(1.5f, 1.5f);
+    emitter.lifetime = mvfxMakeRangeSource(1.5f, 1.5f);
     Scene scene = NewScene(&emitter);
     Place(&scene, 0, 1, 0, 0, -2, 0);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");

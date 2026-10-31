@@ -45,7 +45,7 @@ static void TestCurl(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.forces = &force;
     emitter.forceCount = 1;
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();

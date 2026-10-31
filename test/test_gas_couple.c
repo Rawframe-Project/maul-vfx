@@ -304,7 +304,7 @@ static void TestSplatExact(void)
         mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
         emitter.rate = 0.0f;
         emitter.hostSpawnCapacity = 2;
-        emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+        emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
         emitter.gasSplat = pass == 0 ? (mvfxGasSplat){.enable = true, .density = 2.0f}
                                      : (mvfxGasSplat){.enable = true, .drag = 10.0f};
         mvfxGasDef gas = Still();

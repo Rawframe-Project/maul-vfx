@@ -74,7 +74,7 @@ if (mvfxCreateContext(&contextDef, &context) != mvfx_success)
 mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
 emitter.capacity = 128;
 emitter.rate = 50.0f;
-emitter.lifetime = mvfxRangeSource(2.0f, 2.0f);
+emitter.lifetime = mvfxMakeRangeSource(2.0f, 2.0f);
 emitter.velocity = (mvfxVelocity){.mode = mvfx_directionCone,
                                   .direction = {0.0f, 1.0f, 0.0f},
                                   .coneAngle = 0.2f,

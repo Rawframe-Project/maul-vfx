@@ -451,7 +451,7 @@ static void TestHolds(void)
     water.size[1] = 8;
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 600.0f;
-    emitter.lifetime = mvfxRangeSource(0.5f, 0.5f);
+    emitter.lifetime = mvfxMakeRangeSource(0.5f, 0.5f);
     emitter.water = (mvfxWaterCoupling){.enable = true, .water = 0, .radius = 0.05f};
     const double origin[3] = {0.0, 0.0, 0.0};
     Open(&water, 1, &emitter, 1, NULL, 0, origin, 1.0f);

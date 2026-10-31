@@ -79,7 +79,7 @@ static void TestWorldAndLocal(void)
     {
         mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
         emitter.space = (mvfxSimulationSpace)space;
-        emitter.lifetime = mvfxRangeSource(5.0f, 5.0f);
+        emitter.lifetime = mvfxMakeRangeSource(5.0f, 5.0f);
         Scene scene = NewScene(&emitter);
         MoveTo(&scene, 16.0, 0.0, 0.0, false);
         CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
@@ -167,7 +167,7 @@ static void TestDistance(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.ratePerDistance = 2.0f;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     Scene whole = NewScene(&emitter);
     Scene split = NewScene(&emitter);
     MoveTo(&whole, 10.0, 0.0, 0.0, false);
@@ -231,7 +231,7 @@ static void TestDistance(void)
     emitter.rate = 0.0f;
     emitter.capacity = 8;
     emitter.ratePerDistance = 1.0f;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     Scene jump = NewScene(&emitter);
     MoveTo(&jump, 100.0, 0.0, 0.0, false);
     CHECK(mvfxContext_StepTicks(jump.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "step");
@@ -255,7 +255,7 @@ static void TestHugeJumps(void)
         emitter.rate = 0.0f;
         emitter.capacity = 8;
         emitter.ratePerDistance = MVFX_MAX_DISTANCE_RATE;
-        emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+        emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
         emitter.startDelay = delayed != 0 ? 5.0f : 0.0f;
         Scene scene = NewScene(&emitter);
         MoveTo(&scene, -0x1p52, -0x1p52, -0x1p52, true);
@@ -324,7 +324,7 @@ static void TestRebase(void)
     const mvfxHostModule seeing = {
         .stage = mvfx_stageAfterMotion, .function = SeeAnchor, .user = anchor};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
-    emitter.lifetime = mvfxRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
     emitter.capacity = 4096;
     emitter.hostModules = &seeing;
     emitter.hostModuleCount = 1;
@@ -366,7 +366,7 @@ static void TestRebase(void)
     emitter.rate = 0.0f;
     emitter.capacity = 8;
     emitter.ratePerDistance = 1.0f;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     scene = NewScene(&emitter);
     MoveTo(&scene, 0.5, 0.0, 0.0, false);
     CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 8) == mvfx_success, "step");

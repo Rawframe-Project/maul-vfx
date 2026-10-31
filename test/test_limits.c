@@ -94,7 +94,7 @@ static mvfxEmitterDef Hosted(void)
     emitter.rate = 0.0f;
     emitter.capacity = 16;
     emitter.hostSpawnCapacity = 16;
-    emitter.lifetime = mvfxRangeSource(60.0f, 60.0f);
+    emitter.lifetime = mvfxMakeRangeSource(60.0f, 60.0f);
     return emitter;
 }
 
@@ -246,10 +246,10 @@ static void TestColors(void)
 static void TestTurnsAndCustom(void)
 {
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
-    emitter.spin = mvfxRangeSource(-1e3f, 1e3f);
+    emitter.spin = mvfxMakeRangeSource(-1e3f, 1e3f);
     emitter.overLife.rotation = (mvfxRotationOverLife){.enable = true, .scale = {.value = 1e3f}};
     CHECK(Taken(&emitter, 1), "a spin at its cap");
-    emitter.spin = mvfxRangeSource(-1e3f, Past(1e3f));
+    emitter.spin = mvfxMakeRangeSource(-1e3f, Past(1e3f));
     CHECK(!Taken(&emitter, 1), "a spin past");
     // A spin read from a parameter: ends of 1e3 take a value of 1.
     emitter.spin =
@@ -320,7 +320,7 @@ static void TestInherited(void)
     static const mvfxColorKey colors[1] = {{0.0f, 1e3f, 1e3f, 1e3f}};
     static const mvfxAlphaKey alphas[1] = {{0.0f, 1e3f}};
     mvfxEmitterDef emitters[2] = {Hosted(), Hosted()};
-    emitters[0].lifetime = mvfxRangeSource(0.5f, 0.5f);
+    emitters[0].lifetime = mvfxMakeRangeSource(0.5f, 0.5f);
     emitters[0].size = Range3(1e6f, -1e6f, 1e6f);
     emitters[0].color = Range4(1e6f, -1e6f, 1e6f, 1e6f);
     emitters[0].events = mvfx_eventMaskDeath;
@@ -374,7 +374,7 @@ static void TestSpeedHold(void)
     for (int32_t way = 0; way < 3; ++way)
     {
         mvfxEmitterDef emitter = Hosted();
-        emitter.lifetime = mvfxRangeSource(2000.0f, 2000.0f);
+        emitter.lifetime = mvfxMakeRangeSource(2000.0f, 2000.0f);
         emitter.motion.gravity[1] = -1e6f;
         static const mvfxCollider far = {
             .kind = mvfx_colliderPlane, .center = {0, 1e6f, 0}, .normal = {0, -1, 0}};
@@ -388,7 +388,7 @@ static void TestSpeedHold(void)
         else if (way == 2)
         {
             // Its own drag scale, so each particle moves alone.
-            emitter.motion.dragScale = mvfxRangeSource(1.0f, 1.0f);
+            emitter.motion.dragScale = mvfxMakeRangeSource(1.0f, 1.0f);
         }
         Scene scene = NewScene(&emitter, 1, 1.0f);
         Spawn(&scene, 1);
@@ -404,7 +404,7 @@ static void TestSpeedHold(void)
     // A world-space emitter's limit is its instance's scale times it, in
     // the world: twice 1e9 at a scale of 2.
     mvfxEmitterDef emitter = Hosted();
-    emitter.lifetime = mvfxRangeSource(3000.0f, 3000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(3000.0f, 3000.0f);
     emitter.space = mvfx_spaceWorld;
     emitter.motion.gravity[1] = -1e6f;
     Scene scene = NewScene(&emitter, 1, 2.0f);
@@ -550,8 +550,8 @@ static void TestModules(void)
             mvfxEmitterDef emitter = Hosted();
             emitter.size = Range3(1, 1, 1);
             emitter.color = Range4(1, 1, 1, 1);
-            emitter.angle = mvfxRangeSource(0.0f, 0.0f);
-            emitter.spin = mvfxRangeSource(0.0f, 0.0f);
+            emitter.angle = mvfxMakeRangeSource(0.0f, 0.0f);
+            emitter.spin = mvfxMakeRangeSource(0.0f, 0.0f);
             emitter.orientationMode = mvfx_orientationRandom;
             emitter.angularVelocity = Range3(0, 0, 0);
             emitter.overLife.size = (mvfxSizeOverLife){.enable = true, .size = {{.value = 1e3f}}};

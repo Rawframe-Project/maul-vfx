@@ -51,7 +51,7 @@ static mvfxEmitterDef Chain(int32_t points)
     emitter.rate = 0.0f;
     emitter.capacity = 4 * points;
     emitter.hostSpawnCapacity = 4;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.motion.gravity[1] = -9.81f;
     emitter.unit = (mvfxUnitDef){.kind = mvfx_unitChain,
                                  .points = points,
@@ -342,7 +342,7 @@ static void TestFull(void)
     emitter.motion.gravity[1] = 0.0f;
     emitter.capacity = 6;
     emitter.hostSpawnCapacity = 2;
-    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     static const mvfxBurst late = {
         .time = 1.1f, .minCount = 2, .maxCount = 2, .cycles = 1, .probability = 1.0f};
     emitter.bursts = &late;
@@ -469,7 +469,7 @@ static void TestLifeLossKeepsUnitsWhole(void)
     // point's 1 s, all three points together.
     mvfxEmitterDef emitter = Chain(3);
     emitter.motion.gravity[1] = 0.0f;
-    emitter.lifetime = mvfxRangeSource(1.0f, 1.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
     emitter.unit.pinFirst = false;
     emitter.unit.direction[0] = 1.0f;
     emitter.unit.direction[1] = 0.0f;

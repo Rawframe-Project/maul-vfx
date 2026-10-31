@@ -21,7 +21,7 @@ static mvfxEmitterDef Child(int32_t source, mvfxEventKind kind)
     mvfxEmitterDef emitter = Sprite();
     emitter.rate = 0.0f;
     emitter.burstCount = 0;
-    emitter.lifetime = mvfxRangeSource(0.1f, 0.3f);
+    emitter.lifetime = mvfxMakeRangeSource(0.1f, 0.3f);
     emitter.velocity.speed = (mvfxRange){0.5f, 1.0f};
     emitter.eventSpawn = (mvfxEventSpawn){.enable = true,
                                           .source = source,
@@ -49,7 +49,7 @@ static void TestDeaths(Gpu* gpu, mvfxGpu* kernels)
     // Sizes and angles drawn in the step, by the births' event keys.
     emitters[1].size = (mvfxVectorSource){
         .kind = mvfx_sourceRange, .min = {0.1f, 0.2f, 0.3f}, .max = {0.4f, 0.5f, 0.6f}};
-    emitters[1].angle = mvfxRangeSource(0.0f, 6.0f);
+    emitters[1].angle = mvfxMakeRangeSource(0.0f, 6.0f);
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
             "births from deaths, in the world's space");
     emitters[0].space = mvfx_spaceLocal;
@@ -140,7 +140,7 @@ static void TestBounds(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].events = mvfx_eventMaskDeath;
     emitters[0].eventCapacity = 4096;
     emitters[1].eventSpawn.capacity = 6;
-    emitters[1].lifetime = mvfxRangeSource(0.4f, 0.6f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.4f, 0.6f);
     Compare(gpu, kernels, &(Run){.emitters = emitters, .emitterCount = 2, .moving = true},
             "births from events past the step's bound refused");
     emitters[1].eventSpawn.capacity = 512;
@@ -150,7 +150,7 @@ static void TestBounds(Gpu* gpu, mvfxGpu* kernels)
     // Then lives shorter than a step (5 to 30 ms): births die within the
     // step that takes them, freeing room by their drawn deaths.
     emitters[1].capacity = 24;
-    emitters[1].lifetime = mvfxRangeSource(0.005f, 0.03f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.005f, 0.03f);
     Compare(gpu, kernels,
             &(Run){.emitters = emitters, .emitterCount = 2, .moving = true, .secondLeast = 20},
             "a full emitter of births living less than a step");
@@ -164,7 +164,7 @@ static void TestManyAndDelayed(Gpu* gpu, mvfxGpu* kernels)
     mvfxEmitterDef emitters[2] = {Sprite(), Child(0, mvfx_eventDeath)};
     emitters[0].capacity = 16384;
     emitters[0].rate = 120000.0f;
-    emitters[0].lifetime = mvfxRangeSource(0.1f, 0.2f);
+    emitters[0].lifetime = mvfxMakeRangeSource(0.1f, 0.2f);
     emitters[0].events = mvfx_eventMaskDeath;
     emitters[0].eventCapacity = 4096;
     emitters[1].capacity = 4096;

@@ -96,7 +96,7 @@ static void Field(mvfxContext* context, mvfxGridId grid, mvfxGridBorder border, 
     emitter.rate = 0.0f;
     emitter.capacity = 1;
     emitter.hostSpawnCapacity = 1;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.motion.gravity[0] = 0.0f;
     emitter.motion.gravity[1] = 0.0f;
     emitter.motion.gravity[2] = 0.0f;

@@ -50,7 +50,7 @@ static void TestMoving(Gpu* gpu, mvfxGpu* kernels)
     emitters[0].motion.drag = 30.0f;
     emitters[1].capacity = 100;
     emitters[1].rate = 320.0f;
-    emitters[1].lifetime = mvfxRangeSource(0.2f, 0.3f);
+    emitters[1].lifetime = mvfxMakeRangeSource(0.2f, 0.3f);
     emitters[1].space = mvfx_spaceLocal;
     emitters[1].motion.gravitySpace = mvfx_spaceWorld;
     emitters[1].velocity = (mvfxVelocity){.mode = mvfx_directionShapeNormal, .speed = {1, 2}};
@@ -321,7 +321,7 @@ static void TestVectorFields(Gpu* gpu, mvfxGpu* kernels)
     forces[0].boxSize[0] = 100.0f;
     forces[0].boxRotation[1] = 0.0f;
     forces[0].boxRotation[3] = 1.0f;
-    forces[0].strength = mvfxRangeSource(0.5f, 0.5f);
+    forces[0].strength = mvfxMakeRangeSource(0.5f, 0.5f);
     grid = LongGrid();
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .grid = &grid},
             "a long grid repeating");
@@ -373,7 +373,7 @@ static void TestCollision(Gpu* gpu, mvfxGpu* kernels)
     emitter.colliderCount = 3;
     emitter.collision = (mvfxCollision){
         .enable = true, .restitution = 0.6f, .friction = 0.2f, .restSpeed = 0.6f, .radius = 0.02f};
-    emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
+    emitter.lifetime = mvfxMakeRangeSource(0.6f, 0.9f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .colliding = true},
             "a floor, a box and a sphere bounced off");
     static const mvfxCollider local[2] = {{.kind = mvfx_colliderPlane,
@@ -428,7 +428,7 @@ static void TestOldDeaths(Gpu* gpu, mvfxGpu* kernels)
         {.time = 0, .value = 0, .interpolation = mvfx_interpolationLinear},
         {.time = 1, .value = 8, .interpolation = mvfx_interpolationLinear}};
     mvfxEmitterDef emitter = Sprite();
-    emitter.lifetime = mvfxRangeSource(24.0f, 30.0f);
+    emitter.lifetime = mvfxMakeRangeSource(24.0f, 30.0f);
     emitter.spin = (mvfxScalarSource){.kind = mvfx_sourceRange, .range = {1, 2}};
     emitter.overLife.rotation = (mvfxRotationOverLife){
         .enable = true, .scale = {.value = 1, .curve = {.keys = keys, .keyCount = 2}}};
@@ -790,7 +790,7 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     emitter.velocity.direction[2] = -1;
     emitter.velocity.coneAngle = 0.3f;
     emitter.velocity.speed = (mvfxRange){3, 5};
-    emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
+    emitter.lifetime = mvfxMakeRangeSource(0.6f, 0.9f);
     emitter.collision = (mvfxCollision){.enable = true,
                                         .restitution = 0.5f,
                                         .friction = 0.1f,
@@ -827,7 +827,7 @@ static void TestDepth(Gpu* gpu, mvfxGpu* kernels)
     image.rotation[0] = -0.70710678f;
     image.rotation[3] = 0.70710678f;
     emitter = Sprite();
-    emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
+    emitter.lifetime = mvfxMakeRangeSource(0.6f, 0.9f);
     emitter.collision = (mvfxCollision){.enable = true,
                                         .restitution = 0.4f,
                                         .radius = 0.02f,
@@ -973,7 +973,7 @@ static void TestGridColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.colliderCount = 3;
     emitter.collision = (mvfxCollision){
         .enable = true, .restitution = 0.5f, .friction = 0.1f, .restSpeed = 0.3f, .radius = 0.02f};
-    emitter.lifetime = mvfxRangeSource(0.6f, 0.9f);
+    emitter.lifetime = mvfxMakeRangeSource(0.6f, 0.9f);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter,
                    .emitterCount = 1,
@@ -1049,7 +1049,7 @@ static void TestFull(Gpu* gpu, mvfxGpu* kernels)
     emitter = Sprite();
     emitter.capacity = 3000;
     emitter.rate = 12000.0f;
-    emitter.lifetime = mvfxRangeSource(0.1f, 0.3f);
+    emitter.lifetime = mvfxMakeRangeSource(0.1f, 0.3f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 2000},
             "an emitter of many blocks");
     emitter.capacity = 1500;
@@ -1063,7 +1063,7 @@ static void TestFull(Gpu* gpu, mvfxGpu* kernels)
     emitter.capacity = 4096;
     emitter.burstCount = 0;
     emitter.rate = 4096.0f * 60.0f;
-    emitter.lifetime = mvfxRangeSource(0.5f, 1.0f);
+    emitter.lifetime = mvfxMakeRangeSource(0.5f, 1.0f);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 12, .least = 4096},
             "an emitter owing its capacity a step, full");
@@ -1074,7 +1074,7 @@ static void TestFull(Gpu* gpu, mvfxGpu* kernels)
     emitter.capacity = 64;
     emitter.burstCount = 0;
     emitter.rate = 64.0f * 120.0f;
-    emitter.lifetime = mvfxRangeSource(4096.025f, 4096.025f);
+    emitter.lifetime = mvfxMakeRangeSource(4096.025f, 4096.025f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 64},
             "an emitter full of lives past 2^32 ticks");
     // Half-second steps: a full emitter whose particles all die in the
@@ -1084,7 +1084,7 @@ static void TestFull(Gpu* gpu, mvfxGpu* kernels)
     SetStepTicks(MVFX_TICKS_PER_SECOND / 2);
     emitter = Bursts(s_turnover, 3);
     emitter.capacity = 1000;
-    emitter.lifetime = mvfxRangeSource(0.3f, 0.3f);
+    emitter.lifetime = mvfxMakeRangeSource(0.3f, 0.3f);
     Compare(gpu, kernels,
             &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 2, .least = 1000},
             "a sequence past twice the capacity");
@@ -1120,7 +1120,7 @@ static mvfxEmitterDef Bursts(const mvfxBurst* bursts, int32_t burstCount)
     emitter.rate = 0.0f;
     emitter.bursts = bursts;
     emitter.burstCount = burstCount;
-    emitter.lifetime = mvfxRangeSource(0.25f, 0.25f);
+    emitter.lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     return emitter;
 }
 
@@ -1149,13 +1149,13 @@ static void TestBoundaries(Gpu* gpu, mvfxGpu* kernels)
     // the plan. And longer ones.
     emitter = Sprite();
     emitter.rate = 60.0f;
-    emitter.lifetime = mvfxRangeSource(4096.0f, 4096.0f);
+    emitter.lifetime = mvfxMakeRangeSource(4096.0f, 4096.0f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
             "lives of 2^32 ticks");
-    emitter.lifetime = mvfxRangeSource(4096.0009765625f, 4096.0009765625f);
+    emitter.lifetime = mvfxMakeRangeSource(4096.0009765625f, 4096.0009765625f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
             "lives of 2^32 ticks and 1,024");
-    emitter.lifetime = mvfxRangeSource(5000.0f, 6000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(5000.0f, 6000.0f);
     Compare(gpu, kernels, &(Run){.emitters = &emitter, .emitterCount = 1, .least = 50},
             "lives past 2^32 ticks");
     // Steps of a second to ages past 2^32 ticks, the plan's start's low

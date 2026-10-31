@@ -49,7 +49,7 @@ static mvfxEmitterDef Source(float minLife, float maxLife)
     emitter.rate = 0.0f;
     emitter.capacity = 64;
     emitter.hostSpawnCapacity = 64;
-    emitter.lifetime = mvfxRangeSource(minLife, maxLife);
+    emitter.lifetime = mvfxMakeRangeSource(minLife, maxLife);
     emitter.events = mvfx_eventMaskDeath;
     emitter.eventCapacity = 64;
     return emitter;
@@ -62,7 +62,7 @@ static mvfxEmitterDef Consumer(int32_t source, int32_t minCount, int32_t maxCoun
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.capacity = 256;
-    emitter.lifetime = mvfxRangeSource(10.0f, 10.0f);
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
     emitter.events = mvfx_eventMaskBirth;
     emitter.eventCapacity = 64;
     emitter.eventSpawn = (mvfxEventSpawn){.enable = true,
@@ -318,7 +318,7 @@ static void TestRoomAndStatus(void)
     // born and dead within the step, was never live and told of no birth).
     mvfxEmitterDef full[2] = {Source(0.2f, 0.8f), Consumer(0, 1, 1)};
     full[1].capacity = 1;
-    full[1].lifetime = mvfxRangeSource(0.25f, 0.25f);
+    full[1].lifetime = mvfxMakeRangeSource(0.25f, 0.25f);
     scene = NewScene(full, 2);
     Place(&scene, 0, 0, 0, 0, 0.0f);
     Place(&scene, 0, 1, 0, 0, 0.0f);
@@ -489,7 +489,7 @@ static void TestDrawnByEvent(void)
         emitters[0].capacity = 128;
         emitters[0].hostSpawnCapacity = 128;
         emitters[0].eventCapacity = 128;
-        emitters[1].lifetime = mvfxRangeSource(5.0f, 10.0f);
+        emitters[1].lifetime = mvfxMakeRangeSource(5.0f, 10.0f);
         emitters[1].eventSpawn.capacity = run == 0 ? 64 : 1;
         Scene scene = NewScene(emitters, 2);
         for (int32_t i = 0; i < 120; ++i)

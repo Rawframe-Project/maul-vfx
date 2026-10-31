@@ -231,7 +231,7 @@ extern "C"
     // particles' space: its def's meaning (mvfxKillRule) with lengths and
     // the speed scaled, points, normals and turns mapped, and its least
     // age in ticks, rounded up (a particle at least that many ticks old is
-    // old enough).
+    // old enough), for mvfx_killSlower; 0 for every other kind.
     typedef struct mvfxPlannedKillRule
     {
         mvfxKillKind kind;

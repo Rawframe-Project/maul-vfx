@@ -169,7 +169,7 @@ static int32_t Births(const mvfxCurveKey* keys, int32_t count, float rate, float
     emitter.rateCurve = (mvfxCurve){keys, count, mvfx_tangentsGiven};
     emitter.duration = seconds;
     emitter.loops = loops;
-    emitter.lifetime = mvfxRangeSource(1000.0f, 1000.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
     emitter.events = mvfx_eventMaskBirth;
     emitter.eventCapacity = MOST_BIRTHS;
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
