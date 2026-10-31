@@ -52,6 +52,12 @@ The lavapipe presets run one suite at a time, since lavapipe uses every core for
 
 The `windows-rhi-d3d12` preset runs `rhi_kernels` on WARP, D3D12's software adapter, under the Agility SDK's debug layer and GPU-based validation, and fails on any error the layer reports, through Maul RHI's own `test/d3d12_debug.c` from the tree CMake fetches at the pinned version (`MAUL_VFX_D3D12_AGILITY` names the SDK's DLLs; `tools/ci_agility.sh` fetches them with Maul RHI's script at that version). The validation's resource state tracking is off, as in Maul RHI's own D3D12 cell, where it reports false errors. The suites that build a simulation (the harness suites, `guide_rhi`, `sample_gpu`) do not run there: WARP faults compiling the simulation's kernels, and `rhi_kernels`' in-place remainders are WARP's expected failure, which fails the check if it ever passes ([#65](https://github.com/Rawframe-Project/maul-vfx/issues/65)).
 
+## White-box suites
+
+A suite tests through the public headers. One that includes a header from `src/` is marked `WHITEBOX` in `CMakeLists.txt` and is skipped in the shared build, which hides the internal symbols; [#15](https://github.com/Rawframe-Project/maul-vfx/issues/15) moves those suites to the public API and names each one that stays, with the reason.
+
+The one internal header a public suite may include is `src/test_hooks.h`. Its functions set or read a state no public call reaches within a test: an emitter's births owed, so its serials reach their 32-bit wrap; one chosen torn edge; the broadphase's rigid pairs; a gas's face velocities, scalar fields and obstacle marks; shallow water's depths and face velocities. They build into `maul-vfx-test-hooks`, which is never installed and links only into a static build, so a suite that uses them keeps `WHITEBOX` for the include path and the link alone. Each hook's comment names its state and why no public call sets or reads it, and #15 lists them. A new hook takes its line there, and one whose state a host would plausibly read also gets an issue as a candidate public output.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every pull request, on every push to `main`, every night and by hand. The ruleset requires one job, `required`, which passes when every other job passed or was skipped.
