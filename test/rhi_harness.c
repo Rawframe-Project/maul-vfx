@@ -2956,8 +2956,8 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     if (run->killing)
     {
         const mvfxEmitterState* state = &mvfxContextInstance(s_context, s_cpu)->emitters[0];
-        printf("  killed: %llu\n", (unsigned long long)state->killed);
-        CHECK(state->killed > 0, "kills");
+        printf("  killed: %llu\n", (unsigned long long)state->killCount);
+        CHECK(state->killCount > 0, "kills");
     }
     if (s_neighborsCompared > 0)
     {
