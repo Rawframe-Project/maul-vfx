@@ -21,6 +21,8 @@
 #define SAMPLES 40000
 #define PI_F    3.14159265358979323846f
 #define PI_D    3.14159265358979323846
+// Every particle's life, longer than any run.
+#define LIFETIME 100.0f
 
 static TestParticle s_read[SAMPLES];
 static float s_positions[SAMPLES * 3];
@@ -40,8 +42,8 @@ static mvfxShape BaseShape(mvfxShapeKind kind)
 // An emitter of shape and velocity, with a burst or a rate and room for
 // capacity particles, stepped ticks; copies its particles' positions (from
 // the instance's origin) and velocities, in the pool's order, into either
-// array not NULL, and their ages into ages when not NULL, and returns how
-// many there are.
+// array not NULL, and their ages over their LIFETIME second lives into ages
+// when not NULL, and returns how many there are.
 static int32_t Run(const mvfxShape* shape, const mvfxVelocity* velocity, const mvfxBurst* burst,
                    float rate, int32_t capacity, int64_t ticks, float* positions, float* velocities,
                    float* ages)
@@ -49,7 +51,7 @@ static int32_t Run(const mvfxShape* shape, const mvfxVelocity* velocity, const m
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = rate;
     emitter.capacity = capacity;
-    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
+    emitter.lifetime = mvfxMakeRangeSource(LIFETIME, LIFETIME);
     emitter.bursts = burst;
     emitter.burstCount = burst != NULL ? 1 : 0;
     emitter.shape = *shape;
@@ -66,7 +68,14 @@ static int32_t Run(const mvfxShape* shape, const mvfxVelocity* velocity, const m
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};
     CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
-    CHECK(mvfxContext_StepTicks(context, ticks) == mvfx_success, "step");
+    // In steps of at most a second, the longest a step takes.
+    bool stepped = true;
+    for (int64_t done = 0; done < ticks; done += MVFX_TICKS_PER_SECOND)
+    {
+        int64_t part = ticks - done < MVFX_TICKS_PER_SECOND ? ticks - done : MVFX_TICKS_PER_SECOND;
+        stepped = stepped && mvfxContext_StepTicks(context, part) == mvfx_success;
+    }
+    CHECK(stepped, "step");
     int32_t count = ReadParticles(context, instance, 0, s_read, capacity);
     CHECK(count >= 0, "read");
     for (int32_t i = 0; i < count; ++i)
@@ -590,7 +599,7 @@ static void TestArcModes(void)
         bool placed = born >= 2 * RATE - 1;
         for (int32_t i = 0; i < born; ++i)
         {
-            double at = 2.0 - 1.0 / MVFX_TICKS_PER_SECOND - (double)ages[i];
+            double at = 2.0 - 1.0 / MVFX_TICKS_PER_SECOND - (double)LIFETIME * (double)ages[i];
             double turns = at * (double)shape.arcSpeed;
             // Loop: around and around; ping-pong: out over one turn, back
             // over the next.
