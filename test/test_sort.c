@@ -4,9 +4,9 @@
 // Sorting: records back to front and front to back by distance and by
 // depth with ties in the pool's order, youngest first, none; depths of
 // every sign and size, subnormal ones too, in their order; many counts
-// of particles against a stable sort of their depths, in key shapes
-// whose bytes vary in some places only (any, a few values, one byte, the
-// high two, none); a local emitter sorted in the world; a buffer too
+// of particles against a stable sort of their depths, in five key
+// shapes (any, a few values varying in the two high bytes, one byte,
+// either sign, none); a local emitter sorted in the world; a buffer too
 // small; the scratch query, scratch too small or misaligned; the view's
 // checks and the def's.
 
@@ -172,8 +172,10 @@ static uint32_t Next(void)
 }
 
 // A depth of a shape: any float of some size and either sign; one of four
-// values; one varying in its second byte only; one varying in its two
-// high bytes only; always the same.
+// values, whose keys vary in their two high bytes only; one varying in its
+// key's second byte only; one of either sign varying in its exponent and
+// high mantissa, whose keys vary in every byte, as a negative's key flips
+// them all; always the same.
 static float Depth(int32_t shape)
 {
     uint32_t bits = 0;
