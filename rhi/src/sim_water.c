@@ -181,7 +181,7 @@ static uint32_t PlanWaves(SimWater* water, const mvfxWaterPlan* plan, uint32_t n
     // A substep's factors, as the core's Waves.
     float h = def->cellSize;
     float c = def->waveSpeed;
-    float dt = plan->dt;
+    float dt = plan->substepSeconds;
     mvfxFloatWords(w + WORD_FACTORS, dt * c * c / (h * h),
                    (float)mvfxExpMinus((double)(def->damping * dt)), (c * dt - h) / (c * dt + h),
                    dt);
@@ -275,7 +275,7 @@ static uint32_t PlanShallow(SimWater* water, const mvfxWaterPlan* plan, uint32_t
 {
     const mvfxWaterDef* def = &water->view.def;
     uint32_t* w = water->words;
-    float dt = plan->dt;
+    float dt = plan->substepSeconds;
     mvfxFloatWords(w + WORD_FACTORS, def->gravity,
                    (float)mvfxExpMinus((double)(def->friction * dt)), def->fillLevel, dt);
     w[WORD_HEAD] = (uint32_t)plan->pushCount;
