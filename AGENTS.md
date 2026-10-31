@@ -59,6 +59,7 @@ Follow the [repository standard's Tests section](https://github.com/Rawframe-Pro
 - A test of the GPU part compares it with the CPU path through `test/rhi_harness.c`, not with numbers of its own.
 - Every C snippet of `docs/user/` appears unchanged in `test/test_guide.c` or `test/test_guide_rhi.c`; `tools/check_guide.py` enforces it.
 - A fuzz finding becomes a test in the module's suite with the minimized input.
+- A byte array in a test is `_Alignas(16)`: the library refuses some buffers without their alignment, and AddressSanitizer aligns globals on Linux, so a missing one fails only elsewhere. `tools/check_test_buffers.py` refuses one without it.
 
 ## Documentation
 

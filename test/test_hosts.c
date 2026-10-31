@@ -152,7 +152,7 @@ static const mvfxView s_view = {.eye = {0.7, 1.1, 9.3},
 static void Particles(Out* out, mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
                       mvfxLayoutId layout)
 {
-    static unsigned char records[256 * 40];
+    static _Alignas(16) unsigned char records[256 * 40];
     static uint32_t scratch[256 * 4];
     memset(records, 0, sizeof records);
     int64_t count = 0;
@@ -343,7 +343,7 @@ static void Files(Out* out)
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitters;
     def.emitterCount = 2;
-    static unsigned char file[1 << 15];
+    static _Alignas(16) unsigned char file[1 << 15];
     memset(file, 0, sizeof file);
     int64_t size = 0;
     mvfxFileResult written =
@@ -595,7 +595,7 @@ static void Strips(Out* out)
     }
     mvfxLayoutId layout = Layout(out, context);
     Particles(out, context, instance, 3, layout);
-    static unsigned char points40[256 * 40];
+    static _Alignas(16) unsigned char points40[256 * 40];
     static mvfxRibbon ribbons[64];
     static uint32_t scratch[1024 * 4];
     memset(points40, 0, sizeof points40);

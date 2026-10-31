@@ -875,8 +875,8 @@ static mrhiBufferId s_countBuffer;
 static mrhiResourceId s_recordResource;
 static mvfxView s_view;
 static int64_t s_recordCapacity;
-static uint8_t s_gpuRecords[RECORD_BYTES];
-static uint8_t s_cpuRecords[RECORD_BYTES];
+static _Alignas(16) uint8_t s_gpuRecords[RECORD_BYTES];
+static _Alignas(16) uint8_t s_cpuRecords[RECORD_BYTES];
 static uint32_t s_gpuCount[4];
 
 // A run's ribbon points instead (s_ribbonPoints), or strips (s_strips):
@@ -1450,7 +1450,7 @@ static double UnitMeasure(const uint8_t* unit)
     float last[3];
     memcpy(first, unit, sizeof first);
     memcpy(last, unit + 3 * s_layoutView.stride, sizeof last);
-    uint8_t center[3 * sizeof(float)];
+    _Alignas(16) uint8_t center[3 * sizeof(float)];
     for (int32_t k = 0; k < 3; ++k)
     {
         float mid = (float)(0.5 * ((double)first[k] + (double)last[k]));
@@ -1579,12 +1579,12 @@ static bool SwapOutputPlaces(bool in)
 #define SLEEP_SERIALS 4096
 static int32_t s_mostAsleep;
 static int32_t s_woken;
-static uint8_t s_wasAsleep[SLEEP_SERIALS];
+static _Alignas(16) uint8_t s_wasAsleep[SLEEP_SERIALS];
 
 // Counts the GPU's sleeping bodies of the first emitter at this step.
 static void CountSleep(int32_t count)
 {
-    static uint8_t asleep[SLEEP_SERIALS];
+    static _Alignas(16) uint8_t asleep[SLEEP_SERIALS];
     memset(asleep, 0, sizeof asleep);
     int32_t now = 0;
     for (int32_t i = 0; i < count; ++i)

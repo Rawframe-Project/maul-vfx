@@ -228,7 +228,7 @@ static void Write(mvfxFormat format, bool srgb, int32_t components, const float 
 
 static void TestFormats(void)
 {
-    unsigned char b[16];
+    _Alignas(16) unsigned char b[16];
     uint16_t h[4];
     static const float halves[4] = {1.0f, -2.5f, 65504.0f, 1e6f};
     Write(mvfx_formatFloat16, false, 4, halves, b);
@@ -756,8 +756,8 @@ static void TestSrgbSteps(void)
     {
         const float at[4] = {steps[k], 0, 0, 1};
         const float below[4] = {nextafterf(steps[k], 0.0f), 0, 0, 1};
-        unsigned char a[16];
-        unsigned char b[16];
+        _Alignas(16) unsigned char a[16];
+        _Alignas(16) unsigned char b[16];
         Write(mvfx_formatUnorm8, true, 4, at, a);
         Write(mvfx_formatUnorm8, true, 4, below, b);
         rising = (k == 0 || steps[k] > steps[k - 1]) && a[0] == k + 1 && b[0] == k;

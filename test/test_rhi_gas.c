@@ -160,7 +160,7 @@ static bool ReadGpu(Gpu* gpu, const Scene* scene, const mvfxGasRead* read, uint6
         mrhiPass_Begin(gpu->device, passes[0]) == mrhi_success &&
         mrhiPass_ClearBuffer(gpu->device, passes[0], target, 0, MRHI_WHOLE_SIZE) == mrhi_success;
     // The fill: words of fill bytes over the buffer, cleared first.
-    static uint8_t fills[1 << 16];
+    static _Alignas(16) uint8_t fills[1 << 16];
     memset(fills, fill, sizeof fills);
     for (uint64_t at = 0; recorded && at < bytes; at += sizeof fills)
     {
@@ -442,8 +442,8 @@ static void TestPlumes(Gpu* gpu, mvfxGpu* kernels)
 // The bytes of a read in each path's buffer, filled alike first: the
 // padding kept on both, each value within the tolerance (a normalized
 // one within a step).
-static uint8_t s_cpuBytes[1 << 16];
-static uint8_t s_gpuBytes[1 << 16];
+static _Alignas(16) uint8_t s_cpuBytes[1 << 16];
+static _Alignas(16) uint8_t s_gpuBytes[1 << 16];
 
 // A value of a format at bytes, decoded.
 static float Decoded(mvfxFormat format, const uint8_t* at)

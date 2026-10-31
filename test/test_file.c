@@ -135,7 +135,7 @@ static bool IsPath(const mvfxEffectRefusal* refusal, const char* path)
 // Whether a def reads from bytes and writes them again.
 static bool SameBytesAgain(const uint8_t* bytes, int64_t size, mvfxEffectDef* read)
 {
-    static uint8_t again[4096];
+    static _Alignas(16) uint8_t again[4096];
     int64_t rewritten = 0;
     return Refused(Read(bytes, size, read), mvfx_success, -1) &&
            mvfxWriteEffect(read, s_assets, 4, again, sizeof again, &rewritten, NULL).result ==
@@ -305,7 +305,7 @@ static void TestArguments(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = 1;
     CHECK(Refused(mvfxWriteEffect(NULL, s_assets, 4, bytes, 4096, &size, NULL), mvfx_errorInvalid,
                   -1) &&
@@ -369,14 +369,14 @@ static void TestAssetTables(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t written = Write(&def, bytes);
     // Overlong, a surrogate, past U+10FFFF, overlong in three bytes, a
     // lead past 0xF4, overlong in four bytes, cut short, a lone
     // continuation, a bad third byte.
     static const struct
     {
-        uint8_t bytes[4];
+        _Alignas(16) uint8_t bytes[4];
         int32_t length;
     } bad[] = {{{0xC0, 0x80}, 2},
                {{0xED, 0xA0, 0x80}, 3},
@@ -452,7 +452,7 @@ static void TestLayout(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     // The bytes themselves, by a hash of one byte at a time (FNV-1a), the
     // same on every host: a host of another byte order is held to them.
@@ -524,7 +524,7 @@ static void TestDefaults(void)
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     effect.emitters = &emitter;
     effect.emitterCount = 1;
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = 0;
     CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size, NULL).result ==
               mvfx_success,
@@ -536,7 +536,7 @@ static void TestDefaults(void)
               Get32(bytes, head + 16) == 0,
           "the emitters field alone, one empty item");
     mvfxEffectDef read;
-    uint8_t empty[40];
+    _Alignas(16) uint8_t empty[40];
     memcpy(empty, bytes, sizeof empty);
     Set32(empty, 8, 40);
     Set32(empty, 32, 0);
@@ -611,7 +611,7 @@ static void TestMissing(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = 0;
     def.colliders[0].grid.generation = 2;
     CHECK(Refused(mvfxWriteEffect(&def.effect, s_assets, 4, bytes, 4096, &size, NULL),
@@ -641,7 +641,7 @@ static void TestMissing(void)
 static void Expect(const uint8_t* file, int64_t size, int64_t at, uint32_t value, mvfxResult status,
                    int64_t offset, const char* what)
 {
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     memcpy(bytes, file, (size_t)size);
     Set32(bytes, at, value);
     Rehash(bytes, size);
@@ -654,9 +654,9 @@ static void TestHeaderAndTable(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
-    uint8_t changed[4096];
+    _Alignas(16) uint8_t changed[4096];
     memcpy(changed, bytes, (size_t)size);
     changed[1] = 'W';
     mvfxEffectDef read;
@@ -707,7 +707,7 @@ static void TestNames(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     Expect(bytes, size, 68, 0, mvfx_errorFormat, 68, "an empty name");
     Expect(bytes, size, 68, MVFX_MAX_ASSET_NAME + 1, mvfx_errorFormat, 68, "a name too long");
@@ -715,7 +715,7 @@ static void TestNames(void)
     // "ball" as "bal\xFF", "ground" as "ball\0\0" with the length 4 and two
     // bytes over.
     Expect(bytes, size, 72, 0xFF6C6162u, mvfx_errorFormat, 75, "a name not UTF-8");
-    uint8_t changed[4096];
+    _Alignas(16) uint8_t changed[4096];
     memcpy(changed, bytes, (size_t)size);
     Set32(changed, 76, 4);
     memcpy(changed + 80, "ball", 4);
@@ -733,7 +733,7 @@ static void TestNames(void)
     Expect(bytes, size, 32, 24, mvfx_errorFormat, 86, "a section's bytes left over");
     // A grid names section of 2 bytes, too short for its count, before an
     // effect of 24.
-    uint8_t shortNames[80] = {0};
+    _Alignas(16) uint8_t shortNames[80] = {0};
     memcpy(shortNames, "MVFX", 4);
     Set32(shortNames, 4, MVFX_FILE_VERSION);
     Set32(shortNames, 8, 80);
@@ -756,7 +756,7 @@ static void TestFields(void)
     def.emitter.fixedBounds = true;
     def.emitter.shape.radius = 2.0f;
     def.emitter.overLife.size.size[1].value = 2.0f;
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     mvfxEffectDef read;
     CHECK(SameBytesAgain(bytes, size, &read), "the def read");
@@ -810,7 +810,7 @@ static void TestLaterFields(void)
     MakeDef(&def);
     def.emitter.shape.radius = 2.0f;
     def.emitter.overLife.size.size[1].value = 2.0f;
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     Span effect = EffectOf(bytes);
     int64_t emitters =
@@ -852,7 +852,7 @@ static void TestReferences(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     int64_t refs[2];
     for (int32_t i = 0; i < 2; ++i)
@@ -897,7 +897,7 @@ static void TestCaps(void)
     }
     def.emitter.colliders = planes;
     def.emitter.colliderCount = MVFX_MAX_COLLIDERS;
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     mvfxEffectDef read;
     CHECK(SameBytesAgain(bytes, size, &read) &&
@@ -921,8 +921,8 @@ static void TestDecoys(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
-    uint8_t other[4096];
+    _Alignas(16) uint8_t bytes[4096];
+    _Alignas(16) uint8_t other[4096];
     int64_t size = Write(&def, bytes);
     mvfxEffectAsset table[7] = {
         {.kind = mvfx_assetMesh, .name = "decoy", .nameLength = 5, .grid = {2, 1}, .mesh = {7, 7}},
@@ -964,17 +964,17 @@ static void TestCuts(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     // A header alone, hashed: too short for its section table.
-    uint8_t header[4096] = {0};
+    _Alignas(16) uint8_t header[4096] = {0};
     memcpy(header, bytes, 24);
     Set32(header, 8, 24);
     Rehash(header, 24);
     mvfxEffectDef read;
     CHECK(Refused(Read(header, 24, &read), mvfx_errorFormat, 12), "a header alone");
     // The effect section 8 bytes short: its one field runs past it.
-    uint8_t cut[4096];
+    _Alignas(16) uint8_t cut[4096];
     memcpy(cut, bytes, (size_t)size);
     Set32(cut, 8, (uint32_t)size - 8);
     Set32(cut, 24 + 24 + 8, Get32(cut, 24 + 24 + 8) - 8);
@@ -986,7 +986,7 @@ static void TestCuts(void)
     CHECK(Refused(Read(cut, size, &read), mvfx_errorFormat, 16), "the hash's high half");
     // A name of the most bytes, then its length one more: it would end
     // inside its section.
-    static uint8_t longFile[8192];
+    static _Alignas(16) uint8_t longFile[8192];
     static char longName[MVFX_MAX_ASSET_NAME];
     memset(longName, 'a', sizeof longName);
     mvfxEffectAsset table[4];
@@ -1018,7 +1018,7 @@ static void TestParts(void)
     MakeDef(&def);
     def.emitter.plexus = (mvfxPlexusDef){
         .enable = true, .distance = 0.5f, .maxLinks = 1, .maxPerParticle = 1, .width = 0.01f};
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     const mvfxFileType* plexus = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, plexus));
     int64_t links =
@@ -1040,9 +1040,9 @@ static void TestTrailing(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
-    uint8_t longer[4096];
+    _Alignas(16) uint8_t longer[4096];
     memcpy(longer, bytes, (size_t)size);
     memset(longer + size, 0, 8);
     Set32(longer, 8, (uint32_t)size + 8);
@@ -1070,7 +1070,7 @@ static void TestTrailing(void)
 static mvfxFileResult ReadChanged(const uint8_t* file, int64_t size, int64_t at, uint32_t value,
                                   mvfxEffectRefusal* refusal)
 {
-    static uint8_t bytes[4096];
+    static _Alignas(16) uint8_t bytes[4096];
     memcpy(bytes, file, (size_t)size);
     Set32(bytes, at, value);
     Rehash(bytes, size);
@@ -1089,7 +1089,7 @@ static void TestRefusedFields(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     mvfxEffectRefusal refusal;
     // A count past its cap: in the array.
@@ -1151,7 +1151,7 @@ static void TestMemory(void)
 {
     Def def;
     MakeDef(&def);
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     int64_t needed = 0;
     mvfxEffectDef read;
@@ -1174,7 +1174,7 @@ static void TestMemory(void)
           "read in exactly");
     CHECK((const uint8_t*)read.emitters == s_memory && s_memory[needed] == 0xAB,
           "the memory from its start, not past its end");
-    uint8_t written[4096];
+    _Alignas(16) uint8_t written[4096];
     int64_t rewritten = 0;
     CHECK(Refused(mvfxWriteEffect(&read, s_assets, 4, written, 4096, &rewritten, NULL),
                   mvfx_success, -1) &&
@@ -1190,7 +1190,7 @@ static void TestMemoryGuard(void)
     MakeDef(&def);
     def.emitter.colliderCount = 0;
     def.emitter.hostModuleCount = 0;
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     int64_t needed = 0;
     mvfxEffectDef read;
@@ -1270,7 +1270,7 @@ static void TestCreate(void)
     MakeDef(&def);
     def.colliders[0].grid = table[1].grid;
     def.colliders[1].grid = table[0].grid;
-    uint8_t bytes[4096];
+    _Alignas(16) uint8_t bytes[4096];
     int64_t size = 0;
     CHECK(mvfxWriteEffect(&def.effect, table, 4, bytes, 4096, &size, NULL).result == mvfx_success,
           "written");
@@ -1329,7 +1329,7 @@ static bool RefusedFromFile(mvfxContext* context, const mvfxEmitterDef* emitter,
     mvfxEffectDef def = mvfxDefaultEffectDef();
     def.emitters = emitter;
     def.emitterCount = 1;
-    static uint8_t bytes[4096];
+    static _Alignas(16) uint8_t bytes[4096];
     int64_t size = 0;
     bool written = mvfxWriteEffect(&def, table, count, bytes, sizeof bytes, &size, NULL).result ==
                    mvfx_success;
@@ -1431,7 +1431,7 @@ static void TestArgumentMisuse(void)
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
     Def def;
     MakeDef(&def);
-    static uint8_t bytes[4096];
+    static _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
     static const char bad[1] = {(char)0xFF};
     const mvfxEffectAsset tables[6][2] = {

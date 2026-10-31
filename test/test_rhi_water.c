@@ -465,8 +465,8 @@ static void TestFinishing(Gpu* gpu, mvfxGpu* kernels)
 }
 
 // The bytes of a read in each path's buffer, filled alike first.
-static uint8_t s_cpuBytes[1 << 14];
-static uint8_t s_gpuBytes[1 << 14];
+static _Alignas(16) uint8_t s_cpuBytes[1 << 14];
+static _Alignas(16) uint8_t s_gpuBytes[1 << 14];
 
 // A value of a format at bytes, decoded.
 static float Decoded(mvfxFormat format, const uint8_t* at)

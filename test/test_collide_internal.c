@@ -217,7 +217,7 @@ static void TestMayMeet(void)
         }
         const float* const starts[3] = {s[0], s[1], s[2]};
         const float* const ends[3] = {e[0], e[1], e[2]};
-        uint8_t marks[RUN];
+        _Alignas(16) uint8_t marks[RUN];
         mvfxMayMeet(pair, 2, starts, ends, RUN, marks);
         for (int32_t j = 0; j < RUN; ++j)
         {

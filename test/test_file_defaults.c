@@ -119,7 +119,7 @@ static void TestPins(void)
             continue;
         }
         root->fill(s_root);
-        uint8_t bytes[256];
+        _Alignas(16) uint8_t bytes[256];
         int64_t made = Encode(pin, type, s_root, bytes, sizeof bytes);
         CHECK(made >= 0, "the pinned field written");
         bool function = made >= 0 && AsPinned(pin, bytes, made, root->name);

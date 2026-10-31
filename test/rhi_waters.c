@@ -120,7 +120,7 @@ bool ReadWaterGpu(Gpu* gpu, mvfxGpuSim* sim, int32_t water, const mvfxWaterRead*
                mrhiDevice_CompileFrame(gpu->device) == mrhi_success &&
                mrhiPass_Begin(gpu->device, passes[0]) == mrhi_success;
     // The fill: words of fill bytes over the buffer.
-    static uint8_t fills[1 << 16];
+    static _Alignas(16) uint8_t fills[1 << 16];
     memset(fills, fill, sizeof fills);
     for (uint64_t at = 0; recorded && at < bytes; at += sizeof fills)
     {

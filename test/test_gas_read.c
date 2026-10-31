@@ -78,7 +78,7 @@ static void TestFormats(void)
     static float floats[48];
     static float wide[48];
     static uint16_t halves[48];
-    static uint8_t bytes[48];
+    static _Alignas(16) uint8_t bytes[48];
     static int16_t shorts[48];
     CHECK(mvfxInstance_ReadGas(s_context, s_instance, 0, mvfx_gasDensity, floats, 48) ==
               mvfx_success,
@@ -114,7 +114,7 @@ static void TestBox(void)
     // Cells (2, 1) to (5, 3) of the density as float32, a row 32 bytes
     // apart: each row's four values, the 16 bytes after them untouched.
     Open(s_origin, s_unturned);
-    static unsigned char out[3 * 32];
+    static _Alignas(16) unsigned char out[3 * 32];
     memset(out, 0xAB, sizeof out);
     const mvfxGasRead read = {.field = mvfx_gasDensity,
                               .format = mvfx_formatFloat32,
