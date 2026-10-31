@@ -107,9 +107,10 @@ __attribute__((constructor)) static void Arm(void)
     char exe[MAX_PATH] = "";
     GetModuleFileNameA(NULL, exe, MAX_PATH);
     char* slash = strrchr(exe, '\\');
-    if (slash != NULL)
+    static const char dll[] = "d3d10warp.dll";
+    if (slash != NULL && (size_t)(slash + 1 - exe) + sizeof dll <= sizeof exe)
     {
-        strcpy(slash + 1, "d3d10warp.dll");
+        memcpy(slash + 1, dll, sizeof dll);
     }
     printf("warp probe (start): beside the test %s %s\n", exe,
            GetFileAttributesA(exe) != INVALID_FILE_ATTRIBUTES ? "exists" : "does not exist");
