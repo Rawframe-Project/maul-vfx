@@ -120,7 +120,7 @@ static bool IsPoseValid(const mvfxDepthImage* image)
 mvfxResult mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxDepthView* out)
 {
     bool bare = planned && image->pixels == nullptr;
-    if ((image->pixels == nullptr && !bare) || image->format > mvfx_depthUnorm24 ||
+    if ((image->pixels == nullptr && !bare) || !mvfxIsKind(image->format, mvfx_depthUnorm24) ||
         image->width < 1 || image->height < 1)
     {
         return mvfx_errorInvalid;

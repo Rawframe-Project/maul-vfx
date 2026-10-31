@@ -880,7 +880,7 @@ extern "C"
         mvfxSortMeasure sortMeasure;
         // The events its particles write each step (a mask of the kinds),
         // at most eventCapacity of them (0 when it writes none).
-        uint8_t events;
+        mvfxEventMask events;
         int32_t eventCapacity;
         // Its lifetime in seconds as a birth draws it (one component, held
         // to [2^-20, MVFX_MAX_LIFETIME] after the draw), and the births it

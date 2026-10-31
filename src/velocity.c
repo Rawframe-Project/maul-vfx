@@ -24,7 +24,7 @@ mvfxResult mvfxCheckVelocity(const mvfxFieldPath* at, const mvfxVelocity* veloci
 {
     mvfxFieldPath speed = mvfxFieldIn(at, MVFX_TAG_VELOCITY_SPEED, -1);
     mvfxResult checked = mvfxRefuseField(at, MVFX_TAG_VELOCITY_MODE,
-                                         mvfxRequire(velocity->mode <= mvfx_directionFixed));
+                                         mvfxRequire(mvfxIsKind(velocity->mode, mvfx_directionFixed)));
     checked = checked != mvfx_success
                   ? checked
                   : mvfxRefuseField(at, MVFX_TAG_VELOCITY_CONE_ANGLE,

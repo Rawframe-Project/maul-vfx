@@ -5,7 +5,7 @@ ribbon: appearance context direction fpenv gradient instance instance_api layout
 sort: invariant
 bounds: appearance direction instance space spawn
 view: bounds context fpenv gas_api instance instance_api refusal water_api
-layout: allocator elementary fpenv half
+layout: allocator elementary fpenv half refusal
 layout_api: context layout refusal slots
 output: appearance context direction fpenv instance instance_api layout layout_api refusal sort space
 # The internal module graph: each module and the modules it may use, so
@@ -107,9 +107,9 @@ gas_api: box collide context direction force fpenv gas instance instance_api ref
 instance_api: collide context depth effect_api fpenv gas grid_api instance mesh plan_resolved refusal rigid_wake slots spawn
 instance_inputs: context fpenv instance instance_api mesh_api refusal rigid_wake spawn
 step: context effect emitter_step event fpenv force gas_api gas_liquid gas_plan gas_splat gas_step gas_surface instance instance_api planner tasks water_shallow water_step
-curve: field_path
+curve: field_path refusal
 curve_integral: curve
-grid: allocator half
+grid: allocator half refusal
 force: direction elementary field_path gas_lattice grid noise random refusal value
 plan_resolved: beam collide depth force instance kill liquid_kernel steer velocity_modules water
 gas_plan: context force fpenv gas gas_api gas_solid instance instance_api plan_resolved water_plan

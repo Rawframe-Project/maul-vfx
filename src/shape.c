@@ -45,7 +45,7 @@ static uint32_t RefusedForm(const mvfxShape* shape)
     {
         return MVFX_TAG_SHAPE_ROTATION;
     }
-    if (shape->arcMode > mvfx_arcBurstSpread)
+    if (!mvfxIsKind(shape->arcMode, mvfx_arcBurstSpread))
     {
         return MVFX_TAG_SHAPE_ARC_MODE;
     }
@@ -61,7 +61,7 @@ static uint32_t RefusedForm(const mvfxShape* shape)
     {
         return MVFX_TAG_SHAPE_ARC;
     }
-    return shape->kind > mvfx_shapeMesh ? MVFX_TAG_SHAPE_KIND : 0;
+    return !mvfxIsKind(shape->kind, mvfx_shapeMesh) ? MVFX_TAG_SHAPE_KIND : 0;
 }
 
 mvfxResult mvfxCheckShape(const mvfxFieldPath* at, const mvfxShape* shape)
@@ -118,7 +118,7 @@ mvfxResult mvfxCheckShape(const mvfxFieldPath* at, const mvfxShape* shape)
     }
     default:
         return mvfxRefuseField(at, MVFX_TAG_SHAPE_MESH_MODE,
-                               mvfxRequire(shape->meshMode <= mvfx_meshVolume));
+                               mvfxRequire(mvfxIsKind(shape->meshMode, mvfx_meshVolume)));
     }
 }
 

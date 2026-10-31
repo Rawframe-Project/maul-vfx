@@ -44,7 +44,7 @@ extern "C"
     } mvfxLayoutId;
 
     // What a field of a record holds, from a particle.
-    typedef uint8_t mvfxField;
+    typedef int32_t mvfxField;
     enum
     {
         // Its place in the world less the view's origin, 1 to 3 components.
@@ -117,7 +117,7 @@ extern "C"
     };
 
     // How a field's components are written.
-    typedef uint8_t mvfxFormat;
+    typedef int32_t mvfxFormat;
     enum
     {
         // binary32.

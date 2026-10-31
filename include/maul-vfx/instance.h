@@ -31,7 +31,7 @@ extern "C"
 
     // What an instance does in the steps the host has it unseen
     // (mvfxInstance_SetVisible).
-    typedef uint8_t mvfxOffscreen;
+    typedef int32_t mvfxOffscreen;
     enum
     {
         // It steps as when seen.
@@ -428,7 +428,7 @@ extern "C"
 #define MVFX_MAX_DEPTH_SIZE 16384
 
     // How a depth image keeps its pixels: device depth from 0 to 1.
-    typedef uint8_t mvfxDepthFormat;
+    typedef int32_t mvfxDepthFormat;
     enum
     {
         // A binary32 a pixel.
@@ -630,7 +630,7 @@ extern "C"
                                                                  float valueOut[4]);
 
     // Where an emitter of an instance stands.
-    typedef uint8_t mvfxEmitterStatus;
+    typedef int32_t mvfxEmitterStatus;
     enum
     {
         // Its start delay has not passed.
@@ -718,7 +718,7 @@ extern "C"
     MVFX_API bool mvfxInstance_IsFinished(const mvfxContext* context, mvfxInstanceId instance);
 
     // How mvfxInstance_Stop treats an instance's particles.
-    typedef uint8_t mvfxStopMode;
+    typedef int32_t mvfxStopMode;
     enum
     {
         // They live out their lives.

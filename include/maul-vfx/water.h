@@ -48,7 +48,7 @@ extern "C"
 #define MVFX_MAX_WATER_DEPTH 1e12f
 
     // How a water surface moves.
-    typedef uint8_t mvfxWaterModel;
+    typedef int32_t mvfxWaterModel;
     enum
     {
         // Waves (ripples, wakes, rain) on water at rest: each cell's
@@ -85,7 +85,7 @@ extern "C"
 
     // A water surface's walls, as bits: each closed (waves reflect from
     // it) or, its bit clear, open (waves leave through it).
-    typedef uint8_t mvfxWaterWalls;
+    typedef uint32_t mvfxWaterWalls;
     enum
     {
         mvfx_waterWallMinX = 1,
@@ -165,7 +165,7 @@ extern "C"
 
     // A water surface's fields, at its cells' centers, in its frame (the
     // instance's, or where it began).
-    typedef uint8_t mvfxWaterField;
+    typedef int32_t mvfxWaterField;
     enum
     {
         // The surface's Y.

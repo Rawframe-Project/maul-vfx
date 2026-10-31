@@ -4,6 +4,7 @@
 #include "grid.h"
 
 #include "half.h"
+#include "refusal.h"
 
 #include <math.h>
 #include <stdalign.h>
@@ -14,7 +15,7 @@
 mvfxResult mvfxCheckGridDef(const mvfxGridDef* def)
 {
     if (def == nullptr || def->cookie != MVFX_GRID_DEF_COOKIE || def->values == nullptr ||
-        def->components < 1 || def->components > 4 || def->format > mvfx_gridFloat16 ||
+        def->components < 1 || def->components > 4 || !mvfxIsKind(def->format, mvfx_gridFloat16) ||
         def->size[0] < 1 || def->size[1] < 1 || def->size[2] < 1)
     {
         return mvfx_errorInvalid;

@@ -51,7 +51,7 @@ extern "C"
     // particle's birth when the emitter has a duration, 0 for a birth
     // before its start delay ends (a host's spawn); else the seconds since
     // the emitter began, negative before it begins.
-    typedef uint8_t mvfxSourceKind;
+    typedef int32_t mvfxSourceKind;
     enum
     {
         // No value: the attribute is not stored (an optional one), or the
@@ -127,7 +127,7 @@ extern "C"
     }
 
     // How a mesh particle's orientation starts.
-    typedef uint8_t mvfxOrientationMode;
+    typedef int32_t mvfxOrientationMode;
     enum
     {
         // Not stored, unless an angular velocity is.
@@ -139,7 +139,7 @@ extern "C"
     };
 
     // Which flipbook frame a particle starts at.
-    typedef uint8_t mvfxFrameMode;
+    typedef int32_t mvfxFrameMode;
     enum
     {
         // Not stored.
