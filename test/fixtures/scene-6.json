@@ -12,9 +12,9 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeBox",
           "offset": [0.0, 0.8, 0.0],
-          "halfExtents": [0.2, 0.1, 0.0]
+          "halfExtents": [0.2, 0.1, 0.0],
+          "kind": "mvfx_shapeBox"
         },
         "velocity": {
           "speed": {
@@ -30,11 +30,11 @@
         },
         "colliders": [
           {
-            "kind": "mvfx_colliderBox",
             "inside": true,
             "center": [0.0, 0.5, 0.0],
             "halfExtents": [0.5, 0.5, 1.0],
-            "rotation": [0.0, 0.0, 0.0, 1.0]
+            "rotation": [0.0, 0.0, 0.0, 1.0],
+            "kind": "mvfx_colliderBox"
           }
         ],
         "liquid": {
@@ -49,7 +49,6 @@
       {
         "capacity": 64,
         "rate": 60.0,
-        "space": "mvfx_spaceLocal",
         "lifetime": {
           "range": {
             "min": 1.2,
@@ -57,9 +56,9 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeSphere",
           "offset": [0.0, 0.45, 0.0],
-          "radius": 0.1
+          "radius": 0.1,
+          "kind": "mvfx_shapeSphere"
         },
         "velocity": {
           "speed": {
@@ -75,12 +74,12 @@
         },
         "colliders": [
           {
-            "kind": "mvfx_colliderBox",
-            "space": 1,
             "inside": true,
             "center": [0.0, 0.3, 0.0],
             "halfExtents": [0.3, 0.3, 0.3],
-            "rotation": [0.0, 0.0, 0.0, 1.0]
+            "rotation": [0.0, 0.0, 0.0, 1.0],
+            "kind": "mvfx_colliderBox",
+            "space": "mvfx_spaceLocal"
           }
         ],
         "liquid": {
@@ -88,12 +87,12 @@
           "spacing": 0.08,
           "substeps": 2,
           "iterations": 2
-        }
+        },
+        "space": "mvfx_spaceLocal"
       },
       {
         "capacity": 128,
         "rate": 80.0,
-        "space": "mvfx_spaceLocal",
         "lifetime": {
           "range": {
             "min": 1.2,
@@ -101,9 +100,9 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeBox",
           "offset": [0.0, 0.6, 0.0],
-          "halfExtents": [0.15, 0.05, 0.0]
+          "halfExtents": [0.15, 0.05, 0.0],
+          "kind": "mvfx_shapeBox"
         },
         "velocity": {
           "speed": {
@@ -119,19 +118,20 @@
         },
         "colliders": [
           {
-            "kind": "mvfx_colliderBox",
-            "space": 1,
             "inside": true,
             "center": [0.0, 0.36, 0.0],
             "halfExtents": [0.48, 0.36, 1.0],
-            "rotation": [0.0, 0.0, 0.0, 1.0]
+            "rotation": [0.0, 0.0, 0.0, 1.0],
+            "kind": "mvfx_colliderBox",
+            "space": "mvfx_spaceLocal"
           }
         ],
         "liquid": {
           "enable": true,
-          "solver": "mvfx_liquidGrid",
-          "spacing": 0.03
-        }
+          "spacing": 0.03,
+          "solver": "mvfx_liquidGrid"
+        },
+        "space": "mvfx_spaceLocal"
       }
     ],
     "gases": [
@@ -139,31 +139,31 @@
         "size": [16, 12, 1],
         "cellSize": 0.06,
         "center": [0.0, 0.36, 0.0],
+        "pressureCycles": 3,
         "kind": "mvfx_gasLiquid",
-        "closedWalls": 63,
-        "pressureCycles": 3
+        "closedWalls": 63
       },
       {
         "size": [32, 24, 1],
         "cellSize": 0.03,
         "center": [0.0, 0.36, 0.0],
-        "kind": "mvfx_gasSurface",
         "surface": {
           "emitter": 2,
           "radius": 0.03
-        }
+        },
+        "kind": "mvfx_gasSurface"
       },
       {
         "size": [16, 16, 16],
         "cellSize": 0.04,
         "center": [0.0, 0.3, 0.0],
-        "kind": "mvfx_gasSurface",
         "surface": {
           "emitter": 1,
           "radius": 0.08,
           "reach": 2.0,
           "high": 2.5
-        }
+        },
+        "kind": "mvfx_gasSurface"
       }
     ]
   }

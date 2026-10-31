@@ -12,9 +12,9 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeSphere",
           "radius": 1.5,
-          "thickness": 0.3
+          "thickness": 0.3,
+          "kind": "mvfx_shapeSphere"
         },
         "velocity": {
           "speed": {
@@ -28,24 +28,24 @@
         },
         "forces": [
           {
-            "kind": "mvfx_forceAttractor",
-            "space": "mvfx_spaceLocal",
             "point": [0.0, 2.0, 0.0],
             "softening": 0.5,
             "killRadius": 1.0,
             "falloff": {
-              "kind": "mvfx_falloffSphere",
               "center": [0.0, 2.0, 0.0],
               "radius": 5.0,
-              "exponent": 1.5
+              "exponent": 1.5,
+              "kind": "mvfx_falloffSphere"
             },
             "strength": {
-              "kind": "mvfx_sourceRange",
               "range": {
                 "min": 6.0,
                 "max": 6.0
-              }
-            }
+              },
+              "kind": "mvfx_sourceRange"
+            },
+            "kind": "mvfx_forceAttractor",
+            "space": "mvfx_spaceLocal"
           }
         ],
         "velocityModules": {
@@ -74,13 +74,13 @@
         },
         "killRules": [
           {
+            "radius": 2.5,
             "kind": "mvfx_killOutsideSphere",
-            "space": 1,
-            "radius": 2.5
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_killCollisions",
-            "collisions": 3
+            "collisions": 3,
+            "kind": "mvfx_killCollisions"
           }
         ],
         "collision": {
@@ -97,19 +97,18 @@
         },
         "colliders": [
           {
-            "space": 1,
             "center": [0.0, -1.2, 0.0],
-            "normal": [0.0, 1.0, 0.0]
+            "normal": [0.0, 1.0, 0.0],
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_colliderHeightfield",
-            "space": 1,
             "halfExtents": [1.5, 0.0, 1.5],
             "rotation": [0.0, 0.38268343, 0.0, 0.9238795],
-            "grid": "scene heights"
+            "grid": "scene heights",
+            "kind": "mvfx_colliderHeightfield",
+            "space": "mvfx_spaceLocal"
           }
         ],
-        "events": 7,
         "eventCapacity": 12,
         "neighbors": {
           "enable": true,
@@ -126,15 +125,16 @@
           "radiusBySize": 2.0
         },
         "sprite": {
-          "billboard": "mvfx_billboardDirectional",
-          "stretch": 0.3
+          "stretch": 0.3,
+          "billboard": "mvfx_billboardDirectional"
         },
-        "sortMode": "mvfx_sortBackToFront",
         "color": {
-          "kind": "mvfx_sourceRange",
           "min": [0.1, 0.3, 0.5, 0.4],
-          "max": [0.9, 0.7, 0.6, 1.0]
-        }
+          "max": [0.9, 0.7, 0.6, 1.0],
+          "kind": "mvfx_sourceRange"
+        },
+        "events": 7,
+        "sortMode": "mvfx_sortBackToFront"
       },
       {
         "capacity": 64,
@@ -146,37 +146,36 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeCone",
           "rotation": [0.38268343, 0.0, 0.0, 0.9238795],
           "radius": 0.5,
           "length": 2.0,
           "angle": 0.4,
-          "coneVolume": true
+          "coneVolume": true,
+          "kind": "mvfx_shapeCone"
         },
         "velocity": {
-          "mode": "mvfx_directionCone",
           "coneAngle": 0.25,
           "randomize": 0.2,
           "speed": {
             "min": 5.0,
             "max": 6.0
-          }
+          },
+          "mode": "mvfx_directionCone"
         },
         "motion": {
           "gravity": [0.0, 0.0, 3.0],
-          "gravitySpace": "mvfx_spaceLocal",
           "drag": 1.5,
           "dragScale": {
-            "kind": "mvfx_sourceRange",
             "range": {
               "min": 0.25,
               "max": 2.0
-            }
-          }
+            },
+            "kind": "mvfx_sourceRange"
+          },
+          "gravitySpace": "mvfx_spaceLocal"
         },
         "forces": [
           {
-            "kind": "mvfx_forceTurbulence",
             "noise": {
               "frequency": 0.4,
               "octaves": 3,
@@ -186,7 +185,6 @@
               "seed": 12345
             },
             "strength": {
-              "kind": "mvfx_sourceCurve",
               "range": {
                 "min": 1.0,
                 "max": 1.0
@@ -203,8 +201,10 @@
                     "interpolation": "mvfx_interpolationLinear"
                   }
                 ]
-              }
-            }
+              },
+              "kind": "mvfx_sourceCurve"
+            },
+            "kind": "mvfx_forceTurbulence"
           }
         ],
         "velocityModules": {
@@ -217,10 +217,10 @@
         },
         "killRules": [
           {
-            "kind": "mvfx_killPastPlane",
-            "space": 1,
             "center": [0.0, 0.0, 1.75],
-            "normal": [0.2, 0.0, 1.0]
+            "normal": [0.2, 0.0, 1.0],
+            "kind": "mvfx_killPastPlane",
+            "space": "mvfx_spaceLocal"
           }
         ],
         "collision": {
@@ -229,12 +229,12 @@
         },
         "colliders": [
           {
-            "kind": "mvfx_colliderDistance",
-            "space": 1,
             "center": [0.0, 0.0, 0.6],
             "halfExtents": [1.0, 1.0, 1.0],
             "rotation": [0.0, 0.0, 0.0, 1.0],
-            "grid": "scene ball"
+            "grid": "scene ball",
+            "kind": "mvfx_colliderDistance",
+            "space": "mvfx_spaceLocal"
           }
         ],
         "hostModules": [
@@ -266,13 +266,12 @@
           },
           "flee": {
             "weight": 0.3,
-            "space": 1,
             "point": [0.0, 1.0, 0.0],
-            "radius": 1.5
+            "radius": 1.5,
+            "space": "mvfx_spaceLocal"
           },
           "path": {
             "weight": 0.4,
-            "space": 1,
             "points": [
               [-2.0, 0.0, -2.0],
               [2.0, 0.0, -2.0],
@@ -281,7 +280,8 @@
             ],
             "closed": true,
             "radius": 1.5,
-            "lookahead": 0.5
+            "lookahead": 0.5,
+            "space": "mvfx_spaceLocal"
           }
         },
         "contacts": {
@@ -312,10 +312,8 @@
           }
         },
         "ribbon": {
-          "ids": "mvfx_ribbonOne",
           "pieces": 4,
           "bendAngle": 0.3,
-          "texture": "mvfx_ribbonTileByDistance",
           "tileLength": 0.5,
           "scroll": 0.75,
           "breakDistance": 1.5,
@@ -358,7 +356,9 @@
                 "alpha": 0.2
               }
             ]
-          }
+          },
+          "ids": "mvfx_ribbonOne",
+          "texture": "mvfx_ribbonTileByDistance"
         },
         "plexus": {
           "enable": true,
@@ -371,12 +371,12 @@
         "sprite": {
           "billboard": "mvfx_billboardAxisY"
         },
-        "sortMode": "mvfx_sortYoungestFirst",
         "meshIndex": {
-          "mode": "mvfx_frameRandom",
           "first": 1,
-          "last": 6
-        }
+          "last": 6,
+          "mode": "mvfx_frameRandom"
+        },
+        "sortMode": "mvfx_sortYoungestFirst"
       },
       {
         "capacity": 7,
@@ -388,55 +388,55 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeBox",
           "offset": [0.0, 3.0, 0.0],
-          "halfExtents": [1.0, 0.5, 2.0]
+          "halfExtents": [1.0, 0.5, 2.0],
+          "kind": "mvfx_shapeBox"
         },
         "velocity": {
-          "mode": "mvfx_directionFromCenter",
           "speed": {
             "min": 0.5,
             "max": 0.5
-          }
+          },
+          "mode": "mvfx_directionFromCenter"
         },
         "motion": {
           "drag": 30.0
         },
         "forces": [
           {
-            "kind": "mvfx_forceVortex",
-            "space": "mvfx_spaceLocal",
             "vector": [0.0, 1.0, 0.0],
             "pull": 1.0,
             "falloff": {
-              "kind": "mvfx_falloffTube",
               "axis": [0.0, 1.0, 0.0],
               "radius": 3.0,
-              "exponent": 1.0
+              "exponent": 1.0,
+              "kind": "mvfx_falloffTube"
             },
             "strength": {
-              "kind": "mvfx_sourceRange",
               "range": {
                 "min": 4.0,
                 "max": 4.0
-              }
-            }
+              },
+              "kind": "mvfx_sourceRange"
+            },
+            "kind": "mvfx_forceVortex",
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_forceVectorField",
-            "space": "mvfx_spaceLocal",
             "point": [0.0, 3.0, 0.0],
             "grid": "scene grid",
             "boxSize": [4.0, 2.0, 6.0],
             "boxRotation": [0.6, 0.0, 0.0, 0.8],
-            "border": "mvfx_borderRepeat",
             "strength": {
-              "kind": "mvfx_sourceRange",
               "range": {
                 "min": 3.0,
                 "max": 3.0
-              }
-            }
+              },
+              "kind": "mvfx_sourceRange"
+            },
+            "kind": "mvfx_forceVectorField",
+            "space": "mvfx_spaceLocal",
+            "border": "mvfx_borderRepeat"
           }
         ],
         "collision": {
@@ -449,9 +449,9 @@
         "eventSpawn": {
           "enable": true,
           "source": 3,
-          "kind": "mvfx_eventDeath",
           "maxCount": 1,
-          "capacity": 8
+          "capacity": 8,
+          "kind": "mvfx_eventDeath"
         },
         "neighbors": {
           "enable": true,
@@ -462,21 +462,21 @@
         "sprite": {
           "billboard": "mvfx_billboardRotated"
         },
-        "sortMode": "mvfx_sortFrontToBack",
-        "sortMeasure": "mvfx_sortByDepth",
         "angle": {
-          "kind": "mvfx_sourceRange",
           "range": {
             "max": 6.2831855
-          }
+          },
+          "kind": "mvfx_sourceRange"
         },
         "spin": {
-          "kind": "mvfx_sourceRange",
           "range": {
             "min": -2.0,
             "max": 2.0
-          }
-        }
+          },
+          "kind": "mvfx_sourceRange"
+        },
+        "sortMode": "mvfx_sortFrontToBack",
+        "sortMeasure": "mvfx_sortByDepth"
       },
       {
         "capacity": 40,
@@ -493,23 +493,22 @@
             "max": 1.5
           }
         },
-        "events": 2,
         "eventCapacity": 16,
         "eventSpawn": {
           "enable": true,
-          "kind": "mvfx_eventCollision",
           "minCount": 1,
           "maxCount": 3,
           "inheritVelocity": 0.4,
           "inheritColor": true,
-          "capacity": 48
+          "capacity": 48,
+          "kind": "mvfx_eventCollision"
         },
         "ribbon": {
-          "ids": "mvfx_ribbonPerSource",
           "pieces": 3,
+          "normal": [0.0, 1.0, 1.0],
+          "ids": "mvfx_ribbonPerSource",
           "texture": "mvfx_ribbonTilePerSegment",
-          "facing": "mvfx_ribbonFaceNormal",
-          "normal": [0.0, 1.0, 1.0]
+          "facing": "mvfx_ribbonFaceNormal"
         },
         "sprite": {
           "billboard": "mvfx_billboardFixed"
@@ -518,6 +517,7 @@
         "fixedBounds": true,
         "boundsMin": [-4.0, -1.0, -3.0],
         "boundsMax": [5.0, 6.0, 2.0],
+        "events": "mvfx_eventMaskDeath",
         "orientationMode": "mvfx_orientationRandom"
       },
       {
@@ -554,9 +554,9 @@
           "noiseSpeed": 1.5
         },
         "color": {
-          "kind": "mvfx_sourceRange",
           "min": [0.5, 0.7, 1.0, 1.0],
-          "max": [0.7, 0.9, 1.0, 1.0]
+          "max": [0.7, 0.9, 1.0, 1.0],
+          "kind": "mvfx_sourceRange"
         }
       }
     ],

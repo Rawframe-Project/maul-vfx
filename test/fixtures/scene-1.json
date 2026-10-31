@@ -31,12 +31,12 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeCircle",
           "radius": 2.0,
           "thickness": 0.5,
           "arc": 4.0,
-          "arcMode": "mvfx_arcPingPong",
-          "arcSpeed": 1.5
+          "arcSpeed": 1.5,
+          "kind": "mvfx_shapeCircle",
+          "arcMode": "mvfx_arcPingPong"
         },
         "velocity": {
           "speed": {
@@ -46,11 +46,9 @@
         },
         "forces": [
           {
-            "kind": "mvfx_forceAttractor",
             "point": [0.0, 1.0, 0.0],
             "softening": 0.5,
             "strength": {
-              "kind": "mvfx_sourceCurve",
               "range": {
                 "min": 1.0,
                 "max": 1.0
@@ -71,8 +69,10 @@
                     "interpolation": "mvfx_interpolationLinear"
                   }
                 ]
-              }
-            }
+              },
+              "kind": "mvfx_sourceCurve"
+            },
+            "kind": "mvfx_forceAttractor"
           }
         ]
       },
@@ -105,15 +105,15 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeHemisphere",
-          "radius": 1.0
+          "radius": 1.0,
+          "kind": "mvfx_shapeHemisphere"
         },
         "velocity": {
-          "mode": "mvfx_directionFixed",
           "direction": [0.0, 1.0, 1.0],
           "speed": {
             "max": 3.0
-          }
+          },
+          "mode": "mvfx_directionFixed"
         }
       },
       {
@@ -127,10 +127,10 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeLine",
           "length": 4.0,
-          "arcMode": "mvfx_arcLoop",
-          "arcSpeed": 0.5
+          "arcSpeed": 0.5,
+          "kind": "mvfx_shapeLine",
+          "arcMode": "mvfx_arcLoop"
         },
         "velocity": {
           "speed": {

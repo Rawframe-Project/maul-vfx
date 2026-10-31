@@ -20,8 +20,8 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeSphere",
-          "radius": 1.0
+          "radius": 1.0,
+          "kind": "mvfx_shapeSphere"
         },
         "motion": {
           "gravity": [0.0, -9.81, 0.0]
@@ -30,7 +30,6 @@
           "ids": "mvfx_ribbonOne"
         },
         "unit": {
-          "kind": "mvfx_unitChain",
           "points": 6,
           "spacing": 0.3,
           "direction": [1.0, -1.0, 0.0],
@@ -42,13 +41,13 @@
           "selfThickness": 0.5,
           "selfFriction": 0.3,
           "selfContacts": 6,
+          "kind": "mvfx_unitChain",
           "attach": "mvfx_attachInstance"
         }
       },
       {
         "capacity": 24,
         "rate": 3.0,
-        "space": "mvfx_spaceLocal",
         "lifetime": {
           "range": {
             "min": 0.8,
@@ -67,23 +66,21 @@
         },
         "forces": [
           {
-            "kind": "mvfx_forceAttractor",
-            "space": "mvfx_spaceLocal",
             "point": [0.0, -1.0, 0.5],
             "softening": 0.25,
             "strength": {
-              "kind": "mvfx_sourceRange",
               "range": {
                 "min": 3.0,
                 "max": 3.0
-              }
-            }
+              },
+              "kind": "mvfx_sourceRange"
+            },
+            "kind": "mvfx_forceAttractor",
+            "space": "mvfx_spaceLocal"
           }
         ],
-        "events": 8,
         "eventCapacity": 16,
         "unit": {
-          "kind": "mvfx_unitChain",
           "points": 4,
           "spacing": 0.2,
           "direction": [0.0, 0.0, 1.0],
@@ -91,8 +88,11 @@
           "stretchCompliance": 0.001,
           "bendCompliance": 0.1,
           "damping": 0.5,
-          "tearStrain": 0.02
-        }
+          "tearStrain": 0.02,
+          "kind": "mvfx_unitChain"
+        },
+        "space": "mvfx_spaceLocal",
+        "events": "mvfx_eventMaskTear"
       },
       {
         "capacity": 60,
@@ -119,8 +119,6 @@
         },
         "forces": [
           {
-            "kind": "mvfx_forceTurbulence",
-            "fieldMode": "mvfx_fieldVelocity",
             "tightness": 2.0,
             "noise": {
               "frequency": 0.7,
@@ -130,16 +128,17 @@
               "seed": 21
             },
             "strength": {
-              "kind": "mvfx_sourceRange",
               "range": {
                 "min": 3.0,
                 "max": 5.0
-              }
-            }
+              },
+              "kind": "mvfx_sourceRange"
+            },
+            "kind": "mvfx_forceTurbulence",
+            "fieldMode": "mvfx_fieldVelocity"
           }
         ],
         "unit": {
-          "kind": "mvfx_unitSheet",
           "points": 5,
           "rows": 4,
           "spacing": 0.25,
@@ -153,8 +152,9 @@
           "pinFirstRow": true,
           "normalDrag": 0.8,
           "tangentDrag": 0.05,
-          "attach": "mvfx_attachHost",
-          "attachFrameCapacity": 2
+          "attachFrameCapacity": 2,
+          "kind": "mvfx_unitSheet",
+          "attach": "mvfx_attachHost"
         }
       },
       {
@@ -171,13 +171,13 @@
             "max": 3.0
           }
         },
-        "events": 1,
         "eventCapacity": 4,
         "angularVelocity": {
-          "kind": "mvfx_sourceRange",
           "min": [0.0, 1.0, -2.0, 0.0],
-          "max": [0.0, 3.0, 2.0, 0.0]
-        }
+          "max": [0.0, 3.0, 2.0, 0.0],
+          "kind": "mvfx_sourceRange"
+        },
+        "events": "mvfx_eventMaskBirth"
       },
       {
         "capacity": 12,
@@ -199,7 +199,6 @@
           "capacity": 4
         },
         "unit": {
-          "kind": "mvfx_unitChain",
           "points": 3,
           "spacing": 0.2,
           "direction": [0.0, -1.0, 0.5],
@@ -207,13 +206,13 @@
           "bendCompliance": 0.05,
           "damping": 0.8,
           "pinFirst": true,
+          "kind": "mvfx_unitChain",
           "attach": "mvfx_attachParticles"
         }
       },
       {
         "capacity": 16,
         "rate": 0.0,
-        "space": "mvfx_spaceLocal",
         "lifetime": {
           "range": {
             "min": 0.3,
@@ -229,12 +228,13 @@
         "eventSpawn": {
           "enable": true,
           "source": 1,
-          "kind": "mvfx_eventTear",
           "minCount": 1,
           "maxCount": 2,
           "inheritVelocity": 0.5,
-          "capacity": 8
-        }
+          "capacity": 8,
+          "kind": "mvfx_eventTear"
+        },
+        "space": "mvfx_spaceLocal"
       }
     ]
   }
