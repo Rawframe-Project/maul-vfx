@@ -1203,6 +1203,20 @@ static void TestMemory(void)
               rewritten == size && memcmp(bytes, written, (size_t)size) == 0 &&
               Filled(&written[rewritten], sizeof written - (size_t)rewritten, 0xEE),
           "the same bytes again, every byte past them untouched");
+    // Memory over the bytes, at their start or their last 16 bytes, is
+    // refused; memory right after them is not.
+    static _Alignas(16) uint8_t both[8192];
+    memcpy(both, bytes, (size_t)size);
+    int64_t end = (size + 15) / 16 * 16;
+    CHECK(Refused(mvfxReadEffect(both, size, s_assets, 4, both, needed, &again, &read, NULL),
+                  mvfx_errorInvalid, -1) &&
+              Refused(mvfxReadEffect(both, size, s_assets, 4, both + end - 16, needed, &again,
+                                     &read, NULL),
+                      mvfx_errorInvalid, -1) &&
+              Refused(
+                  mvfxReadEffect(both, size, s_assets, 4, both + end, needed, &again, &read, NULL),
+                  mvfx_success, -1),
+          "memory overlapping the bytes refused");
 }
 
 // A walk given less memory than it lays, as when the bytes change between
