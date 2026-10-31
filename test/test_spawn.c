@@ -701,22 +701,27 @@ static void TestEvenDraws(void)
     }
     CHECK(alike, "a box's sides alike on every axis");
 
-    // Speeds from 2 to 3: as many in the odd 256ths of the range as in the
-    // even ones, and the odd 128ths.
+    // Speeds from 2 to 3 along X: each within the range, and as many in the
+    // odd 256ths of the range as in the even ones, and the odd 128ths.
     emitter = mvfxDefaultEmitterDef();
     emitter.velocity.mode = mvfx_directionFixed;
     emitter.velocity.direction[0] = 1.0f;
+    emitter.velocity.direction[1] = 0.0f;
+    emitter.velocity.direction[2] = 0.0f;
     emitter.velocity.speed = (mvfxRange){2.0f, 3.0f};
     Draw(&emitter);
     int64_t odd256 = 0;
     int64_t odd128 = 0;
+    bool within = true;
     for (int32_t i = 0; i < DRAWS; ++i)
     {
         double u = (double)s_drawn[i].velocity[0] - 2.0;
+        within = within && u >= 0.0 && u < 1.0 && s_drawn[i].velocity[1] == 0.0f &&
+                 s_drawn[i].velocity[2] == 0.0f;
         odd256 += ((int64_t)floor(u * 256.0) & 1) != 0 ? 1 : 0;
         odd128 += ((int64_t)floor(u * 128.0) & 1) != 0 ? 1 : 0;
     }
-    CHECK(Half(odd256) && Half(odd128), "speeds alike in fine slices");
+    CHECK(within && Half(odd256) && Half(odd128), "speeds alike in fine slices");
 }
 
 int main(void)
