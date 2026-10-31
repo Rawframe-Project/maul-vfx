@@ -17,10 +17,12 @@
 
 #include "maul-vfx/context.h"
 #include "maul-vfx/effect.h"
+#include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
 #include "maul-vfx/mesh.h"
 #include "maul-vfx/modules.h"
 #include "maul-vfx/output.h"
+#include "maul-vfx/plan.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -88,6 +90,38 @@ static void CallBack(Callback from)
     s_made += 1;
 }
 
+// While destructions run, the context and the ids the allocator's free
+// reads after each block it returns but the context's own: each reading
+// call answers from a live object or finds its id gone, and never reads
+// a block already returned. How many times it read.
+static const mvfxContext* s_reader;
+static mvfxMeshId s_readMesh;
+static mvfxGridId s_readGrid;
+static mvfxLayoutId s_readLayout;
+static mvfxEffectId s_readEffect;
+static mvfxInstanceId s_readInstance;
+static int32_t s_reads;
+
+static void Read(const void* freed)
+{
+    const mvfxContext* reader = s_reader;
+    if (reader == NULL || freed == (const void*)reader)
+    {
+        return;
+    }
+    mvfxMeshView mesh;
+    mvfxGridView grid;
+    mvfxLayoutView layout;
+    static mvfxEmitterView emitter;
+    mvfxMeshView spawning;
+    (void)mvfxMesh_GetView(reader, s_readMesh, &mesh);
+    (void)mvfxGrid_GetView(reader, s_readGrid, &grid);
+    (void)mvfxLayout_GetView(reader, s_readLayout, &layout);
+    (void)mvfxEffect_GetEmitterView(reader, s_readEffect, 0, &emitter);
+    (void)mvfxInstance_GetEmitterMesh(reader, s_readInstance, 0, &spawning);
+    s_reads += 1;
+}
+
 // Memory aligned by hand (not every C library has aligned_alloc), the
 // block's start kept before it.
 static void* Alloc(size_t size, size_t alignment, void* context)
@@ -113,6 +147,7 @@ static void Free(void* memory, size_t size, size_t alignment, void* context)
     Watch(FREE);
     CallBack(FREE);
     free(((void**)memory)[-1]);
+    Read(memory);
 }
 
 // Task hooks running every range at once, calling back in from each.
@@ -421,10 +456,87 @@ static void TestHostSettings(void)
     CHECK(s_seen[MODULE] > 0 && s_wrong[MODULE] == 0, "a host module in the library's setting");
 }
 
+// A context with the counted allocator; a mesh, a grid and a layout; an
+// effect spawning on the mesh and an instance of it: their ids for Read.
+static mvfxContext* OpenObjects(void)
+{
+    mvfxContextDef def = mvfxDefaultContextDef();
+    def.allocator = (mvfxAllocator){.alloc = Alloc, .free = Free};
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "context");
+    static const float corners[4][3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    static const uint32_t faces[4][3] = {{0, 2, 1}, {0, 1, 3}, {0, 3, 2}, {1, 2, 3}};
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = &corners[0][0];
+    meshDef.vertexCount = 4;
+    meshDef.triangles = &faces[0][0];
+    meshDef.triangleCount = 4;
+    CHECK(mvfxCreateMesh(context, &meshDef, &s_readMesh) == mvfx_success, "mesh");
+    static const float values[8] = {0};
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 2;
+    gridDef.size[1] = 2;
+    gridDef.size[2] = 2;
+    gridDef.components = 1;
+    gridDef.values = values;
+    CHECK(mvfxCreateGrid(context, &gridDef, &s_readGrid) == mvfx_success, "grid");
+    static const mvfxLayoutField position = {
+        .field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3};
+    mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
+    layoutDef.fields = &position;
+    layoutDef.fieldCount = 1;
+    layoutDef.stride = 16;
+    CHECK(mvfxCreateLayout(context, &layoutDef, &s_readLayout) == mvfx_success, "layout");
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.shape.kind = mvfx_shapeMesh;
+    emitter.shape.mesh = s_readMesh;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    CHECK(mvfxCreateEffect(context, &effectDef, &s_readEffect, NULL) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = s_readEffect;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &s_readInstance) == mvfx_success, "instance");
+    mvfxMeshView view;
+    CHECK(mvfxInstance_GetEmitterMesh(context, s_readInstance, 0, &view) == mvfx_success,
+          "the instance spawning on the mesh");
+    return context;
+}
+
+static void TestFreedAfterItsId(void)
+{
+    // The allocator's free reads every id after each block a destruction
+    // returns: each destruction frees its object's slot before its
+    // memory, and the context each table before its memory, so a reading
+    // call finds the id gone rather than a returned block (AddressSanitizer
+    // reports one).
+    mvfxContext* context = OpenObjects();
+    s_reads = 0;
+    s_reader = context;
+    bool destroyed = mvfxDestroyInstance(context, s_readInstance) == mvfx_success &&
+                     mvfxDestroyEffect(context, s_readEffect) == mvfx_success &&
+                     mvfxDestroyMesh(context, s_readMesh) == mvfx_success &&
+                     mvfxDestroyGrid(context, s_readGrid) == mvfx_success &&
+                     mvfxDestroyLayout(context, s_readLayout) == mvfx_success;
+    s_reader = NULL;
+    mvfxMeshView view;
+    CHECK(destroyed && s_reads >= 5 &&
+              mvfxMesh_GetView(context, s_readMesh, &view) == mvfx_errorStale,
+          "each object destroyed, its id read as it went");
+    mvfxDestroyContext(context);
+    context = OpenObjects();
+    s_reads = 0;
+    s_reader = context;
+    mvfxDestroyContext(context);
+    s_reader = NULL;
+    CHECK(s_reads >= 10, "a context destroyed with its objects, their ids read as they went");
+}
+
 int main(void)
 {
     TestCallsBackIn();
     TestBusyLeavesBuffers();
     TestHostSettings();
+    TestFreedAfterItsId();
     return s_failures == 0 ? 0 : 1;
 }

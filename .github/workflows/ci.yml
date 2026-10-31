@@ -31,7 +31,7 @@ defaults:
 jobs:
   # Whether anything beyond documentation changed; the builds skip when not.
   changes:
-    uses: Rawframe-Project/.github/.github/workflows/changes.yml@9a9e6744f39a915f9672068a283f1fe6151c695b # v0.0.39
+    uses: Rawframe-Project/.github/.github/workflows/changes.yml@8414d388d2116b581c5c5d8f6641e1da4d863244 # v0.0.42
     permissions:
       pull-requests: read
 
@@ -44,10 +44,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: Rawframe-Project/.github/.github/actions/docs-check@9a9e6744f39a915f9672068a283f1fe6151c695b # v0.0.39
+      - uses: Rawframe-Project/.github/.github/actions/docs-check@8414d388d2116b581c5c5d8f6641e1da4d863244 # v0.0.42
 
   zizmor:
-    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@9a9e6744f39a915f9672068a283f1fe6151c695b # v0.0.39
+    uses: Rawframe-Project/.github/.github/workflows/zizmor.yml@8414d388d2116b581c5c5d8f6641e1da4d863244 # v0.0.42
     permissions:
       contents: read
 
@@ -155,7 +155,7 @@ jobs:
           - { preset: linux-rhi }
           - { preset: macos-clang, runner: macos-15 }
           - { preset: windows-clang-cl, runner: windows-2025 }
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@9a9e6744f39a915f9672068a283f1fe6151c695b # v0.0.39
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@8414d388d2116b581c5c5d8f6641e1da4d863244 # v0.0.42
     permissions:
       contents: read
     with:
@@ -252,7 +252,9 @@ jobs:
   # files make: briefly on a pull request, longer on main and at night. Each
   # target's corpus carries from night to night in a cache, minimized after
   # the night's run; the committed seeds in test/corpus are its floor, and
-  # the effect file reader also starts from the golden scene's effects.
+  # the effect file reader also starts from the golden scene's effects. Every
+  # run restores the corpus, a pull request's too, so a change that breaks a
+  # harness's promise fails on its own pull request; only the night saves it.
   fuzz:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -268,17 +270,15 @@ jobs:
         with:
           persist-credentials: false
       # The cache is not secret (a fork's pull request can run its own
-      # workflow and restore it), so pull requests start from the committed
-      # seeds.
+      # workflow and restore it): it holds nothing the committed seeds would
+      # not lead to.
       - name: Restore the effect file reader's corpus
-        if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: out/corpus/fuzz_file
           key: fuzz-corpus-fuzz_file-${{ github.run_id }}
           restore-keys: fuzz-corpus-fuzz_file-
       - name: Restore the step's corpus
-        if: github.event_name != 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: out/corpus/fuzz_step
@@ -354,7 +354,7 @@ jobs:
       fail-fast: false
       matrix:
         preset: [linux-rhi-lavapipe, linux-rhi-lavapipe-asan]
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@9a9e6744f39a915f9672068a283f1fe6151c695b # v0.0.39
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@8414d388d2116b581c5c5d8f6641e1da4d863244 # v0.0.42
     permissions:
       contents: read
     with:
@@ -368,7 +368,7 @@ jobs:
   # touches the GPU part.
   windows-d3d12:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@9a9e6744f39a915f9672068a283f1fe6151c695b # v0.0.39
+    uses: Rawframe-Project/.github/.github/workflows/cpp.yml@8414d388d2116b581c5c5d8f6641e1da4d863244 # v0.0.42
     permissions:
       contents: read
     with:
@@ -377,6 +377,16 @@ jobs:
       setup: tools/ci_agility.sh
       timeout: 30
 
+  # Main's last job: deletes the cache entries of main a newer save
+  # replaced (keys ending in a commit or a run id), so the 10 GB keep one
+  # entry per cache and GitHub never evicts the fuzz corpus for old ccache.
+  prune-caches:
+    needs: [build, fuzz, extended, windows-d3d12]
+    if: always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    uses: Rawframe-Project/.github/.github/workflows/cache-prune.yml@8414d388d2116b581c5c5d8f6641e1da4d863244 # v0.0.42
+    permissions:
+      actions: write
+
   # The one check the ruleset requires: it passes when every job above
   # passed or was skipped (for a documentation-only change, or a nightly
   # job on a pull request), so adding or renaming a job never touches the
@@ -384,7 +394,7 @@ jobs:
   required:
     if: always()
     needs: [changes, docs, zizmor, checks, build, package, msvc-headers, web-emscripten, fuzz, extended,
-            windows-d3d12]
+            windows-d3d12, prune-caches]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions: {}

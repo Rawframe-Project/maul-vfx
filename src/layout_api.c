@@ -97,8 +97,10 @@ mvfxResult mvfxDestroyLayout(mvfxContext* context, mvfxLayoutId layout)
     {
         return mvfx_errorStale;
     }
-    mvfxReleaseLayout(live, &context->allocator);
+    // The slot freed first: the allocator's free, host code, may look the
+    // id up, and finds it gone rather than a released block.
     mvfxFreeSlot(&context->layouts, layout.index1);
+    mvfxReleaseLayout(live, &context->allocator);
     return mvfx_success;
 }
 
