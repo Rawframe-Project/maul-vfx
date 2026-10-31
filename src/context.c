@@ -166,12 +166,12 @@ void mvfxDestroyContext(mvfxContext* context)
 
 int64_t mvfxContext_GetParticles(const mvfxContext* context)
 {
-    return context->particlesHeld;
+    return context != nullptr ? context->particlesHeld : 0;
 }
 
 uint64_t mvfxContext_GetMisuse(const mvfxContext* context)
 {
-    return atomic_load_explicit(&context->misuse, memory_order_relaxed);
+    return context != nullptr ? atomic_load_explicit(&context->misuse, memory_order_relaxed) : 0;
 }
 
 void mvfxCountMisuse(mvfxContext* context)
