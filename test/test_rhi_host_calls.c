@@ -8,7 +8,8 @@
 // does nothing, a reading call still answers, and the destruction then
 // gives back all the memory taken. And its creation failing at each of
 // its allocations in turn, for an effect with a liquid gas (whose split
-// steps keep lanes): refused, all it took given back.
+// steps keep lanes): refused, all it took given back. And the part's calls
+// that take a const context run no host code.
 
 #include "test_harness.h"
 
@@ -19,7 +20,9 @@
 #include "maul-vfx-rhi/sim.h"
 #include "maul-vfx/context.h"
 #include "maul-vfx/effect.h"
+#include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
+#include "maul-vfx/mesh.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -283,6 +286,67 @@ static void TestFailedMemory(mvfxGpu* kernels)
     mvfxDestroyContext(context);
 }
 
+// The tasks a context has handed the host and waited on.
+static int32_t s_tasks;
+
+static void* Enqueue(mvfxTaskFunction* task, int32_t itemCount, int32_t minRange, void* taskContext,
+                     void* userContext)
+{
+    (void)minRange;
+    (void)userContext;
+    s_tasks += 1;
+    task(0, itemCount, taskContext);
+    return &s_tasks;
+}
+
+static void Finish(void* userTask, void* userContext)
+{
+    (void)userTask;
+    (void)userContext;
+    s_tasks += 1;
+}
+
+static void TestConstCalls(void)
+{
+    // A context on the counting allocator and task hooks, with a mesh and
+    // a heightfield's grid: the part's calls taking it const answer, and
+    // make no allocation, free nothing and run no task.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    contextDef.allocator = (mvfxAllocator){.alloc = Alloc, .free = Free};
+    contextDef.enqueueTask = Enqueue;
+    contextDef.finishTask = Finish;
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const float corners[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1};
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = corners;
+    meshDef.vertexCount = 4;
+    mvfxMeshId mesh = {0};
+    CHECK(mvfxCreateMesh(context, &meshDef, &mesh) == mvfx_success, "mesh");
+    static const float heights[4] = {0, 0.1f, 0.2f, 0.3f};
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 2;
+    gridDef.size[2] = 2;
+    gridDef.values = heights;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &gridDef, &grid) == mvfx_success, "grid");
+    const mvfxCollider ground = {.kind = mvfx_colliderHeightfield,
+                                 .halfExtents = {1, 1, 1},
+                                 .rotation = {0, 0, 0, 1},
+                                 .grid = grid};
+    int32_t calls = s_calls;
+    int64_t held = s_held;
+    int32_t tasks = s_tasks;
+    int64_t gridBytes = -1;
+    int64_t meshBytes = -1;
+    CHECK(mvfxContext_GetGpuHostGridBytes(context, &ground, 1, &gridBytes) == mvfx_success &&
+              gridBytes > 0 &&
+              mvfxMesh_GetGpuBytes(context, mesh, mvfx_meshVertices, &meshBytes) == mvfx_success &&
+              meshBytes > 0 && s_calls == calls && s_held == held && s_tasks == tasks,
+          "the part's const calls answer and run no host code");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     Gpu gpu;
@@ -293,6 +357,7 @@ int main(void)
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success && AwaitReady(&gpu, kernels), "kernels");
     TestCallsBackIn(&gpu, kernels);
     TestFailedMemory(kernels);
+    TestConstCalls();
     mvfxDestroyGpu(kernels);
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;
