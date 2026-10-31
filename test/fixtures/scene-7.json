@@ -1,11 +1,10 @@
 {
-  "format": 4,
+  "format": 5,
   "effect": {
     "emitters": [
       {
         "capacity": 256,
         "rate": 30.0,
-        "space": "mvfx_spaceLocal",
         "lifetime": {
           "range": {
             "min": 3.0,
@@ -13,19 +12,19 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeBox",
           "offset": [0.0, 0.8, 0.0],
           "halfExtents": [0.9, 0.05, 0.5],
           "thickness": 1.0,
-          "arc": 0.0
+          "arc": 0.0,
+          "kind": "mvfx_shapeBox"
         },
         "velocity": {
-          "mode": "mvfx_directionFixed",
           "direction": [0.0, -1.0, 0.0],
           "speed": {
             "min": 2.0,
             "max": 2.0
-          }
+          },
+          "mode": "mvfx_directionFixed"
         },
         "motion": {
           "gravity": [0.0, -9.81, 0.0]
@@ -37,13 +36,13 @@
           "buoyancy": 2.0,
           "drag": 1.0
         },
-        "events": 16,
-        "eventCapacity": 64
+        "eventCapacity": 64,
+        "space": "mvfx_spaceLocal",
+        "events": "mvfx_eventMaskWater"
       },
       {
         "capacity": 256,
         "rate": 12.0,
-        "space": "mvfx_spaceLocal",
         "lifetime": {
           "range": {
             "min": 3.0,
@@ -51,19 +50,19 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeBox",
           "offset": [0.0, 0.100000024, 0.0],
           "halfExtents": [0.9, 0.05, 0.5],
           "thickness": 1.0,
-          "arc": 0.0
+          "arc": 0.0,
+          "kind": "mvfx_shapeBox"
         },
         "velocity": {
-          "mode": "mvfx_directionFixed",
           "direction": [0.0, -1.0, 0.0],
           "speed": {
             "min": 2.0,
             "max": 2.0
-          }
+          },
+          "mode": "mvfx_directionFixed"
         },
         "motion": {
           "gravity": [0.0, -9.81, 0.0]
@@ -75,8 +74,9 @@
           "push": 0.005,
           "pour": true
         },
-        "events": 16,
-        "eventCapacity": 64
+        "eventCapacity": 64,
+        "space": "mvfx_spaceLocal",
+        "events": "mvfx_eventMaskWater"
       }
     ],
     "waters": [
@@ -89,22 +89,20 @@
       },
       {
         "size": [64, 16],
-        "space": "mvfx_gasWorld",
-        "closedWalls": 12,
         "waveSpeed": 5.0,
-        "damping": 0.1
+        "damping": 0.1,
+        "space": "mvfx_gasWorld",
+        "closedWalls": 12
       },
       {
         "size": [32, 16],
         "center": [0.0, -0.5, 0.0],
-        "closedWalls": 11,
-        "model": "mvfx_waterShallow",
         "friction": 0.5,
         "terrain": {
-          "space": 1,
           "center": [0.0, -0.5, 0.0],
           "halfExtents": [1.6, 1.0, 0.8],
-          "grid": "water slope"
+          "grid": "water slope",
+          "space": "mvfx_spaceLocal"
         },
         "enableTerrain": true,
         "sources": [
@@ -113,7 +111,9 @@
             "radius": 0.25,
             "rate": 0.3
           }
-        ]
+        ],
+        "closedWalls": 11,
+        "model": "mvfx_waterShallow"
       }
     ]
   }

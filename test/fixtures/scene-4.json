@@ -1,5 +1,5 @@
 {
-  "format": 4,
+  "format": 5,
   "effect": {
     "emitters": [
       {
@@ -20,8 +20,8 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeSphere",
-          "radius": 0.5
+          "radius": 0.5,
+          "kind": "mvfx_shapeSphere"
         },
         "velocity": {
           "speed": {
@@ -42,27 +42,26 @@
         },
         "colliders": [
           {
-            "space": 1,
             "center": [0.0, -1.0, 0.0],
-            "normal": [0.2, 1.0, 0.0]
+            "normal": [0.2, 1.0, 0.0],
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_colliderSphere",
-            "space": 1,
             "center": [1.0, -0.6, 0.0],
-            "radius": 0.6
+            "radius": 0.6,
+            "kind": "mvfx_colliderSphere",
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_colliderBox",
-            "space": 1,
             "center": [-0.8, -0.7, 0.0],
             "halfExtents": [0.4, 0.3, 0.4],
-            "rotation": [0.0, 0.38268343, 0.0, 0.9238795]
+            "rotation": [0.0, 0.38268343, 0.0, 0.9238795],
+            "kind": "mvfx_colliderBox",
+            "space": "mvfx_spaceLocal"
           }
         ],
         "rigid": {
           "enable": true,
-          "shape": "mvfx_rigidBox",
           "density": 1.0,
           "substeps": 4,
           "restitution": 0.3,
@@ -71,19 +70,20 @@
           "bodyContacts": 8,
           "hull": "rigid hull",
           "sleepSpeed": 0.0,
-          "sleepTime": 0.0
+          "sleepTime": 0.0,
+          "shape": "mvfx_rigidBox"
         },
         "size": {
-          "kind": "mvfx_sourceRange",
           "min": [0.2, 0.3, 0.2, 0.0],
-          "max": [0.5, 0.6, 0.4, 0.0]
+          "max": [0.5, 0.6, 0.4, 0.0],
+          "kind": "mvfx_sourceRange"
         },
-        "orientationMode": "mvfx_orientationRandom",
         "angularVelocity": {
-          "kind": "mvfx_sourceRange",
           "min": [-3.0, -3.0, -3.0, 0.0],
-          "max": [3.0, 3.0, 3.0, 0.0]
-        }
+          "max": [3.0, 3.0, 3.0, 0.0],
+          "kind": "mvfx_sourceRange"
+        },
+        "orientationMode": "mvfx_orientationRandom"
       },
       {
         "capacity": 24,
@@ -96,7 +96,6 @@
             "probability": 1.0
           }
         ],
-        "space": "mvfx_spaceLocal",
         "lifetime": {
           "range": {
             "min": 2.0,
@@ -104,8 +103,8 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeSphere",
-          "radius": 0.5
+          "radius": 0.5,
+          "kind": "mvfx_shapeSphere"
         },
         "velocity": {
           "speed": {
@@ -121,30 +120,29 @@
         },
         "colliders": [
           {
-            "kind": "mvfx_colliderSphere",
-            "space": 1,
             "inside": true,
-            "radius": 2.0
+            "radius": 2.0,
+            "kind": "mvfx_colliderSphere",
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_colliderBox",
-            "space": 1,
             "center": [0.3, -1.4, 0.0],
             "halfExtents": [0.5, 0.2, 0.3],
-            "rotation": [0.0, 0.0, 0.19509032, 0.98078525]
+            "rotation": [0.0, 0.0, 0.19509032, 0.98078525],
+            "kind": "mvfx_colliderBox",
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_colliderDistance",
-            "space": 1,
             "center": [-0.3, -1.7, -0.4],
             "halfExtents": [0.5, 0.5, 0.5],
             "rotation": [0.0, 0.0, 0.0, 1.0],
-            "grid": "rigid ball"
+            "grid": "rigid ball",
+            "kind": "mvfx_colliderDistance",
+            "space": "mvfx_spaceLocal"
           }
         ],
         "rigid": {
           "enable": true,
-          "shape": "mvfx_rigidCapsule",
           "density": 2.0,
           "substeps": 4,
           "restitution": 0.8,
@@ -153,19 +151,21 @@
           "bodyContacts": 8,
           "hull": "rigid hull",
           "sleepSpeed": 0.0,
-          "sleepTime": 0.0
+          "sleepTime": 0.0,
+          "shape": "mvfx_rigidCapsule"
         },
         "size": {
-          "kind": "mvfx_sourceRange",
           "min": [0.2, 0.6, 0.2, 0.0],
-          "max": [0.5, 0.9, 0.5, 0.0]
+          "max": [0.5, 0.9, 0.5, 0.0],
+          "kind": "mvfx_sourceRange"
         },
-        "orientationMode": "mvfx_orientationRandom",
         "angularVelocity": {
-          "kind": "mvfx_sourceRange",
           "min": [-3.0, -3.0, -3.0, 0.0],
-          "max": [3.0, 3.0, 3.0, 0.0]
-        }
+          "max": [3.0, 3.0, 3.0, 0.0],
+          "kind": "mvfx_sourceRange"
+        },
+        "space": "mvfx_spaceLocal",
+        "orientationMode": "mvfx_orientationRandom"
       },
       {
         "capacity": 24,
@@ -185,8 +185,8 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeSphere",
-          "radius": 0.5
+          "radius": 0.5,
+          "kind": "mvfx_shapeSphere"
         },
         "velocity": {
           "speed": {
@@ -199,8 +199,8 @@
         },
         "killRules": [
           {
-            "kind": "mvfx_killCollisions",
-            "collisions": 2
+            "collisions": 2,
+            "kind": "mvfx_killCollisions"
           }
         ],
         "collision": {
@@ -211,17 +211,17 @@
         },
         "colliders": [
           {
-            "space": 1,
             "center": [0.0, -1.0, 0.0],
-            "normal": [0.2, 1.0, 0.0]
+            "normal": [0.2, 1.0, 0.0],
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_colliderHeightfield",
-            "space": 1,
             "center": [0.0, -0.9, 0.0],
             "halfExtents": [1.0, 0.0, 1.0],
             "rotation": [0.0, 0.38268343, 0.0, 0.9238795],
-            "grid": "rigid heights"
+            "grid": "rigid heights",
+            "kind": "mvfx_colliderHeightfield",
+            "space": "mvfx_spaceLocal"
           }
         ],
         "rigid": {
@@ -237,16 +237,16 @@
           "sleepTime": 0.0
         },
         "size": {
-          "kind": "mvfx_sourceRange",
           "min": [0.2, 0.2, 0.2, 0.0],
-          "max": [0.5, 0.5, 0.5, 0.0]
+          "max": [0.5, 0.5, 0.5, 0.0],
+          "kind": "mvfx_sourceRange"
         },
-        "orientationMode": "mvfx_orientationRandom",
         "angularVelocity": {
-          "kind": "mvfx_sourceRange",
           "min": [-3.0, -3.0, -3.0, 0.0],
-          "max": [3.0, 3.0, 3.0, 0.0]
-        }
+          "max": [3.0, 3.0, 3.0, 0.0],
+          "kind": "mvfx_sourceRange"
+        },
+        "orientationMode": "mvfx_orientationRandom"
       },
       {
         "capacity": 24,
@@ -266,8 +266,8 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeSphere",
-          "radius": 0.5
+          "radius": 0.5,
+          "kind": "mvfx_shapeSphere"
         },
         "velocity": {
           "speed": {
@@ -283,30 +283,29 @@
         },
         "colliders": [
           {
-            "kind": "mvfx_colliderSphere",
-            "space": 1,
             "inside": true,
-            "radius": 2.0
+            "radius": 2.0,
+            "kind": "mvfx_colliderSphere",
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_colliderBox",
-            "space": 1,
             "center": [0.3, -1.4, 0.0],
             "halfExtents": [0.5, 0.2, 0.3],
-            "rotation": [0.0, 0.0, 0.19509032, 0.98078525]
+            "rotation": [0.0, 0.0, 0.19509032, 0.98078525],
+            "kind": "mvfx_colliderBox",
+            "space": "mvfx_spaceLocal"
           },
           {
-            "kind": "mvfx_colliderDistance",
-            "space": 1,
             "center": [-0.3, -1.7, -0.4],
             "halfExtents": [0.5, 0.5, 0.5],
             "rotation": [0.0, 0.0, 0.0, 1.0],
-            "grid": "rigid ball"
+            "grid": "rigid ball",
+            "kind": "mvfx_colliderDistance",
+            "space": "mvfx_spaceLocal"
           }
         ],
         "rigid": {
           "enable": true,
-          "shape": "mvfx_rigidHull",
           "density": 4.0,
           "substeps": 4,
           "restitution": 0.3,
@@ -315,19 +314,20 @@
           "bodyContacts": 8,
           "hull": "rigid hull",
           "sleepSpeed": 0.0,
-          "sleepTime": 0.0
+          "sleepTime": 0.0,
+          "shape": "mvfx_rigidHull"
         },
         "size": {
-          "kind": "mvfx_sourceRange",
           "min": [0.4, 0.3, 0.4, 0.0],
-          "max": [0.7, 0.5, 0.6, 0.0]
+          "max": [0.7, 0.5, 0.6, 0.0],
+          "kind": "mvfx_sourceRange"
         },
-        "orientationMode": "mvfx_orientationRandom",
         "angularVelocity": {
-          "kind": "mvfx_sourceRange",
           "min": [-3.0, -3.0, -3.0, 0.0],
-          "max": [3.0, 3.0, 3.0, 0.0]
-        }
+          "max": [3.0, 3.0, 3.0, 0.0],
+          "kind": "mvfx_sourceRange"
+        },
+        "orientationMode": "mvfx_orientationRandom"
       },
       {
         "capacity": 2,
@@ -362,16 +362,16 @@
         ],
         "rigid": {
           "enable": true,
-          "shape": "mvfx_rigidBox",
           "density": 1.0,
           "substeps": 4,
           "staticFriction": 0.6,
-          "dynamicFriction": 0.4
+          "dynamicFriction": 0.4,
+          "shape": "mvfx_rigidBox"
         },
         "size": {
-          "kind": "mvfx_sourceRange",
           "min": [0.5, 0.5, 0.5, 0.0],
-          "max": [0.5, 0.5, 0.5, 0.0]
+          "max": [0.5, 0.5, 0.5, 0.0],
+          "kind": "mvfx_sourceRange"
         }
       }
     ]

@@ -39,7 +39,7 @@ static mvfxResult CheckHalf(const mvfxFieldPath* at, int32_t axis, float x)
 
 mvfxResult mvfxCheckCollider(const mvfxFieldPath* at, const mvfxCollider* c)
 {
-    if (c->space > mvfx_spaceLocal)
+    if (!mvfxIsKind(c->space, mvfx_spaceLocal))
     {
         return mvfxRefuseField(at, MVFX_TAG_COLLIDER_SPACE, mvfx_errorInvalid);
     }

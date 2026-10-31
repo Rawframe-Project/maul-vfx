@@ -36,7 +36,7 @@ extern "C"
 
     // The kind of a spawn shape. Each lies in its own space: centered on its
     // origin, its axis along +Z.
-    typedef uint8_t mvfxShapeKind;
+    typedef int32_t mvfxShapeKind;
     enum
     {
         // Its origin.
@@ -59,7 +59,7 @@ extern "C"
     };
 
     // Where on a mesh particles are born.
-    typedef uint8_t mvfxMeshMode;
+    typedef int32_t mvfxMeshMode;
     enum
     {
         // At its vertices, each alike; the normal the vertex's.
@@ -74,7 +74,7 @@ extern "C"
 
     // Where along its arc (a circle's or a cone's angle, or a line's length)
     // a shape places each particle.
-    typedef uint8_t mvfxArcMode;
+    typedef int32_t mvfxArcMode;
     enum
     {
         // Anywhere, uniformly.
@@ -131,7 +131,7 @@ extern "C"
     } mvfxShape;
 
     // Which way a particle sets off.
-    typedef uint8_t mvfxDirectionMode;
+    typedef int32_t mvfxDirectionMode;
     enum
     {
         // Along the shape's normal where the particle is born: outward from a

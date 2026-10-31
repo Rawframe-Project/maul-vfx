@@ -108,7 +108,7 @@ bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32
 {
     const mvfxCompiledGas* compiled = nullptr;
     mvfxGasState* state = GasOf(context, instance, gas, &compiled);
-    if (state == nullptr || (field > mvfx_gasFuel && field != mvfx_gasDistance) ||
+    if (state == nullptr || field < 0 || (field > mvfx_gasFuel && field != mvfx_gasDistance) ||
         !mvfxIsGasFieldOf(compiled, field) || count != compiled->cells)
     {
         return false;

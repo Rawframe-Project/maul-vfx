@@ -84,7 +84,7 @@ mvfxResult mvfxCheckScalarSource(const mvfxFieldPath* at, const mvfxScalarSource
     {
         return mvfxRefuseField(at, MVFX_TAG_SCALAR_SOURCE_KIND, mvfxRequire(optional));
     }
-    if (source->kind > mvfx_sourceParameter)
+    if (!mvfxIsKind(source->kind, mvfx_sourceParameter))
     {
         return mvfxRefuseField(at, MVFX_TAG_SCALAR_SOURCE_KIND, mvfx_errorInvalid);
     }
@@ -124,7 +124,7 @@ mvfxResult mvfxCheckVectorSource(const mvfxFieldPath* at, const mvfxVectorSource
     {
         return mvfx_success;
     }
-    if (source->kind > mvfx_sourceGradientOverAge)
+    if (!mvfxIsKind(source->kind, mvfx_sourceGradientOverAge))
     {
         return mvfxRefuseField(at, MVFX_TAG_VECTOR_SOURCE_KIND, mvfx_errorInvalid);
     }

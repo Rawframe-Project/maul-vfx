@@ -28,7 +28,7 @@ extern "C"
 #define MVFX_MAX_COLOR 1e6f
 
     // How a curve runs from a key to the next.
-    typedef uint8_t mvfxInterpolation;
+    typedef int32_t mvfxInterpolation;
     enum
     {
         // The key's value until the next key.
@@ -40,7 +40,7 @@ extern "C"
     };
 
     // Where a curve's cubic segments take their tangents from.
-    typedef uint8_t mvfxTangents;
+    typedef int32_t mvfxTangents;
     enum
     {
         // The keys' own inTangent and outTangent.

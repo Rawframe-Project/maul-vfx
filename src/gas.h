@@ -11,6 +11,7 @@
 #include "collide.h"
 #include "force.h"
 #include "gas_lattice.h"
+#include "refusal.h"
 
 #include "maul-vfx/gas.h"
 #include "maul-vfx/plan.h"
@@ -171,7 +172,7 @@ typedef struct mvfxGasState
 static inline bool mvfxIsGasFieldOf(const mvfxCompiledGas* gas, mvfxGasField field)
 {
     return gas->def.kind == mvfx_gasSurface ? field == mvfx_gasDistance
-                                            : field <= mvfx_gasVelocityZ;
+                                            : mvfxIsKind(field, mvfx_gasVelocityZ);
 }
 
 // A surface gas's reach, R: the distance it holds where no particle is

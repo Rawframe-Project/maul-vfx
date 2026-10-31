@@ -461,7 +461,7 @@ static void TestLayout(void)
     {
         fnv = (fnv ^ bytes[i]) * 0x100000001B3ull;
     }
-    CHECK(fnv == 0xE29AFF58A1326978ull && size == 376, "the bytes as committed");
+    CHECK(fnv == 0x6425235D3473237Bull && size == 376, "the bytes as committed");
     CHECK(memcmp(bytes, "MVFX", 4) == 0, "the magic");
     CHECK(Get32(bytes, 4) == MVFX_FILE_VERSION && Get32(bytes, 8) == (uint32_t)size &&
               Get32(bytes, 12) == 3 && size % 8 == 0,

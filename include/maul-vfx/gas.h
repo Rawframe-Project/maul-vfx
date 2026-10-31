@@ -61,7 +61,7 @@ extern "C"
     // A gas box's walls, as bits: each closed (nothing passes it, the gas
     // slides along it) or, its bit clear, open (the gas flows in and out
     // freely, the pressure outside 0).
-    typedef uint8_t mvfxGasWalls;
+    typedef uint32_t mvfxGasWalls;
     enum
     {
         mvfx_gasWallMinX = 1,
@@ -73,7 +73,7 @@ extern "C"
     };
 
     // What a gas is.
-    typedef uint8_t mvfxGasKind;
+    typedef int32_t mvfxGasKind;
     enum
     {
         // Smoke and fire: sources, advected scalars, buoyancy, combustion.
@@ -102,7 +102,7 @@ extern "C"
     };
 
     // Where a gas's box is.
-    typedef uint8_t mvfxGasSpace;
+    typedef int32_t mvfxGasSpace;
     enum
     {
         // In the instance's frame: the box moves with the instance, and its
@@ -114,7 +114,7 @@ extern "C"
     };
 
     // A gas's fields.
-    typedef uint8_t mvfxGasField;
+    typedef int32_t mvfxGasField;
     enum
     {
         mvfx_gasDensity = 0,
@@ -131,7 +131,7 @@ extern "C"
     };
 
     // How a gas carries its fields.
-    typedef uint8_t mvfxGasAdvection;
+    typedef int32_t mvfxGasAdvection;
     enum
     {
         // Each point traced back over the substep and the field sampled
@@ -145,7 +145,7 @@ extern "C"
     };
 
     // A source's shape.
-    typedef uint8_t mvfxGasShape;
+    typedef int32_t mvfxGasShape;
     enum
     {
         mvfx_gasSphere = 0,

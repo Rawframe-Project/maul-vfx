@@ -197,7 +197,7 @@ static uint32_t RefusedChoice(const mvfxGasDef* def)
     {
         return MVFX_TAG_GAS_DEF_COURANT;
     }
-    if (def->kind > mvfx_gasSurface)
+    if (!mvfxIsKind(def->kind, mvfx_gasSurface))
     {
         return MVFX_TAG_GAS_DEF_KIND;
     }

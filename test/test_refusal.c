@@ -113,6 +113,7 @@ static const Case s_cases[] = {
     {"a neighbor source below -1", mvfx_errorInvalid, "emitters[0].neighbors.source", 0, -1, -1},
     {"a neighbor source in another space, in a cycle", mvfx_errorInvalid,
      "emitters[0].neighbors.source", 0, -1, -1},
+    {"a unit kind past the last", mvfx_errorInvalid, "emitters[0].unit.kind", 0, -1, -1},
 };
 
 // Makes case k's def from valid parts.
@@ -281,6 +282,10 @@ static void Break(Parts* p, int32_t k)
                                                .maxCount = 1,
                                                .capacity = 4};
         }
+        break;
+    case 29:
+        // Before its shape: a default unit's direction would refuse first.
+        e[0].unit.kind = mvfx_unitSheet + 1;
         break;
     default:
         p->source = (mvfxGasSource){.shape = mvfx_gasBox, .halfExtents = {1, 1, 1}};

@@ -24,7 +24,7 @@ static bool IsRotation(const float q[4])
 
 mvfxResult mvfxCheckKillRule(const mvfxFieldPath* at, const mvfxKillRule* rule)
 {
-    if (rule->space > mvfx_spaceLocal)
+    if (!mvfxIsKind(rule->space, mvfx_spaceLocal))
     {
         return mvfxRefuseField(at, MVFX_TAG_KILL_RULE_SPACE, mvfx_errorInvalid);
     }

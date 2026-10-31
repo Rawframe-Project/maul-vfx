@@ -13,11 +13,11 @@
 #define MVFX_TAG_CURVE_KEY_VALUE         2u
 #define MVFX_TAG_CURVE_KEY_IN_TANGENT    3u
 #define MVFX_TAG_CURVE_KEY_OUT_TANGENT   4u
-#define MVFX_TAG_CURVE_KEY_INTERPOLATION 5u
+#define MVFX_TAG_CURVE_KEY_INTERPOLATION 6u
 
 // mvfxCurve
 #define MVFX_TAG_CURVE_KEYS     1u
-#define MVFX_TAG_CURVE_TANGENTS 2u
+#define MVFX_TAG_CURVE_TANGENTS 3u
 
 // mvfxBurst
 #define MVFX_TAG_BURST_TIME        1u
@@ -32,13 +32,12 @@
 #define MVFX_TAG_RANGE_MAX 2u
 
 // mvfxScalarSource
-#define MVFX_TAG_SCALAR_SOURCE_KIND      1u
 #define MVFX_TAG_SCALAR_SOURCE_RANGE     2u
 #define MVFX_TAG_SCALAR_SOURCE_CURVE     3u
 #define MVFX_TAG_SCALAR_SOURCE_PARAMETER 4u
+#define MVFX_TAG_SCALAR_SOURCE_KIND      5u
 
 // mvfxShape
-#define MVFX_TAG_SHAPE_KIND         1u
 #define MVFX_TAG_SHAPE_OFFSET       2u
 #define MVFX_TAG_SHAPE_ROTATION     3u
 #define MVFX_TAG_SHAPE_RADIUS       4u
@@ -48,32 +47,33 @@
 #define MVFX_TAG_SHAPE_THICKNESS    8u
 #define MVFX_TAG_SHAPE_CONE_VOLUME  9u
 #define MVFX_TAG_SHAPE_ARC          10u
-#define MVFX_TAG_SHAPE_ARC_MODE     11u
 #define MVFX_TAG_SHAPE_ARC_SPEED    12u
 #define MVFX_TAG_SHAPE_MESH         13u
-#define MVFX_TAG_SHAPE_MESH_MODE    14u
+#define MVFX_TAG_SHAPE_KIND         15u
+#define MVFX_TAG_SHAPE_ARC_MODE     16u
+#define MVFX_TAG_SHAPE_MESH_MODE    17u
 
 // mvfxVelocity
-#define MVFX_TAG_VELOCITY_MODE       1u
 #define MVFX_TAG_VELOCITY_DIRECTION  2u
 #define MVFX_TAG_VELOCITY_CONE_ANGLE 3u
 #define MVFX_TAG_VELOCITY_RANDOMIZE  4u
 #define MVFX_TAG_VELOCITY_SPEED      5u
+#define MVFX_TAG_VELOCITY_MODE       6u
 
 // mvfxMotion
 #define MVFX_TAG_MOTION_GRAVITY       1u
-#define MVFX_TAG_MOTION_GRAVITY_SPACE 2u
 #define MVFX_TAG_MOTION_DRAG          3u
 #define MVFX_TAG_MOTION_DRAG_SCALE    4u
 #define MVFX_TAG_MOTION_ANGULAR_DRAG  5u
+#define MVFX_TAG_MOTION_GRAVITY_SPACE 6u
 
 // mvfxFalloff
-#define MVFX_TAG_FALLOFF_KIND     1u
 #define MVFX_TAG_FALLOFF_CENTER   2u
 #define MVFX_TAG_FALLOFF_AXIS     3u
 #define MVFX_TAG_FALLOFF_RADIUS   4u
 #define MVFX_TAG_FALLOFF_ANGLE    5u
 #define MVFX_TAG_FALLOFF_EXPONENT 6u
+#define MVFX_TAG_FALLOFF_KIND     7u
 
 // mvfxNoise
 #define MVFX_TAG_NOISE_FREQUENCY         1u
@@ -85,23 +85,23 @@
 #define MVFX_TAG_NOISE_SEED_PER_INSTANCE 7u
 
 // mvfxForce
-#define MVFX_TAG_FORCE_KIND         1u
-#define MVFX_TAG_FORCE_SPACE        2u
 #define MVFX_TAG_FORCE_VECTOR       3u
 #define MVFX_TAG_FORCE_POINT        4u
 #define MVFX_TAG_FORCE_SOFTENING    6u
 #define MVFX_TAG_FORCE_KILL_RADIUS  7u
 #define MVFX_TAG_FORCE_PULL         8u
 #define MVFX_TAG_FORCE_FALLOFF      11u
-#define MVFX_TAG_FORCE_FIELD_MODE   12u
 #define MVFX_TAG_FORCE_TIGHTNESS    13u
 #define MVFX_TAG_FORCE_NOISE        14u
 #define MVFX_TAG_FORCE_GRID         15u
 #define MVFX_TAG_FORCE_BOX_SIZE     16u
 #define MVFX_TAG_FORCE_BOX_ROTATION 17u
-#define MVFX_TAG_FORCE_BORDER       18u
 #define MVFX_TAG_FORCE_GAS          19u
 #define MVFX_TAG_FORCE_STRENGTH     20u
+#define MVFX_TAG_FORCE_KIND         21u
+#define MVFX_TAG_FORCE_SPACE        22u
+#define MVFX_TAG_FORCE_FIELD_MODE   23u
+#define MVFX_TAG_FORCE_BORDER       24u
 
 // mvfxGasSplat
 #define MVFX_TAG_GAS_SPLAT_ENABLE      1u
@@ -153,25 +153,25 @@
 
 // mvfxColorOverLife
 #define MVFX_TAG_COLOR_OVER_LIFE_ENABLE      1u
-#define MVFX_TAG_COLOR_OVER_LIFE_INPUT       2u
 #define MVFX_TAG_COLOR_OVER_LIFE_SPEED_RANGE 3u
 #define MVFX_TAG_COLOR_OVER_LIFE_GRADIENT    4u
 #define MVFX_TAG_COLOR_OVER_LIFE_SCALE_ALPHA 5u
 #define MVFX_TAG_COLOR_OVER_LIFE_ALPHA       6u
+#define MVFX_TAG_COLOR_OVER_LIFE_INPUT       7u
 
 // mvfxSizeOverLife
 #define MVFX_TAG_SIZE_OVER_LIFE_ENABLE      1u
-#define MVFX_TAG_SIZE_OVER_LIFE_INPUT       2u
 #define MVFX_TAG_SIZE_OVER_LIFE_SPEED_RANGE 3u
 #define MVFX_TAG_SIZE_OVER_LIFE_PER_AXIS    4u
 #define MVFX_TAG_SIZE_OVER_LIFE_SIZE        5u
+#define MVFX_TAG_SIZE_OVER_LIFE_INPUT       6u
 
 // mvfxFrameOverLife
-#define MVFX_TAG_FRAME_OVER_LIFE_ANIMATION   1u
 #define MVFX_TAG_FRAME_OVER_LIFE_FRAME_COUNT 2u
 #define MVFX_TAG_FRAME_OVER_LIFE_CYCLES      3u
 #define MVFX_TAG_FRAME_OVER_LIFE_FRAME_RATE  4u
 #define MVFX_TAG_FRAME_OVER_LIFE_LOOP        5u
+#define MVFX_TAG_FRAME_OVER_LIFE_ANIMATION   6u
 
 // mvfxRotationOverLife
 #define MVFX_TAG_ROTATION_OVER_LIFE_ENABLE 1u
@@ -184,8 +184,6 @@
 #define MVFX_TAG_OVER_LIFE_ROTATION 4u
 
 // mvfxKillRule
-#define MVFX_TAG_KILL_RULE_KIND         1u
-#define MVFX_TAG_KILL_RULE_SPACE        2u
 #define MVFX_TAG_KILL_RULE_CENTER       3u
 #define MVFX_TAG_KILL_RULE_RADIUS       4u
 #define MVFX_TAG_KILL_RULE_HALF_EXTENTS 5u
@@ -194,6 +192,8 @@
 #define MVFX_TAG_KILL_RULE_SPEED        8u
 #define MVFX_TAG_KILL_RULE_MINIMUM_AGE  9u
 #define MVFX_TAG_KILL_RULE_COLLISIONS   10u
+#define MVFX_TAG_KILL_RULE_KIND         11u
+#define MVFX_TAG_KILL_RULE_SPACE        12u
 
 // mvfxCollision
 #define MVFX_TAG_COLLISION_ENABLE               1u
@@ -213,8 +213,6 @@
 #define MVFX_TAG_COLLISION_KILL_OUTSIDE_VIEW    15u
 
 // mvfxCollider
-#define MVFX_TAG_COLLIDER_KIND         1u
-#define MVFX_TAG_COLLIDER_SPACE        2u
 #define MVFX_TAG_COLLIDER_INSIDE       3u
 #define MVFX_TAG_COLLIDER_CENTER       4u
 #define MVFX_TAG_COLLIDER_NORMAL       5u
@@ -222,21 +220,23 @@
 #define MVFX_TAG_COLLIDER_HALF_EXTENTS 7u
 #define MVFX_TAG_COLLIDER_ROTATION     8u
 #define MVFX_TAG_COLLIDER_GRID         9u
+#define MVFX_TAG_COLLIDER_KIND         10u
+#define MVFX_TAG_COLLIDER_SPACE        11u
 
 // mvfxHostModule
-#define MVFX_TAG_HOST_MODULE_STAGE    1u
 #define MVFX_TAG_HOST_MODULE_FUNCTION 2u
+#define MVFX_TAG_HOST_MODULE_STAGE    3u
 
 // mvfxEventSpawn
 #define MVFX_TAG_EVENT_SPAWN_ENABLE           1u
 #define MVFX_TAG_EVENT_SPAWN_SOURCE           2u
-#define MVFX_TAG_EVENT_SPAWN_KIND             3u
 #define MVFX_TAG_EVENT_SPAWN_MIN_COUNT        4u
 #define MVFX_TAG_EVENT_SPAWN_MAX_COUNT        5u
 #define MVFX_TAG_EVENT_SPAWN_INHERIT_VELOCITY 6u
 #define MVFX_TAG_EVENT_SPAWN_INHERIT_COLOR    7u
 #define MVFX_TAG_EVENT_SPAWN_INHERIT_SIZE     8u
 #define MVFX_TAG_EVENT_SPAWN_CAPACITY         9u
+#define MVFX_TAG_EVENT_SPAWN_KIND             10u
 
 // mvfxNeighborDef
 #define MVFX_TAG_NEIGHBOR_DEF_ENABLE        1u
@@ -246,19 +246,19 @@
 
 // mvfxSteerPoint
 #define MVFX_TAG_STEER_POINT_WEIGHT         1u
-#define MVFX_TAG_STEER_POINT_SPACE          2u
 #define MVFX_TAG_STEER_POINT_POINT          3u
 #define MVFX_TAG_STEER_POINT_FROM_PARAMETER 4u
 #define MVFX_TAG_STEER_POINT_PARAMETER      5u
 #define MVFX_TAG_STEER_POINT_RADIUS         6u
+#define MVFX_TAG_STEER_POINT_SPACE          7u
 
 // mvfxSteerPath
 #define MVFX_TAG_STEER_PATH_WEIGHT    1u
-#define MVFX_TAG_STEER_PATH_SPACE     2u
 #define MVFX_TAG_STEER_PATH_POINTS    3u
 #define MVFX_TAG_STEER_PATH_CLOSED    4u
 #define MVFX_TAG_STEER_PATH_RADIUS    5u
 #define MVFX_TAG_STEER_PATH_LOOKAHEAD 6u
+#define MVFX_TAG_STEER_PATH_SPACE     7u
 
 // mvfxSteeringDef
 #define MVFX_TAG_STEERING_DEF_ENABLE            1u
@@ -297,18 +297,18 @@
 #define MVFX_TAG_LIGHT_DEF_RADIUS_BY_SIZE 6u
 
 // mvfxRibbonDef
-#define MVFX_TAG_RIBBON_DEF_IDS            1u
 #define MVFX_TAG_RIBBON_DEF_PIECES         2u
 #define MVFX_TAG_RIBBON_DEF_BEND_ANGLE     3u
-#define MVFX_TAG_RIBBON_DEF_TEXTURE        4u
 #define MVFX_TAG_RIBBON_DEF_TILE_LENGTH    5u
 #define MVFX_TAG_RIBBON_DEF_SCROLL         6u
-#define MVFX_TAG_RIBBON_DEF_FACING         7u
 #define MVFX_TAG_RIBBON_DEF_NORMAL         8u
 #define MVFX_TAG_RIBBON_DEF_BREAK_DISTANCE 9u
 #define MVFX_TAG_RIBBON_DEF_PIN_HEAD       10u
 #define MVFX_TAG_RIBBON_DEF_WIDTH          11u
 #define MVFX_TAG_RIBBON_DEF_COLOR          12u
+#define MVFX_TAG_RIBBON_DEF_IDS            13u
+#define MVFX_TAG_RIBBON_DEF_TEXTURE        14u
+#define MVFX_TAG_RIBBON_DEF_FACING         15u
 
 // mvfxPlexusDef
 #define MVFX_TAG_PLEXUS_DEF_ENABLE           1u
@@ -319,7 +319,6 @@
 #define MVFX_TAG_PLEXUS_DEF_FADE             6u
 
 // mvfxUnitDef
-#define MVFX_TAG_UNIT_DEF_KIND                  1u
 #define MVFX_TAG_UNIT_DEF_POINTS                2u
 #define MVFX_TAG_UNIT_DEF_ROWS                  3u
 #define MVFX_TAG_UNIT_DEF_SPACING               4u
@@ -338,12 +337,12 @@
 #define MVFX_TAG_UNIT_DEF_SELF_FRICTION         17u
 #define MVFX_TAG_UNIT_DEF_SELF_CONTACTS         18u
 #define MVFX_TAG_UNIT_DEF_TEAR_STRAIN           19u
-#define MVFX_TAG_UNIT_DEF_ATTACH                20u
 #define MVFX_TAG_UNIT_DEF_ATTACH_FRAME_CAPACITY 21u
+#define MVFX_TAG_UNIT_DEF_KIND                  22u
+#define MVFX_TAG_UNIT_DEF_ATTACH                23u
 
 // mvfxRigidDef
 #define MVFX_TAG_RIGID_DEF_ENABLE           1u
-#define MVFX_TAG_RIGID_DEF_SHAPE            2u
 #define MVFX_TAG_RIGID_DEF_DENSITY          3u
 #define MVFX_TAG_RIGID_DEF_SUBSTEPS         4u
 #define MVFX_TAG_RIGID_DEF_RESTITUTION      5u
@@ -353,10 +352,10 @@
 #define MVFX_TAG_RIGID_DEF_HULL             9u
 #define MVFX_TAG_RIGID_DEF_SLEEP_SPEED      10u
 #define MVFX_TAG_RIGID_DEF_SLEEP_TIME       11u
+#define MVFX_TAG_RIGID_DEF_SHAPE            12u
 
 // mvfxLiquidDef
 #define MVFX_TAG_LIQUID_DEF_ENABLE           1u
-#define MVFX_TAG_LIQUID_DEF_SOLVER           2u
 #define MVFX_TAG_LIQUID_DEF_GAS              3u
 #define MVFX_TAG_LIQUID_DEF_PLANAR           4u
 #define MVFX_TAG_LIQUID_DEF_SPACING          5u
@@ -370,6 +369,7 @@
 #define MVFX_TAG_LIQUID_DEF_VISCOSITY        13u
 #define MVFX_TAG_LIQUID_DEF_VORTICITY        14u
 #define MVFX_TAG_LIQUID_DEF_MAX_NEIGHBORS    15u
+#define MVFX_TAG_LIQUID_DEF_SOLVER           16u
 
 // mvfxBeamPoint
 #define MVFX_TAG_BEAM_POINT_POINT          1u
@@ -388,22 +388,22 @@
 #define MVFX_TAG_BEAM_DEF_NOISE_SPEED     9u
 
 // mvfxSpriteDef
-#define MVFX_TAG_SPRITE_DEF_BILLBOARD 1u
 #define MVFX_TAG_SPRITE_DEF_STRETCH   2u
+#define MVFX_TAG_SPRITE_DEF_BILLBOARD 3u
 
 // mvfxVectorSource
-#define MVFX_TAG_VECTOR_SOURCE_KIND      1u
 #define MVFX_TAG_VECTOR_SOURCE_MIN       2u
 #define MVFX_TAG_VECTOR_SOURCE_MAX       3u
 #define MVFX_TAG_VECTOR_SOURCE_UNIFORM   4u
 #define MVFX_TAG_VECTOR_SOURCE_CURVE     5u
 #define MVFX_TAG_VECTOR_SOURCE_GRADIENT  6u
 #define MVFX_TAG_VECTOR_SOURCE_PARAMETER 7u
+#define MVFX_TAG_VECTOR_SOURCE_KIND      8u
 
 // mvfxFrameStart
-#define MVFX_TAG_FRAME_START_MODE  1u
 #define MVFX_TAG_FRAME_START_FIRST 2u
 #define MVFX_TAG_FRAME_START_LAST  3u
+#define MVFX_TAG_FRAME_START_MODE  4u
 
 // mvfxCustomAttribute
 #define MVFX_TAG_CUSTOM_ATTRIBUTE_COMPONENTS       1u
@@ -419,7 +419,6 @@
 #define MVFX_TAG_EMITTER_DEF_START_DELAY         5u
 #define MVFX_TAG_EMITTER_DEF_DURATION            6u
 #define MVFX_TAG_EMITTER_DEF_LOOPS               7u
-#define MVFX_TAG_EMITTER_DEF_SPACE               8u
 #define MVFX_TAG_EMITTER_DEF_RATE_PER_DISTANCE   9u
 #define MVFX_TAG_EMITTER_DEF_INHERIT_VELOCITY    10u
 #define MVFX_TAG_EMITTER_DEF_HOST_SPAWN_CAPACITY 11u
@@ -436,7 +435,6 @@
 #define MVFX_TAG_EMITTER_DEF_COLLISION           22u
 #define MVFX_TAG_EMITTER_DEF_COLLIDERS           23u
 #define MVFX_TAG_EMITTER_DEF_HOST_MODULES        24u
-#define MVFX_TAG_EMITTER_DEF_EVENTS              25u
 #define MVFX_TAG_EMITTER_DEF_EVENT_CAPACITY      26u
 #define MVFX_TAG_EMITTER_DEF_EVENT_SPAWN         27u
 #define MVFX_TAG_EMITTER_DEF_NEIGHBORS           28u
@@ -451,8 +449,6 @@
 #define MVFX_TAG_EMITTER_DEF_LIQUID              37u
 #define MVFX_TAG_EMITTER_DEF_BEAM                38u
 #define MVFX_TAG_EMITTER_DEF_SPRITE              39u
-#define MVFX_TAG_EMITTER_DEF_SORT_MODE           40u
-#define MVFX_TAG_EMITTER_DEF_SORT_MEASURE        41u
 #define MVFX_TAG_EMITTER_DEF_DRAW_PRIORITY       42u
 #define MVFX_TAG_EMITTER_DEF_FIXED_BOUNDS        43u
 #define MVFX_TAG_EMITTER_DEF_BOUNDS_MIN          44u
@@ -461,12 +457,16 @@
 #define MVFX_TAG_EMITTER_DEF_COLOR               47u
 #define MVFX_TAG_EMITTER_DEF_ANGLE               48u
 #define MVFX_TAG_EMITTER_DEF_SPIN                49u
-#define MVFX_TAG_EMITTER_DEF_ORIENTATION_MODE    50u
 #define MVFX_TAG_EMITTER_DEF_ORIENTATION         51u
 #define MVFX_TAG_EMITTER_DEF_ANGULAR_VELOCITY    52u
 #define MVFX_TAG_EMITTER_DEF_FRAME               53u
 #define MVFX_TAG_EMITTER_DEF_MESH_INDEX          54u
 #define MVFX_TAG_EMITTER_DEF_CUSTOM              55u
+#define MVFX_TAG_EMITTER_DEF_SPACE               56u
+#define MVFX_TAG_EMITTER_DEF_EVENTS              57u
+#define MVFX_TAG_EMITTER_DEF_SORT_MODE           58u
+#define MVFX_TAG_EMITTER_DEF_SORT_MEASURE        59u
+#define MVFX_TAG_EMITTER_DEF_ORIENTATION_MODE    60u
 
 // mvfxQualityLevel
 #define MVFX_TAG_QUALITY_LEVEL_CAPACITY_SCALE 1u
@@ -474,7 +474,6 @@
 #define MVFX_TAG_QUALITY_LEVEL_OMITTED        3u
 
 // mvfxGasSource
-#define MVFX_TAG_GAS_SOURCE_SHAPE         1u
 #define MVFX_TAG_GAS_SOURCE_CENTER        2u
 #define MVFX_TAG_GAS_SOURCE_RADIUS        3u
 #define MVFX_TAG_GAS_SOURCE_HALF_EXTENTS  4u
@@ -483,6 +482,7 @@
 #define MVFX_TAG_GAS_SOURCE_FUEL          7u
 #define MVFX_TAG_GAS_SOURCE_SETS_VELOCITY 8u
 #define MVFX_TAG_GAS_SOURCE_VELOCITY      9u
+#define MVFX_TAG_GAS_SOURCE_SHAPE         10u
 
 // mvfxGasSurface
 #define MVFX_TAG_GAS_SURFACE_EMITTER   1u
@@ -496,8 +496,6 @@
 #define MVFX_TAG_GAS_DEF_SIZE                 1u
 #define MVFX_TAG_GAS_DEF_CELL_SIZE            2u
 #define MVFX_TAG_GAS_DEF_CENTER               3u
-#define MVFX_TAG_GAS_DEF_SPACE                4u
-#define MVFX_TAG_GAS_DEF_KIND                 5u
 #define MVFX_TAG_GAS_DEF_FILL_TIME            6u
 #define MVFX_TAG_GAS_DEF_COURANT              7u
 #define MVFX_TAG_GAS_DEF_SUBSTEPS             8u
@@ -506,11 +504,8 @@
 #define MVFX_TAG_GAS_DEF_FUEL_DECAY           11u
 #define MVFX_TAG_GAS_DEF_VELOCITY_DECAY       12u
 #define MVFX_TAG_GAS_DEF_SOURCES              13u
-#define MVFX_TAG_GAS_DEF_CLOSED_WALLS         14u
 #define MVFX_TAG_GAS_DEF_PRESSURE_CYCLES      15u
-#define MVFX_TAG_GAS_DEF_ADVECTION            16u
 #define MVFX_TAG_GAS_DEF_GRAVITY              17u
-#define MVFX_TAG_GAS_DEF_GRAVITY_SPACE        18u
 #define MVFX_TAG_GAS_DEF_DENSITY_WEIGHT       19u
 #define MVFX_TAG_GAS_DEF_HEAT_LIFT            20u
 #define MVFX_TAG_GAS_DEF_VORTICITY            21u
@@ -523,23 +518,25 @@
 #define MVFX_TAG_GAS_DEF_HOST_OBSTACLES       28u
 #define MVFX_TAG_GAS_DEF_FORCES               29u
 #define MVFX_TAG_GAS_DEF_SURFACE              30u
+#define MVFX_TAG_GAS_DEF_SPACE                31u
+#define MVFX_TAG_GAS_DEF_KIND                 32u
+#define MVFX_TAG_GAS_DEF_CLOSED_WALLS         33u
+#define MVFX_TAG_GAS_DEF_ADVECTION            34u
+#define MVFX_TAG_GAS_DEF_GRAVITY_SPACE        35u
 
 // mvfxWaterSource
-#define MVFX_TAG_WATER_SOURCE_SHAPE        1u
 #define MVFX_TAG_WATER_SOURCE_CENTER       2u
 #define MVFX_TAG_WATER_SOURCE_RADIUS       3u
 #define MVFX_TAG_WATER_SOURCE_HALF_EXTENTS 4u
 #define MVFX_TAG_WATER_SOURCE_RATE         5u
+#define MVFX_TAG_WATER_SOURCE_SHAPE        6u
 
 // mvfxWaterDef
 #define MVFX_TAG_WATER_DEF_SIZE           1u
 #define MVFX_TAG_WATER_DEF_CELL_SIZE      2u
 #define MVFX_TAG_WATER_DEF_CENTER         3u
-#define MVFX_TAG_WATER_DEF_SPACE          4u
-#define MVFX_TAG_WATER_DEF_CLOSED_WALLS   5u
 #define MVFX_TAG_WATER_DEF_WAVE_SPEED     6u
 #define MVFX_TAG_WATER_DEF_DAMPING        7u
-#define MVFX_TAG_WATER_DEF_MODEL          8u
 #define MVFX_TAG_WATER_DEF_GRAVITY        9u
 #define MVFX_TAG_WATER_DEF_FRICTION       10u
 #define MVFX_TAG_WATER_DEF_TERRAIN        11u
@@ -547,6 +544,9 @@
 #define MVFX_TAG_WATER_DEF_HOST_TERRAIN   13u
 #define MVFX_TAG_WATER_DEF_SOURCES        14u
 #define MVFX_TAG_WATER_DEF_FILL_LEVEL     15u
+#define MVFX_TAG_WATER_DEF_SPACE          16u
+#define MVFX_TAG_WATER_DEF_CLOSED_WALLS   17u
+#define MVFX_TAG_WATER_DEF_MODEL          18u
 
 // mvfxEffectDef
 #define MVFX_TAG_EFFECT_DEF_EMITTERS       1u

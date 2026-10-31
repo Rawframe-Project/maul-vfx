@@ -119,7 +119,7 @@ static double BurstRate(const mvfxEmitterDef* def)
 // Whether a motion's gravity, space and drags are in range.
 static mvfxResult CheckMotion(const mvfxFieldPath* at, const mvfxMotion* motion)
 {
-    if (motion->gravitySpace > mvfx_spaceLocal)
+    if (!mvfxIsKind(motion->gravitySpace, mvfx_spaceLocal))
     {
         return mvfxRefuseField(at, MVFX_TAG_MOTION_GRAVITY_SPACE, mvfx_errorInvalid);
     }
@@ -151,7 +151,7 @@ static uint32_t RefusedEmitterField(const mvfxEmitterDef* def)
     {
         return MVFX_TAG_EMITTER_DEF_BURSTS;
     }
-    if (def->space > mvfx_spaceLocal)
+    if (!mvfxIsKind(def->space, mvfx_spaceLocal))
     {
         return MVFX_TAG_EMITTER_DEF_SPACE;
     }
@@ -251,11 +251,11 @@ static uint32_t RefusedRibbonField(const mvfxRibbonDef* ribbon)
     {
         return MVFX_TAG_RIBBON_DEF_BEND_ANGLE;
     }
-    if (ribbon->texture > mvfx_ribbonTileByDistance)
+    if (!mvfxIsKind(ribbon->texture, mvfx_ribbonTileByDistance))
     {
         return MVFX_TAG_RIBBON_DEF_TEXTURE;
     }
-    if (ribbon->facing > mvfx_ribbonFaceNormal)
+    if (!mvfxIsKind(ribbon->facing, mvfx_ribbonFaceNormal))
     {
         return MVFX_TAG_RIBBON_DEF_FACING;
     }
@@ -306,26 +306,26 @@ static uint32_t RefusedOutput(const mvfxEmitterDef* def, uint32_t* holder)
         *holder = MVFX_TAG_EMITTER_DEF_LIGHT;
         return MVFX_TAG_LIGHT_DEF_EVERY;
     }
-    if (def->ribbon.ids > mvfx_ribbonPerSource)
+    if (!mvfxIsKind(def->ribbon.ids, mvfx_ribbonPerSource))
     {
         *holder = MVFX_TAG_EMITTER_DEF_RIBBON;
         return MVFX_TAG_RIBBON_DEF_IDS;
     }
-    if (def->sprite.billboard > mvfx_billboardDirectional)
+    if (!mvfxIsKind(def->sprite.billboard, mvfx_billboardDirectional))
     {
         *holder = MVFX_TAG_EMITTER_DEF_SPRITE;
         return MVFX_TAG_SPRITE_DEF_BILLBOARD;
     }
-    if (def->sortMode > mvfx_sortFrontToBack)
+    if (!mvfxIsKind(def->sortMode, mvfx_sortFrontToBack))
     {
         return MVFX_TAG_EMITTER_DEF_SORT_MODE;
     }
-    if (def->sortMeasure > mvfx_sortByDepth)
+    if (!mvfxIsKind(def->sortMeasure, mvfx_sortByDepth))
     {
         return MVFX_TAG_EMITTER_DEF_SORT_MEASURE;
     }
     *holder = MVFX_TAG_EMITTER_DEF_MESH_INDEX;
-    if (mesh->mode > mvfx_frameRandom)
+    if (!mvfxIsKind(mesh->mode, mvfx_frameRandom))
     {
         return MVFX_TAG_FRAME_START_MODE;
     }
@@ -470,7 +470,7 @@ static mvfxResult CheckHostModules(const mvfxFieldPath* at, const mvfxHostModule
         {
             return mvfxRefuseField(&module, MVFX_TAG_HOST_MODULE_FUNCTION, mvfx_errorInvalid);
         }
-        if (modules[m].stage > mvfx_stageAfterMotion)
+        if (!mvfxIsKind(modules[m].stage, mvfx_stageAfterMotion))
         {
             return mvfxRefuseField(&module, MVFX_TAG_HOST_MODULE_STAGE, mvfx_errorInvalid);
         }
@@ -556,7 +556,7 @@ static mvfxResult CheckSources(const mvfxFieldPath* at, const mvfxEmitterDef* de
 static uint32_t RefusedValue(const mvfxEmitterDef* def, bool* inFrame)
 {
     *inFrame = false;
-    if (def->orientationMode > mvfx_orientationRandom)
+    if (!mvfxIsKind(def->orientationMode, mvfx_orientationRandom))
     {
         return MVFX_TAG_EMITTER_DEF_ORIENTATION_MODE;
     }
@@ -564,12 +564,12 @@ static uint32_t RefusedValue(const mvfxEmitterDef* def, bool* inFrame)
     {
         return MVFX_TAG_EMITTER_DEF_ORIENTATION;
     }
-    if (def->frame.mode > mvfx_frameRandom ||
+    if (!mvfxIsKind(def->frame.mode, mvfx_frameRandom) ||
         (def->frame.first < 0 || def->frame.first > def->frame.last))
     {
         *inFrame = true;
-        return def->frame.mode > mvfx_frameRandom ? MVFX_TAG_FRAME_START_MODE
-                                                  : MVFX_TAG_FRAME_START_FIRST;
+        return !mvfxIsKind(def->frame.mode, mvfx_frameRandom) ? MVFX_TAG_FRAME_START_MODE
+                                                              : MVFX_TAG_FRAME_START_FIRST;
     }
     if (def->forceCount < 0 || (def->forceCount > 0 && def->forces == nullptr))
     {
@@ -758,7 +758,7 @@ static uint32_t RefusedSpawnField(const mvfxEffectDef* def, int32_t i)
     {
         return MVFX_TAG_EVENT_SPAWN_SOURCE;
     }
-    if (spawn->kind > mvfx_eventWater)
+    if (!mvfxIsKind(spawn->kind, mvfx_eventWater))
     {
         return MVFX_TAG_EVENT_SPAWN_KIND;
     }

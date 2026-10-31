@@ -1,5 +1,5 @@
 {
-  "format": 4,
+  "format": 5,
   "effect": {
     "emitters": [
       {
@@ -14,8 +14,8 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeMesh",
           "mesh": "scene mesh",
+          "kind": "mvfx_shapeMesh",
           "meshMode": "mvfx_meshSurface"
         },
         "velocity": {
@@ -29,14 +29,11 @@
         },
         "forces": [
           {
-            "kind": "mvfx_forceTurbulence",
-            "space": "mvfx_spaceLocal",
             "falloff": {
-              "kind": "mvfx_falloffSphere",
               "radius": 6.0,
-              "exponent": 1.0
+              "exponent": 1.0,
+              "kind": "mvfx_falloffSphere"
             },
-            "fieldMode": "mvfx_fieldVelocity",
             "tightness": 3.0,
             "noise": {
               "frequency": 1.25,
@@ -47,12 +44,15 @@
               "seedPerInstance": true
             },
             "strength": {
-              "kind": "mvfx_sourceRange",
               "range": {
                 "min": 1.5,
                 "max": 1.5
-              }
-            }
+              },
+              "kind": "mvfx_sourceRange"
+            },
+            "kind": "mvfx_forceTurbulence",
+            "space": "mvfx_spaceLocal",
+            "fieldMode": "mvfx_fieldVelocity"
           }
         ],
         "overLife": {
@@ -77,13 +77,12 @@
           }
         },
         "size": {
-          "kind": "mvfx_sourceRange",
           "min": [0.1, 0.1, 0.1, 0.0],
           "max": [0.4, 0.4, 0.4, 0.0],
-          "uniform": true
+          "uniform": true,
+          "kind": "mvfx_sourceRange"
         },
         "color": {
-          "kind": "mvfx_sourceGradient",
           "min": [1.0, 1.0, 1.0, 1.0],
           "max": [1.0, 1.0, 1.0, 1.0],
           "gradient": {
@@ -108,20 +107,20 @@
                 "alpha": 0.3
               }
             ]
-          }
+          },
+          "kind": "mvfx_sourceGradient"
         },
         "spin": {
-          "kind": "mvfx_sourceRange",
           "range": {
             "min": -3.0,
             "max": 3.0
-          }
+          },
+          "kind": "mvfx_sourceRange"
         }
       },
       {
         "capacity": 24,
         "rate": 40.0,
-        "space": "mvfx_spaceLocal",
         "lifetime": {
           "range": {
             "min": 0.2,
@@ -129,8 +128,8 @@
           }
         },
         "shape": {
-          "kind": "mvfx_shapeMesh",
           "mesh": "scene mesh",
+          "kind": "mvfx_shapeMesh",
           "meshMode": "mvfx_meshEdges"
         },
         "velocity": {
@@ -144,69 +143,70 @@
         },
         "forces": [
           {
-            "kind": "mvfx_forceWind",
             "vector": [2.0, 0.0, -1.0],
             "strength": {
-              "kind": "mvfx_sourceParameter",
               "range": {
                 "min": 0.5,
                 "max": 0.5
               },
-              "parameter": 1
-            }
+              "parameter": 1,
+              "kind": "mvfx_sourceParameter"
+            },
+            "kind": "mvfx_forceWind"
           },
           {
             "vector": [0.0, 0.0, 1.0],
             "falloff": {
-              "kind": "mvfx_falloffCone",
               "axis": [0.0, 0.0, 1.0],
               "radius": 8.0,
               "angle": 0.8,
-              "exponent": 2.0
+              "exponent": 2.0,
+              "kind": "mvfx_falloffCone"
             },
             "strength": {
-              "kind": "mvfx_sourceRange",
               "range": {
                 "min": 2.0,
                 "max": 2.0
-              }
+              },
+              "kind": "mvfx_sourceRange"
             }
           }
         ],
         "killRules": [
           {
-            "kind": "mvfx_killSlower",
             "speed": 0.4,
-            "minimumAge": 0.2
+            "minimumAge": 0.2,
+            "kind": "mvfx_killSlower"
           }
         ],
-        "orientationMode": "mvfx_orientationEuler",
         "orientation": {
-          "kind": "mvfx_sourceRange",
-          "max": [3.1, 1.0, 6.2, 0.0]
+          "max": [3.1, 1.0, 6.2, 0.0],
+          "kind": "mvfx_sourceRange"
         },
         "angularVelocity": {
-          "kind": "mvfx_sourceRange",
           "min": [-1.0, -1.0, -1.0, 0.0],
-          "max": [1.0, 1.0, 1.0, 0.0]
+          "max": [1.0, 1.0, 1.0, 0.0],
+          "kind": "mvfx_sourceRange"
         },
         "frame": {
-          "mode": "mvfx_frameRandom",
-          "last": 15
-        }
+          "last": 15,
+          "mode": "mvfx_frameRandom"
+        },
+        "space": "mvfx_spaceLocal",
+        "orientationMode": "mvfx_orientationEuler"
       },
       {
         "capacity": 24,
         "rate": 50.0,
         "lifetime": {
-          "kind": "mvfx_sourceParameter",
           "range": {
             "min": 0.5
-          }
+          },
+          "kind": "mvfx_sourceParameter"
         },
         "shape": {
-          "kind": "mvfx_shapeMesh",
           "mesh": "scene mesh",
+          "kind": "mvfx_shapeMesh",
           "meshMode": "mvfx_meshVolume"
         },
         "velocity": {
@@ -219,19 +219,19 @@
           {
             "components": 3,
             "initial": {
-              "kind": "mvfx_sourceRange",
               "min": [-1.0, 0.0, 2.0, 0.0],
-              "max": [1.0, 5.0, 2.0, 0.0]
+              "max": [1.0, 5.0, 2.0, 0.0],
+              "kind": "mvfx_sourceRange"
             }
           },
           {
             "components": 4,
             "initial": {
-              "kind": "mvfx_sourceParameter",
               "min": [1.0, 1.0, 1.0, 1.0],
               "max": [2.0, 2.0, 2.0, 2.0],
               "uniform": true,
-              "parameter": 1
+              "parameter": 1,
+              "kind": "mvfx_sourceParameter"
             }
           }
         ]
