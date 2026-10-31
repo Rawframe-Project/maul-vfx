@@ -672,8 +672,8 @@ static bool Half(int64_t count)
 
 static void TestEvenDraws(void)
 {
-    // A box's surface, still: as many particles on its faces' negative
-    // sides as on their positive ones.
+    // A box's surface, still: on each axis's faces, as many particles on the
+    // negative side as on the positive one.
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.shape.kind = mvfx_shapeBox;
     emitter.shape.halfExtents[0] = 1.0f;
@@ -682,16 +682,24 @@ static void TestEvenDraws(void)
     emitter.shape.thickness = 0.0f;
     emitter.velocity.speed = (mvfxRange){0.0f, 0.0f};
     Draw(&emitter);
-    int64_t negative = 0;
+    int64_t on[3] = {0};
+    int64_t negative[3] = {0};
     for (int32_t i = 0; i < DRAWS; ++i)
     {
         for (int32_t k = 0; k < 3; ++k)
         {
             float p = s_drawn[i].position[k];
-            negative += p == -emitter.shape.halfExtents[k] ? 1 : 0;
+            on[k] += fabsf(p) == emitter.shape.halfExtents[k] ? 1 : 0;
+            negative[k] += p == -emitter.shape.halfExtents[k] ? 1 : 0;
         }
     }
-    CHECK(Half(negative), "a box's sides alike");
+    bool alike = true;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        alike = alike && on[k] > 0 &&
+                fabs((double)negative[k] - 0.5 * (double)on[k]) <= 5.0 * sqrt(0.25 * (double)on[k]);
+    }
+    CHECK(alike, "a box's sides alike on every axis");
 
     // Speeds from 2 to 3: as many in the odd 256ths of the range as in the
     // even ones, and the odd 128ths.
