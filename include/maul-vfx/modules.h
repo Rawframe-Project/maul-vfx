@@ -316,7 +316,7 @@ extern "C"
         // The most births from events a step, from 1 to
         // MVFX_MAX_EMITTER_CAPACITY (with units, a count of units, at most
         // the units the emitter's capacity holds); past it the latest by
-        // tick are refused.
+        // tick are dropped.
         int32_t capacity;
     } mvfxEventSpawn;
 
