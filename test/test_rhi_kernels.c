@@ -1439,7 +1439,9 @@ int main(void)
     (void)setvbuf(stdout, NULL, _IONBF, 0);
     TestRefusals();
 #ifdef MVFX_RHI_D3D12_DEBUG
-    mrhiTestWatchD3d12();
+    // No queue waits on a fence the CPU signals, so the layer keeps its
+    // synchronized queue validation.
+    mrhiTestWatchD3d12(true);
 #endif
     Gpu gpu;
     int opened = Open(&gpu);
