@@ -361,7 +361,7 @@ extern "C"
         // when spawnFirst is past spawnLast).
         int64_t spawnFirst;
         int64_t spawnLast;
-        // The serials its births took to the plan's end, refused or not:
+        // The serials its births took to the plan's end, dropped or not:
         // the next birth's (for an emitter that spawns from events, its own
         // and the host's births only).
         uint64_t owed;

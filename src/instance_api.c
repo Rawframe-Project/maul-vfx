@@ -365,7 +365,7 @@ static void StepPlan(const mvfxInstance* live, int32_t emitter, int32_t s, mvfxE
     mvfxPlanStepSpan(live, s, &start, &end);
     int32_t first = split ? state->planStepFirst[s] : 0;
     int32_t past = split && s < last ? state->planStepFirst[s + 1] : state->planCount;
-    uint64_t refusedBefore = split && s > 0 ? state->planStepRefused[s - 1] : 0;
+    uint64_t droppedBefore = split && s > 0 ? state->planStepDropped[s - 1] : 0;
     const mvfxTransform* from = s == 0 ? &live->planFrom : &live->to;
     const mvfxTransform* to = &live->to;
     *planOut = (mvfxEmitterPlan){
@@ -378,7 +378,7 @@ static void StepPlan(const mvfxInstance* live, int32_t emitter, int32_t s, mvfxE
         .ticks = end - start,
         .births = state->plan + first,
         .birthCount = past - first,
-        .birthsDropped = (split ? state->planStepRefused[s] : state->planRefused) - refusedBefore,
+        .birthsDropped = (split ? state->planStepDropped[s] : state->planDropped) - droppedBefore,
         // The host's particles are born at the first step's start.
         .hostBirths = state->planHosts,
         .hostBirthCount = s == 0 ? state->planHostCount : 0,

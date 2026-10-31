@@ -503,7 +503,7 @@ extern "C"
     // point j its root's plus j spacings along direction, of a sheet's
     // point in row r and place c across its root's plus c spacings along
     // direction and r along downDirection; they die together, a kill of
-    // one kills the unit. Counts (owed, refused,
+    // one kills the unit. Counts (owed, dropped,
     // capacities of host spawns and event spawns) are in units, the
     // emitter's capacity in points, as their comments say.
     typedef struct mvfxUnitDef
@@ -1002,7 +1002,7 @@ extern "C"
     {
         uint32_t cookie;
         // The particles it holds alive at once, from 1 to
-        // MVFX_MAX_EMITTER_CAPACITY; a spawn past them is refused and
+        // MVFX_MAX_EMITTER_CAPACITY; a birth past them is dropped and
         // counted. With units it counts their points, a multiple of a
         // unit's (mvfxUnitDef); with a beam, at least its segments plus 1
         // (mvfxBeamDef).
@@ -1032,7 +1032,7 @@ extern "C"
         mvfxSimulationSpace space;
         // The particles it spawns a unit of distance the instance travels,
         // from 0 to MVFX_MAX_DISTANCE_RATE, along the way while it spawns at
-        // all; a step owing more than its capacity (a long jump) refuses the
+        // all; a step owing more than its capacity (a long jump) drops the
         // rest.
         float ratePerDistance;
         // The share of the instance's velocity its particles set off with,

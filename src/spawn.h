@@ -50,8 +50,8 @@ void mvfxSaveBirths(mvfxInstance* instance, const mvfxBirths* births);
 
 // Plans the step's distance births from the step's travel alone and the
 // carry below 1, so no count grows with the distance travelled: those
-// past the emitter's capacity (a jump) are refused at once, counted owed
-// and refused (saturating), and at most the capacity are left to be born.
+// past the emitter's capacity (a jump) are dropped at once, counted owed
+// and dropped (saturating), and at most the capacity are left to be born.
 void mvfxPlanDistance(mvfxInstance* instance, int32_t emitter);
 
 // Ends the step's distance births: the carry moves on.

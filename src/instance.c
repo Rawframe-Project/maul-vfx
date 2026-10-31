@@ -703,7 +703,7 @@ static void ResetEmitter(mvfxInstance* instance, int32_t e)
     state->distanceTake = 0;
     state->distanceNext = 0;
     state->planCount = 0;
-    state->planRefused = 0;
+    state->planDropped = 0;
     state->lastDeath = 0;
     for (int32_t k = 0; k < 3; ++k)
     {

@@ -20,7 +20,7 @@ typedef struct mvfxDeathHeap
 // Orders the heap's count ticks into a heap.
 void mvfxBuildDeathHeap(mvfxDeathHeap* heap);
 
-// Adds a tick; the caller refuses a birth that finds the heap full.
+// Adds a tick; the caller drops a birth that finds the heap full.
 void mvfxPushDeath(mvfxDeathHeap* heap, int64_t tick);
 
 // Removes every tick at or before tick and returns how many it removed.

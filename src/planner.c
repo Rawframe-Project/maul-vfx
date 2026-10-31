@@ -3,9 +3,9 @@
 //
 // A planned instance's steps. The births owed are counted and numbered as
 // the CPU path's full step counts them (BirthsInTickOrder): every birth
-// takes its serial, refused or not; each kept one's death tick is the one
+// takes its serial, dropped or not; each kept one's death tick is the one
 // the CPU path's heap would hold. Room is left to the simulation, which
-// alone knows what it holds: the plan refuses only what no simulation
+// alone knows what it holds: the plan drops only what no simulation
 // could take (past the capacity at one tick) and what it has no room for.
 // An emitter that spawns from events is numbered by the simulation, which
 // alone builds the births events give: the plan counts its own and the
@@ -33,7 +33,7 @@ void mvfxBeginPlans(mvfxInstance* instance)
     {
         mvfxEmitterState* state = &instance->emitters[e];
         state->planCount = 0;
-        state->planRefused = 0;
+        state->planDropped = 0;
         state->planHostCount = 0;
         for (int32_t k = 0; k < 3; ++k)
         {
@@ -74,7 +74,7 @@ void mvfxEndPlanStep(mvfxInstance* instance)
     {
         mvfxEmitterState* state = &instance->emitters[e];
         state->planStepOwed[s] = state->owed;
-        state->planStepRefused[s] = state->planRefused;
+        state->planStepDropped[s] = state->planDropped;
     }
 }
 
@@ -96,14 +96,14 @@ static int32_t UnitCapacity(const mvfxInstance* instance, int32_t emitter)
 // plan, the host's particle it is (all ones for one of its own); its
 // death tick and inverse life 0 when the simulation numbers it. Past the
 // plan's room (twice the births it holds, which a plan of many steps can
-// reach with a beam's strikes) the birth is refused, still owed.
+// reach with a beam's strikes) the birth is dropped, still owed.
 static void WriteLived(mvfxInstance* instance, int32_t emitter, uint64_t serial, int64_t tick,
                        int64_t batchIndex, int64_t batchCount, uint32_t host, float inverseLife)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
     if (state->planCount >= 2 * UnitCapacity(instance, emitter))
     {
-        state->planRefused = mvfxSaturatingAdd(state->planRefused, 1u);
+        state->planDropped = mvfxSaturatingAdd(state->planDropped, 1u);
         state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, 1u);
         return;
     }
@@ -156,7 +156,7 @@ static uint8_t GivenOf(const mvfxInstance* instance, int32_t emitter, const mvfx
 // other births, as the CPU path's: each takes a serial. They are the
 // plan's first births (the host queues between the context's steps); past
 // the capacity at the instance's quality level no simulation could take
-// them at one tick, so they are refused. The room a live particle leaves
+// them at one tick, so they are dropped. The room a live particle leaves
 // is the simulation's to judge, as for any birth.
 static void PlanHostBirths(mvfxInstance* instance, int32_t emitter)
 {
@@ -195,10 +195,10 @@ static void PlanHostBirths(mvfxInstance* instance, int32_t emitter)
         Write(instance, emitter, serial, start, h, state->hostCount,
               (uint32_t)state->planHostCount++);
     }
-    uint64_t refused = (uint64_t)(state->hostCount - taken);
+    uint64_t dropped = (uint64_t)(state->hostCount - taken);
     state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)state->hostCount);
-    state->planRefused = mvfxSaturatingAdd(state->planRefused, refused);
-    state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, refused);
+    state->planDropped = mvfxSaturatingAdd(state->planDropped, dropped);
+    state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, dropped);
     state->hostCount = 0;
 }
 
@@ -273,7 +273,7 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
     if (state->capacity == 0)
     {
         // Left out at the instance's quality level: the host's particles
-        // are refused.
+        // are dropped.
         state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, (uint64_t)state->hostCount);
         state->hostCount = 0;
         return;
@@ -299,7 +299,7 @@ void mvfxPlanEmitter(mvfxInstance* instance, int32_t emitter)
             Write(instance, emitter, state->owed + (uint64_t)i, tick, i, count, UINT32_MAX);
         }
         state->owed = mvfxSaturatingAdd(state->owed, (uint64_t)count);
-        state->planRefused = mvfxSaturatingAdd(state->planRefused, (uint64_t)(count - taken));
+        state->planDropped = mvfxSaturatingAdd(state->planDropped, (uint64_t)(count - taken));
         state->birthsDropped = mvfxSaturatingAdd(state->birthsDropped, (uint64_t)(count - taken));
     }
     mvfxSaveBirths(instance, &births);

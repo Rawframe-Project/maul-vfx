@@ -18,7 +18,7 @@
 // the plan's end (binary64 each, two words), its rotation (binary32);
 // then the GPU's again: the events written and dropped, four words of
 // its own, and for an emitter that spawns from events the serials its
-// event births took (two words), those refused in the step and the births
+// event births took (two words), those dropped in the step and the births
 // past its room (MVFX_GPU_EVENT_SERIALS), and for an emitter drawn as
 // ribbons the GPU's breaks (MVFX_GPU_RIBBON_BREAKS); then for an emitter
 // whose ribbons pin a head the step's transfer pass's again: whether the

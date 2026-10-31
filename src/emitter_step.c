@@ -340,7 +340,7 @@ static void RunModulesBeforeMotion(mvfxInstance* instance, int32_t emitter)
     }
 }
 
-// The births of a step whose emitter cannot fill: none is refused, so the
+// The births of a step whose emitter cannot fill: none is dropped, so the
 // ones that live past the step are appended in order.
 static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
 {
@@ -383,7 +383,7 @@ static void BirthsWithRoom(mvfxInstance* instance, int32_t emitter)
 }
 
 // Replays the event births of the queue from next up to a tick in a full
-// emitter: each tick's deaths first, refused when it is full.
+// emitter: each tick's deaths first, dropped when it is full.
 static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDeathHeap* heap,
                                 int64_t limit, int32_t* next, int32_t* accepted)
 {
@@ -411,7 +411,7 @@ static void AcceptEventBirthsBy(mvfxInstance* instance, int32_t emitter, mvfxDea
 
 // The births of a step whose emitter may fill, replayed in tick order as
 // if it were stepped one tick at a time (each tick's deaths before its
-// births): births that find the emitter full are refused, the last of a
+// births): births that find the emitter full are dropped, the last of a
 // burst's first. The particles alive at the step's start are those before
 // it, and stay until their death ticks.
 static void BirthsInTickOrder(mvfxInstance* instance, int32_t emitter)
