@@ -10,8 +10,8 @@
 // in order; a fan of nearly coplanar triangles merged by one plane, its
 // faces sound and its volume exact; a hull of near-degenerate points
 // hashed the same on every platform; hulls of 200 and 500 points counted
-// past the most; points spanning no volume, and a hull of more than the
-// most vertices, refused.
+// past the most; points spanning no volume or less than the build's
+// tolerance, and a hull of more than the most vertices, refused.
 
 #include "test_harness.h"
 
@@ -348,11 +348,14 @@ static void TestNearDegenerate(void)
 
 static void TestRefused(void)
 {
-    // A square's corners and its center, a line, one point repeated; 200
-    // points on a ball, a hull of more than 64 vertices.
+    // A square's corners and its center, a line, one point repeated, a
+    // square with a corner lifted by less than the build's tolerance
+    // (three float epsilons of the coordinates' sum); 200 points on a
+    // ball, a hull of more than 64 vertices.
     const float flat[15] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0.5f, 0.5f, 0};
     const float line[12] = {0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3};
     const float same[12] = {1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3};
+    const float lifted[12] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1e-7f};
     float ball[3 * 200];
     for (int32_t i = 0; i < 200; ++i)
     {
@@ -367,9 +370,9 @@ static void TestRefused(void)
     // No hull: the effect refused as unsupported, the mesh without a
     // center; past the most vertices, refused as past a limit.
     bool refused = true;
-    const float* none[4] = {flat, line, same, same};
-    const int32_t counts[4] = {5, 4, 4, 3};
-    for (int32_t i = 0; i < 4; ++i)
+    const float* none[5] = {flat, line, same, same, lifted};
+    const int32_t counts[5] = {5, 4, 4, 3, 4};
+    for (int32_t i = 0; i < 5; ++i)
     {
         bool hull = true;
         refused = refused && HullOf(none[i], counts[i]) == mvfx_errorUnsupported &&
