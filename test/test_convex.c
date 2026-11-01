@@ -21,9 +21,9 @@
 #include <math.h>
 #include <string.h>
 
-// The most a body sinks and is off its collider at the end. A sink of a
-// thousandth of the sphere's distance stops the nearest-point search short
-// (8.5e-4 deep at least); every body here sinks less than 3.4e-6.
+// The most a body sinks into its collider, and is off it at the end. Every
+// body here stays within 3e-6 of its collider; a nearest-point search
+// ended a hundredth short sinks one by 8.5e-4 or more.
 #define GAP 2e-5
 
 static const float s_cube[24] = {-0.5f, -0.5f, -0.5f, 0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,
