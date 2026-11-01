@@ -6,6 +6,289 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.7.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.6.0...v0.7.0) (2026-11-01)
+
+This release changes the simulation's results: rigid bodies turn by a
+new flow, rigid spheres' and capsules' unused sizes are tied to X, the
+coupled water's lift rounds differently, and spawn draws take unbiased
+bits, so the golden hashes move. The effect file format rises from
+version 1 to 4 (files of earlier versions are refused), and the public
+API takes the family's names, types and results throughout.
+
+### Added
+
+- A refused effect names the field at fault.
+  `mvfxCreateEffect`, `mvfxWriteEffect`, `mvfxReadEffect` and
+  `mvfxCreateEffectFromBytes` take an optional last parameter,
+  `mvfxEffectRefusal*`, which holds the status, the refused field's path
+  of file tags with the item of each array, and the emitter, gas or
+  water surface it is in. `mvfxGetEffectFieldPath` writes that path as
+  text, such as `emitters[2].overLife.size.curve.keys[3].time`. A def an
+  effect file holds that the validator refuses is now reported at the
+  refused field's offset, not at the effect section's
+  ([#182](https://github.com/Rawframe-Project/maul-vfx/pull/182)).
+- A force's strength is a value source (`mvfxScalarSource`), resolved
+  per instance per step: a range draws once per instance and force, a
+  curve reads the emitter's loop age at the step's start, and a
+  parameter reads its x at each step. An effect can now ramp a force over
+  its loop or give each instance its own strength without driving a
+  parameter every frame. `strengthFromParameter` and `parameter` are
+  removed; a parameter source says the same. A strength of one value
+  resolves bit for bit as the old float did. The golden scene now drives
+  its forces by curves and a range, so its hashes change
+  ([#184](https://github.com/Rawframe-Project/maul-vfx/pull/184)).
+
+### Changed
+
+- **Breaking: the effect file is written as tagged fields and leaves
+  defaults out.** Each field carries a 32-bit tag and its length, a
+  reader gives an absent field its default and refuses a tag it does not
+  know, and the writer leaves out every field that holds its default, so
+  a field added to a def no longer changes every file's bytes. The
+  golden scene's smallest effect goes from 2,492 bytes to 1,704. With
+  the force's strength above and the kinds' types below,
+  `MVFX_FILE_VERSION` goes from 1 to 4 and the effect JSON form from
+  format 1 to 5; files of earlier versions are refused with
+  `mvfx_errorVersion`. Results are unchanged by the format itself
+  ([#180](https://github.com/Rawframe-Project/maul-vfx/pull/180),
+  [#184](https://github.com/Rawframe-Project/maul-vfx/pull/184),
+  [#206](https://github.com/Rawframe-Project/maul-vfx/pull/206)).
+- **Breaking: results take the family's shared values and meanings.**
+  Every error result but invalid and capacity takes the family's value
+  (stale -3, state -6, version -7, limit -9, busy -10, missing -32), and
+  the new `mvfx_errorUnsupported` (-4) and `mvfx_errorFormat` (-8) are
+  returned. A call from the context's host code answers
+  `mvfx_errorBusy` instead of `mvfx_errorState`; a call needing a
+  planned or an unplanned instance, or an effect the GPU part does not
+  run, answers `mvfx_errorUnsupported`; a creation past a table of the
+  context's def answers `mvfx_errorCapacity` instead of
+  `mvfx_errorLimit`; malformed effect file bytes answer
+  `mvfx_errorFormat` instead of `mvfx_errorInvalid`.
+  `mvfxPlannedBirth`'s `reserved[2]` are `eventKeyLow` and
+  `eventKeyHigh`
+  ([#123](https://github.com/Rawframe-Project/maul-vfx/pull/123)).
+- **Breaking: a value past one of the library's named bounds
+  (`MVFX_MAX_*`, `MVFX_MIN_*`) is refused with `mvfx_errorLimit`**, where
+  it answered `mvfx_errorInvalid`, in defs and direct arguments alike,
+  and a def past a bound counts no misuse. NaN, infinities and ranges
+  without a named constant still answer `mvfx_errorInvalid`. Every def
+  and argument accepted before is accepted now
+  ([#145](https://github.com/Rawframe-Project/maul-vfx/pull/145)).
+- **Breaking: public names follow the family's naming rule.** Getters
+  take `Get` (`mvfxResultName` is `mvfxGetResultName`,
+  `mvfxGetContextMisuse` is `mvfxContext_GetMisuse`), hook types end in
+  `Function` (`mvfxTaskFn` is `mvfxTaskFunction`), switch fields take
+  `enable` (`enabled` is `enable`, `sceneQueries` is
+  `enableSceneQueries`), and outputs end in `Out`; the pull request lists
+  every rename. A counter is named by what it counts (`...Count`,
+  `...Dropped`, `...Refused`) in `mvfxEmitterStats`, `mvfxEmitterPlan`,
+  `mvfxWaterInfo` and the GPU part's statistics words.
+  `mvfxRangeSource` is `mvfxMakeRangeSource`, the GPU part's
+  `mvfxGpuSim_Expand*` calls are `mvfxGpuSim_Add*Expansion`, and
+  `mvfxContext_Step`, `mvfxContext_StepTicks` and
+  `MVFX_MAX_STEP_SECONDS` move to `maul-vfx/context.h`. Four reads take
+  a `const mvfxContext*` and are not refused as busy
+  ([#179](https://github.com/Rawframe-Project/maul-vfx/pull/179),
+  [#212](https://github.com/Rawframe-Project/maul-vfx/pull/212),
+  [#215](https://github.com/Rawframe-Project/maul-vfx/pull/215)).
+- **Breaking: every kind is an `int32_t` and every flag set a
+  `uint32_t`.** The 45 kind typedefs were `uint8_t`, so a kind kept in an
+  `int` was truncated instead of refused: -1 became 255, and
+  `INT32_MIN` became 0, a valid kind. `mvfxGasWalls` and
+  `mvfxWaterWalls` are `uint32_t`, the event masks are the new
+  `mvfxEventMask`, and the raw `space` fields are `mvfxSimulationSpace`,
+  which moves to `modules.h`. Struct layouts change, and a negative kind
+  is refused everywhere
+  ([#206](https://github.com/Rawframe-Project/maul-vfx/pull/206)).
+- **Breaking: `plan.h`'s layouts are final for 1.0.**
+  `mvfxPlannedKillRule.minimumAgeTicks` is `int64_t`, and
+  `mvfxWaterPlan.dt` is `mvfxWaterPlan.substepSeconds`
+  ([#216](https://github.com/Rawframe-Project/maul-vfx/pull/216)).
+- **Breaking: a mesh's hull is built once, when the mesh is created.**
+  `mvfxMesh_GetHullCenter` and `mvfxMesh_GetHullVertexCount` take a
+  `const mvfxContext*`, no longer fail with `mvfx_errorCapacity` or count
+  misuse, and give the hull of the positions the mesh was created with.
+  A rigid hull no longer follows a `mvfxMesh_SetPositions` done before
+  the effect is made
+  ([#191](https://github.com/Rawframe-Project/maul-vfx/pull/191)).
+- **Breaking: a rigid hull over a mesh with no hull** (vertices that span
+  no volume) is refused with `mvfx_errorUnsupported`, not
+  `mvfx_errorInvalid`
+  ([#223](https://github.com/Rawframe-Project/maul-vfx/pull/223)).
+- **Breaking: a refused output call clears its outputs.** It zeroes the
+  program's buffers over the span it is given, except layout records
+  with a NULL context or a stale layout, and gives counts, sizes and
+  bounds of 0 even when the context or another output is NULL. A call
+  refused as busy from host code writes none of its outputs
+  ([#173](https://github.com/Rawframe-Project/maul-vfx/pull/173)).
+- **Breaking: `mvfxCreateEffect` and `mvfxCreateEffectFromBytes` give the
+  null id when the context is NULL**, instead of leaving the id as it
+  was
+  ([#172](https://github.com/Rawframe-Project/maul-vfx/pull/172)).
+- **Breaking: `mvfxHash64` takes its byte count as `int64_t`**, so one
+  call hashes 2 GiB or more. Its result is unchanged for every count
+  that fits in `int32_t`
+  ([#186](https://github.com/Rawframe-Project/maul-vfx/pull/186)).
+- **Breaking: the GPU part (`maul-vfx-rhi`) builds on Maul RHI 0.15.0**
+  instead of 0.8.0, so a host that uses Maul RHI itself moves with it.
+  A host makes the device and passes it in, calls Maul RHI by its 0.12.0
+  names (`mrhiPass_Begin`, `mrhiDevice_CompileFrame`,
+  `mrhiRequest_TakeReadback` and the rest) and sets its device's
+  `budgets`, as the guide shows. Maul RHI's enumerations are `int32_t`,
+  its bit sets `uint32_t`, `mrhiPass_WriteBuffer` takes a `size_t`
+  count, `mrhiResourcePlan.usage` is `bufferUsage` and `textureUsage`,
+  and `mrhiQuerySetDef.type` is `kind`. A device's refusal of a call
+  from inside its own allocator answers `mvfx_errorBusy`, and a creation
+  past a device limit within the adapter's answers
+  `mvfx_errorCapacity` where it answered `mvfx_errorUnsupported`. On
+  D3D12 the kernels' float math now runs as written (DXC no longer
+  reorders it), so results there can differ from those of builds
+  against Maul RHI 0.10.0
+  ([#138](https://github.com/Rawframe-Project/maul-vfx/pull/138),
+  [#166](https://github.com/Rawframe-Project/maul-vfx/pull/166),
+  [#210](https://github.com/Rawframe-Project/maul-vfx/pull/210),
+  [#214](https://github.com/Rawframe-Project/maul-vfx/pull/214)).
+- **Breaking: `mvfxCreateGpu` and `mvfxCreateGpuSim` answer the device's
+  status when it refuses to make an object** (`mvfx_errorCapacity`,
+  `mvfx_errorUnsupported`, `mvfx_errorState` for a device not ready yet,
+  or the new `mvfx_errorPlatform`) instead of `mvfx_errorState`, which a
+  host retried for ever; `mvfxCreateGpuSim` answers
+  `mvfx_errorCapacity` when its allocator fails inside a part
+  ([#125](https://github.com/Rawframe-Project/maul-vfx/pull/125)).
+- **Breaking: a gas def whose `cellSize` is below `MVFX_MIN_GAS_CELL`
+  (1e-6) is refused** with `mvfx_errorLimit`; see the gas fix below
+  ([#149](https://github.com/Rawframe-Project/maul-vfx/pull/149)).
+
+### Fixed
+
+- **Breaking, results change: rigid bodies turn by a Casimir splitting
+  of their free flow**, their spin and orientation together, on both
+  paths. The old explicit gyroscopic step froze needles (93 of 504 in a
+  probe) and drifted from the true motion: a box spun near a principal
+  axis had its world momentum off by up to 1.8% and its energy by 19%
+  over 10 s. Every spinning body that is not of one moment about every
+  axis moves differently, and angular drag slows a body's spin before it
+  turns. The golden hashes change
+  ([#120](https://github.com/Rawframe-Project/maul-vfx/pull/120)).
+- **Breaking, results change: a rigid sphere's Y and Z and a capsule's Z
+  are held at X.** Those axes meant nothing to the solver, yet any value
+  was stored, so a host drew a sphere of size {1, 3, 2} as an ellipsoid
+  and the GPU part took a sphere of size {1e-20, 1e6, 1e6} as a point.
+  An effect, effect file or spawn request that sets them unlike X is
+  refused with `mvfx_errorInvalid`, a host module that writes such a
+  size has its particle killed (counted in `valueKillCount`), and a drawn,
+  a parameter's or an inherited size takes X's value there. The golden
+  hashes change
+  ([#109](https://github.com/Rawframe-Project/maul-vfx/pull/109)).
+- **Results change: a box's surface and shell births and every speed
+  drawn from a range take unbiased bits.** A burst of 40,000 particles on
+  a box's surface put 75% on the negative faces, and speeds fell in
+  alternate bands of their range. Both paths change alike, so a planned
+  instance still matches its CPU twin. The golden hashes change, and the
+  GPU part's flocking test scenes take their own tolerances (1e-3 in a
+  view cone, 2.1e-4 in a full view, from 1e-4), since a close
+  neighbor's separation magnifies the paths' rounding there
+  ([#240](https://github.com/Rawframe-Project/maul-vfx/pull/240)).
+- **Breaking, results change: water heights and depths are held within
+  the new `MVFX_MAX_WATER_DEPTH`** (1e12 of its lengths) after each
+  step's pushes, crossings, pours and sources. Four inputs the library
+  accepts overflowed a depth or a normal. A coupled particle's
+  lift is computed in another order and rounds differently, so the
+  golden scene's coupled water changes from its 14th step
+  ([#178](https://github.com/Rawframe-Project/maul-vfx/pull/178)).
+- Rigid bodies stay finite at the size, density and scale ends the
+  validator accepts. A body is solved in its own units, a pair in the
+  lighter body's, and a needle's inverse inertia is held at 2^40 in its
+  units. In local probes of the cases the validator accepts, 90 of 396
+  bodies went non-finite and 69 more lost their spin, and at least 54
+  of 504 needles went non-finite; now all of them stay finite and keep
+  their spin, and with the new flow above no needle stops turning. Results
+  within binary32's normal range are the same bits, except for needles
+  thinner than about a millionth of their length
+  ([#106](https://github.com/Rawframe-Project/maul-vfx/pull/106),
+  [#110](https://github.com/Rawframe-Project/maul-vfx/pull/110),
+  [#113](https://github.com/Rawframe-Project/maul-vfx/pull/113)).
+- A rigid body's velocity is held to `MVFX_MAX_SPEED` after its own
+  contacts, and its spin is checked after a host module against what its
+  own step gives it, so a host module that never wrote a body's velocity
+  or spin no longer gets it killed
+  ([#128](https://github.com/Rawframe-Project/maul-vfx/pull/128),
+  [#130](https://github.com/Rawframe-Project/maul-vfx/pull/130)).
+- **Breaking: a fast particle's speed is held along its heading.** The
+  step clamped each axis apart, so a particle at (2e9, 1e9) under a bound
+  of 1e9 turned from 26.6 to 45 degrees. It now scales the velocity, and
+  the host modules' check kills a speed past the bound rather than a
+  component past it. Results change only for particles past the bound
+  off an axis
+  ([#135](https://github.com/Rawframe-Project/maul-vfx/pull/135)).
+- The core's sine and cosine reduce an argument past 2^24 exactly,
+  where they gave sin 0 and cos 1: a body turning more than 2^24 radians in half a
+  substep never turned. Results up to 2^24 are unchanged
+  ([#133](https://github.com/Rawframe-Project/maul-vfx/pull/133)).
+- Units stay finite where a squared length passes binary32's range:
+  at the largest spacing and scale, or with places
+  past 2^63 apart, a sheet's drag, a projection and a tear's direction
+  went NaN, infinite or zero. Values within range keep their bits
+  ([#146](https://github.com/Rawframe-Project/maul-vfx/pull/146)).
+- **Breaking: a short vector is measured scaled up**, so no square
+  flushes on a device that flushes subnormals. Every length the core
+  measures changes its bits only for a vector whose
+  largest component is below 2^-38 and some of whose squares were
+  subnormal
+  ([#159](https://github.com/Rawframe-Project/maul-vfx/pull/159)).
+- **Breaking: a sheet's cross product flushes below the least normal
+  alike on every device.** Each scaled edge component, product and
+  difference below 2^-126 is +0 on both paths, as D3D12 does by
+  specification; a triangle whose cross product becomes 0 takes no drag
+  ([#154](https://github.com/Rawframe-Project/maul-vfx/pull/154)).
+- A sheet's air share is decided past a sixth before its product can
+  overflow, on both paths
+  ([#153](https://github.com/Rawframe-Project/maul-vfx/pull/153)).
+- A smoke gas's faces are held to `MVFX_MAX_SPEED`: at the forces'
+  limits they went NaN within the first step. Results change only where
+  a face passed 1e9
+  ([#149](https://github.com/Rawframe-Project/maul-vfx/pull/149)).
+- A gas cell's density, temperature and fuel are held within 2^80 in its
+  buoyancy, so splats from many particles no longer make a face infinite,
+  or NaN under a drag
+  ([#155](https://github.com/Rawframe-Project/maul-vfx/pull/155)).
+- The GPU part matches the CPU path where it did not:
+  - a needle's mass no longer flushes to 0, which made it a point that
+    does not turn
+    ([#124](https://github.com/Rawframe-Project/maul-vfx/pull/124));
+  - a NaN or infinite velocity is left to the kill rules instead of a
+    clamp a device may turn finite
+    ([#137](https://github.com/Rawframe-Project/maul-vfx/pull/137));
+  - finiteness is tested on the bits, which a device may not fold away
+    as WGSL allows it to fold compares
+    ([#140](https://github.com/Rawframe-Project/maul-vfx/pull/140),
+    [#141](https://github.com/Rawframe-Project/maul-vfx/pull/141));
+  - every angle is reduced exactly in the kernels' sine and cosine, so
+    turns match the CPU path's at any angle; GPU results change
+    ([#142](https://github.com/Rawframe-Project/maul-vfx/pull/142));
+  - a quotient below 2^-126 rounds as C divides, where it built a NaN or
+    a wrong number
+    ([#152](https://github.com/Rawframe-Project/maul-vfx/pull/152));
+  - a grid cell past 2^24 is taken in integers, as the core floors it
+    ([#164](https://github.com/Rawframe-Project/maul-vfx/pull/164)).
+- Destroying an object frees its slot before its memory, so a host's
+  `free` hook that reads the destroyed id no longer reads freed memory
+  ([#194](https://github.com/Rawframe-Project/maul-vfx/pull/194)).
+- `mvfxContext_GetMisuse` and `mvfxContext_GetParticles` answer 0 for a
+  NULL context instead of crashing
+  ([#218](https://github.com/Rawframe-Project/maul-vfx/pull/218)).
+- Planning a kill rule converts its `minimumAge` to ticks only for
+  `mvfx_killSlower`, the kind that reads it. A NaN or 1e30 there, which
+  other kinds accept, was undefined behavior
+  ([#220](https://github.com/Rawframe-Project/maul-vfx/pull/220)).
+- `mvfxReadEffect` refuses memory that overlaps the file's bytes with
+  `mvfx_errorInvalid`, where it laid the def over bytes it was still
+  reading
+  ([#226](https://github.com/Rawframe-Project/maul-vfx/pull/226)).
+- An out-of-range `neighbors.source` is refused naming
+  `emitters[i].neighbors.source`, not the emitters as a whole
+  ([#204](https://github.com/Rawframe-Project/maul-vfx/pull/204)).
+
 ## [0.6.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.5.0...v0.6.0) (2026-10-27)
 
 ### Changed
