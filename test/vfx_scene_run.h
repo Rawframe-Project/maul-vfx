@@ -3,8 +3,9 @@
 //
 // The scene of vfx_scene.h run as the determinism tests step it: its
 // instances moved along a fixed path, its scene queries answered, waters
-// pushed, and a hash of every instance's state, read through the
-// library's internal records.
+// pushed, and a hash of every instance's whole state (the tests' hook
+// mvfxTestHashInstance) and of what a host reads of it. It reaches the
+// instances only by the ids the scene kept when it made them.
 
 #ifndef MAUL_VFX_TEST_VFX_SCENE_RUN_H
 #define MAUL_VFX_TEST_VFX_SCENE_RUN_H
@@ -413,8 +414,6 @@ static inline uint64_t HashOutput(mvfxContext* context, const SceneInstance* kep
     return hash;
 }
 
-// A hash of every live instance of the context, in slot order, and of
-// its output.
 // An instance's water surfaces as the host reads them: the pond sampled
 // across it and past its edge, and the strip's normals in unorm16.
 static inline uint64_t HashWater(mvfxContext* context, const SceneInstance* kept, uint64_t hash)
@@ -455,6 +454,8 @@ static inline uint64_t HashWater(mvfxContext* context, const SceneInstance* kept
     return mvfxHash64(hash, depths, (int64_t)sizeof depths);
 }
 
+// A hash of every instance of the context's scene, in the order the
+// scene made them, and of its output.
 static inline uint64_t HashScene(mvfxContext* context)
 {
     uint64_t hash = MVFX_HASH_INIT;
