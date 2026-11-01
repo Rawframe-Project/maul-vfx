@@ -1,456 +1,349 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Convex polytopes meeting: boxes apart at their exact distance and
-// nearest points, square and turned; boxes overlapping by their depth,
-// concentric ones too, at scales from 1000 to 1e-7;
-// a point's nearest point, outside and inside; a turned box on a box met
-// at its overlap's eight corners, edges crossing at one point, and a box
-// just apart within the margin at four; points' nearest distances to a
-// ball's hull of 60 vertices by its features; thin slabs nearly parallel
-// met in few steps, and searches held to one step answering with bounds;
-// lopsided hulls overlapping at
-// many poses by the depth the separating axes give.
+// Convex hulls meeting colliders as rigid hull bodies show it, each body
+// against a binary64 oracle of its gap from its hull's faces after every
+// step: a ball's hull and a turned cube's rolling over big spheres, never
+// sinking into them by more than 2e-5 and touching them at the end; a
+// cube's hull dropped on its edge, a ball's hull, and both scaled
+// unevenly, falling onto a box collider, never under its top by more than
+// 2e-5 and resting on it; a tetrahedron inside a sphere, found nearest it
+// across a triangle's edge, pushed out in one step.
 
-#include "convex.h"
+#include "particles.h"
 #include "test_harness.h"
 
+#include "maul-vfx/context.h"
+#include "maul-vfx/effect.h"
+#include "maul-vfx/instance.h"
+#include "maul-vfx/mesh.h"
+#include "maul-vfx/plan.h"
+
 #include <math.h>
+#include <string.h>
 
-static const float s_unit[3] = {0.5f, 0.5f, 0.5f};
-static const float s_identity[4] = {0, 0, 0, 1};
+// The most a body sinks into its collider, and is off it at the end. Every
+// body here stays within 3e-6 of its collider; a nearest-point search
+// ended a hundredth short sinks one by 8.5e-4 or more.
+#define GAP 2e-5
 
-static void TurnAbout(int32_t k, float angle, float out[4])
+static const float s_cube[24] = {-0.5f, -0.5f, -0.5f, 0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,
+                                 -0.5f, 0.5f,  0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,  0.5f,
+                                 -0.5f, 0.5f,  -0.5f, 0.5f,  0.5f,  0.5f,  0.5f,  0.5f};
+
+// 60 points on a ball of radius 0.5 (a Fibonacci sphere): every one a
+// vertex of their hull.
+static float s_ball[3 * 60];
+
+static void MakeBall(void)
 {
-    out[0] = 0.0f;
-    out[1] = 0.0f;
-    out[2] = 0.0f;
-    out[k] = sinf(0.5f * angle);
-    out[3] = cosf(0.5f * angle);
-}
-
-static bool Near(const float a[3], float x, float y, float z, float tolerance)
-{
-    return fabsf(a[0] - x) <= tolerance && fabsf(a[1] - y) <= tolerance &&
-           fabsf(a[2] - z) <= tolerance;
-}
-
-static void TestApart(void)
-{
-    // Unit boxes 0.3 apart along x; then the second turned an eighth about
-    // z, its edge 0.2 from the first's face.
-    mvfxPolytope a;
-    mvfxPolytope b;
-    static const float origin[3] = {0, 0, 0};
-    mvfxBoxPolytope(origin, s_identity, s_unit, &a);
-    const float right[3] = {1.3f, 0.1f, 0.2f};
-    mvfxBoxPolytope(right, s_identity, s_unit, &b);
-    mvfxConvexMeet meet;
-    bool met = mvfxConvexMeets(&a, &b, 1.0f, &meet);
-    CHECK(met && fabsf(meet.distance - 0.3f) <= 1e-5f && Near(meet.normal, -1, 0, 0, 1e-5f) &&
-              fabsf(meet.onA[0] - 0.5f) <= 1e-5f && fabsf(meet.onB[0] - 0.8f) <= 1e-5f,
-          "apart");
-    CHECK(!mvfxConvexMeets(&a, &b, 0.29f, &meet), "past the margin");
-    float turned[4];
-    TurnAbout(2, 0.78539816f, turned);
-    const float edge[3] = {0.5f + 0.70710678f + 0.2f, 0, 0};
-    mvfxBoxPolytope(edge, turned, s_unit, &b);
-    met = mvfxConvexMeets(&a, &b, 1.0f, &meet);
-    CHECK(met && fabsf(meet.distance - 0.2f) <= 1e-5f && Near(meet.normal, -1, 0, 0, 1e-4f),
-          "apart from an edge");
-}
-
-static void TestOverlap(void)
-{
-    // Unit boxes overlapping by 0.1 along x, 0.4 along y and z: parted
-    // along x.
-    mvfxPolytope a;
-    mvfxPolytope b;
-    static const float origin[3] = {0, 0, 0};
-    mvfxBoxPolytope(origin, s_identity, s_unit, &a);
-    const float over[3] = {0.9f, 0.6f, -0.6f};
-    mvfxBoxPolytope(over, s_identity, s_unit, &b);
-    mvfxConvexMeet meet;
-    bool met = mvfxConvexMeets(&a, &b, 0.0f, &meet);
-    CHECK(met && fabsf(meet.distance + 0.1f) <= 1e-5f && Near(meet.normal, -1, 0, 0, 1e-5f),
-          "overlapping");
-    float near[3];
-    const float outside[3] = {2.0f, 0.2f, 0.1f};
-    const float inside[3] = {0.1f, 0.2f, -0.3f};
-    float d = mvfxPolytopeNearest(&a, outside, near);
-    CHECK(fabsf(d - 1.5f) <= 1e-5f && Near(near, 0.5f, 0.2f, 0.1f, 1e-5f), "nearest outside");
-    d = mvfxPolytopeNearest(&a, inside, near);
-    CHECK(d == 0.0f && Near(near, 0.1f, 0.2f, -0.3f, 0.0f), "nearest inside");
-}
-
-static void TestConcentric(void)
-{
-    // Boxes about one center, of half size 1000 down to 1e-7: they
-    // overlap by their whole width along an axis, the simplex grown from
-    // the one point GJK starts and ends at.
-    static const float origin[3] = {0, 0, 0};
-    static const float halves[4] = {1e3f, 0.5f, 1e-4f, 1e-7f};
-    bool parted = true;
-    for (int32_t i = 0; i < 4; ++i)
+    for (int32_t i = 0; i < 60; ++i)
     {
-        const float half[3] = {halves[i], halves[i], halves[i]};
-        mvfxPolytope a;
-        mvfxPolytope b;
-        mvfxBoxPolytope(origin, s_identity, half, &a);
-        mvfxBoxPolytope(origin, s_identity, half, &b);
-        mvfxConvexMeet meet;
-        bool met = mvfxConvexMeets(&a, &b, 0.0f, &meet);
-        float axis =
-            fmaxf(fmaxf(fabsf(meet.normal[0]), fabsf(meet.normal[1])), fabsf(meet.normal[2]));
-        parted = parted && met && fabsf(meet.distance + 2.0f * halves[i]) <= 1e-4f * halves[i] &&
-                 fabsf(axis - 1.0f) <= 1e-5f;
+        float y = 1.0f - (2.0f * (float)i + 1.0f) / 60.0f;
+        float r = sqrtf(1.0f - y * y);
+        float angle = 2.3999632f * (float)i;
+        s_ball[3 * i] = 0.5f * r * cosf(angle);
+        s_ball[3 * i + 1] = 0.5f * y;
+        s_ball[3 * i + 2] = 0.5f * r * sinf(angle);
     }
-    CHECK(parted, "concentric boxes at every scale");
 }
 
-static void TestManifolds(void)
-{
-    // A 2 by 1 by 2 box turned an eighth about y, 0.01 into the top of a
-    // box of 1.6 by 1 by 1.6: met at their overlap's eight corners.
-    mvfxPolytope a;
-    mvfxPolytope b;
-    static const float origin[3] = {0, 0, 0};
-    static const float slab[3] = {0.8f, 0.5f, 0.8f};
-    static const float wide[3] = {1.0f, 0.5f, 1.0f};
-    mvfxBoxPolytope(origin, s_identity, slab, &b);
-    float turned[4];
-    TurnAbout(1, 0.78539816f, turned);
-    const float above[3] = {0, 0.99f, 0};
-    mvfxBoxPolytope(above, turned, wide, &a);
-    mvfxConvexMeet meet;
-    float n[3];
-    mvfxConvexPoint points[MVFX_MAX_MANIFOLD_POINTS];
-    bool met = mvfxConvexMeets(&a, &b, 0.02f, &meet);
-    int32_t count = met ? mvfxConvexManifold(&a, &b, &meet, 0.02f, n, points) : 0;
-    bool corners = count == 8 && Near(n, 0, 1, 0, 1e-5f);
-    for (int32_t i = 0; corners && i < count; ++i)
-    {
-        corners =
-            fabsf(points[i].depth + 0.01f) <= 1e-4f && fabsf(points[i].onB[1] - 0.5f) <= 1e-4f;
-    }
-    CHECK(corners, "an octagon's eight corners");
-    // Unit boxes on edge (an eighth about x and about z) crossing 0.01
-    // into each other: one point.
-    float beam[4];
-    float rod[4];
-    TurnAbout(0, 0.78539816f, beam);
-    TurnAbout(2, 0.78539816f, rod);
-    mvfxBoxPolytope(origin, beam, s_unit, &b);
-    const float cross[3] = {0, 1.41421356f - 0.01f, 0};
-    mvfxBoxPolytope(cross, rod, s_unit, &a);
-    met = mvfxConvexMeets(&a, &b, 0.02f, &meet);
-    count = met ? mvfxConvexManifold(&a, &b, &meet, 0.02f, n, points) : 0;
-    CHECK(count == 1 && fabsf(points[0].depth + 0.01f) <= 1e-4f && Near(n, 0, 1, 0, 1e-4f),
-          "edges crossing at a point");
-    // A unit box 0.005 above another within a margin of 0.01: four points
-    // 0.005 apart.
-    mvfxBoxPolytope(origin, s_identity, s_unit, &b);
-    const float hover[3] = {0.2f, 1.005f, 0.1f};
-    mvfxBoxPolytope(hover, s_identity, s_unit, &a);
-    met = mvfxConvexMeets(&a, &b, 0.01f, &meet);
-    count = met ? mvfxConvexManifold(&a, &b, &meet, 0.01f, n, points) : 0;
-    bool four = count == 4;
-    for (int32_t i = 0; four && i < count; ++i)
-    {
-        four = fabsf(points[i].depth - 0.005f) <= 1e-5f;
-    }
-    CHECK(four, "apart within the margin");
-}
-
-static float Dot(const float a[3], const float b[3])
+static double Dot(const double a[3], const double b[3])
 {
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
-// The least overlap of a and b along unit l (below 0 apart).
-static float OverlapAlong(const mvfxPolytope* a, const mvfxPolytope* b, const float l[3])
+// The squared distance from p to triangle a b c, by its regions (Ericson
+// 5.1.5).
+static double TriangleDistance(const double p[3], const double a[3], const double b[3],
+                               const double c[3])
 {
-    float aMin = INFINITY;
-    float aMax = -INFINITY;
-    float bMin = INFINITY;
-    float bMax = -INFINITY;
-    for (int32_t i = 0; i < a->vertexCount; ++i)
-    {
-        aMin = fminf(aMin, Dot(a->vertices[i], l));
-        aMax = fmaxf(aMax, Dot(a->vertices[i], l));
-    }
-    for (int32_t i = 0; i < b->vertexCount; ++i)
-    {
-        bMin = fminf(bMin, Dot(b->vertices[i], l));
-        bMax = fmaxf(bMax, Dot(b->vertices[i], l));
-    }
-    return fminf(aMax - bMin, bMax - aMin);
-}
-
-// The polytope's edges' directions (each face's sides).
-static int32_t EdgesOf(const mvfxPolytope* p, float out[][3])
-{
-    int32_t count = 0;
-    for (int32_t f = 0; f < p->faceCount; ++f)
-    {
-        int32_t first = p->faceStart[f];
-        int32_t corners = p->faceStart[f + 1] - first;
-        for (int32_t j = 0; j < corners; ++j)
-        {
-            const float* u = p->vertices[p->loop[first + j]];
-            const float* v = p->vertices[p->loop[first + (j + 1) % corners]];
-            for (int32_t k = 0; k < 3; ++k)
-            {
-                out[count][k] = v[k] - u[k];
-            }
-            ++count;
-        }
-    }
-    return count;
-}
-
-// The least overlap over every separating axis: faces and edge pairs.
-static float LeastOverlap(const mvfxPolytope* a, const mvfxPolytope* b)
-{
-    float least = INFINITY;
-    for (int32_t side = 0; side < 2; ++side)
-    {
-        const mvfxPolytope* p = side == 0 ? a : b;
-        for (int32_t f = 0; f < p->faceCount; ++f)
-        {
-            least = fminf(least, OverlapAlong(a, b, p->planes[f]));
-        }
-    }
-    float ea[MVFX_MAX_HULL_LOOP][3];
-    float eb[MVFX_MAX_HULL_LOOP][3];
-    int32_t na = EdgesOf(a, ea);
-    int32_t nb = EdgesOf(b, eb);
-    for (int32_t i = 0; i < na; ++i)
-    {
-        for (int32_t j = 0; j < nb; ++j)
-        {
-            float l[3] = {ea[i][1] * eb[j][2] - ea[i][2] * eb[j][1],
-                          ea[i][2] * eb[j][0] - ea[i][0] * eb[j][2],
-                          ea[i][0] * eb[j][1] - ea[i][1] * eb[j][0]};
-            float length = sqrtf(Dot(l, l));
-            if (length > 1e-4f)
-            {
-                for (int32_t k = 0; k < 3; ++k)
-                {
-                    l[k] /= length;
-                }
-                least = fminf(least, OverlapAlong(a, b, l));
-            }
-        }
-    }
-    return least;
-}
-
-// The distance from p to segment u v, in double.
-static double SegmentDistance(const float u[3], const float v[3], const double p[3])
-{
-    double e[3];
-    double d[3];
+    double ab[3];
+    double ac[3];
+    double ap[3];
+    double bp[3];
+    double cp[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        e[k] = (double)v[k] - (double)u[k];
-        d[k] = p[k] - (double)u[k];
+        ab[k] = b[k] - a[k];
+        ac[k] = c[k] - a[k];
+        ap[k] = p[k] - a[k];
+        bp[k] = p[k] - b[k];
+        cp[k] = p[k] - c[k];
     }
-    double length = e[0] * e[0] + e[1] * e[1] + e[2] * e[2];
-    double s = (d[0] * e[0] + d[1] * e[1] + d[2] * e[2]) / length;
-    s = s < 0.0 ? 0.0 : (s > 1.0 ? 1.0 : s);
-    double sum = 0.0;
+    double d1 = Dot(ab, ap);
+    double d2 = Dot(ac, ap);
+    double d3 = Dot(ab, bp);
+    double d4 = Dot(ac, bp);
+    double d5 = Dot(ab, cp);
+    double d6 = Dot(ac, cp);
+    double vc = d1 * d4 - d3 * d2;
+    double vb = d5 * d2 - d1 * d6;
+    double va = d3 * d6 - d5 * d4;
+    // The nearest point, a + u ab + w ac.
+    double u = 0.0;
+    double w = 0.0;
+    if (d1 <= 0.0 && d2 <= 0.0)
+    {
+        u = 0.0;
+    }
+    else if (d3 >= 0.0 && d4 <= d3)
+    {
+        u = 1.0;
+    }
+    else if (d6 >= 0.0 && d5 <= d6)
+    {
+        w = 1.0;
+    }
+    else if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0)
+    {
+        u = d1 / (d1 - d3);
+    }
+    else if (vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0)
+    {
+        w = d2 / (d2 - d6);
+    }
+    else if (va <= 0.0 && d4 - d3 >= 0.0 && d5 - d6 >= 0.0)
+    {
+        w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        u = 1.0 - w;
+    }
+    else
+    {
+        double sum = va + vb + vc;
+        u = vb / sum;
+        w = vc / sum;
+    }
+    double off[3];
     for (int32_t k = 0; k < 3; ++k)
     {
-        double g = d[k] - s * e[k];
-        sum += g * g;
+        off[k] = a[k] + u * ab[k] + w * ac[k] - p[k];
     }
-    return sqrt(sum);
+    return Dot(off, off);
 }
 
-// The distance from p outside polytope a by its features: each face's
-// plane where p lies over the face, else its edges (and so its corners).
-static double FeatureDistance(const mvfxPolytope* a, const double p[3])
+// v turned by quaternion q (x, y, z, w).
+static void Rotate(const float q[4], const double v[3], double out[3])
 {
-    double least = (double)INFINITY;
-    for (int32_t f = 0; f < a->faceCount; ++f)
-    {
-        const float* n = a->planes[f];
-        double above =
-            (double)n[0] * p[0] + (double)n[1] * p[1] + (double)n[2] * p[2] - (double)n[3];
-        int32_t first = a->faceStart[f];
-        int32_t corners = a->faceStart[f + 1] - first;
-        bool over = true;
-        for (int32_t j = 0; j < corners; ++j)
-        {
-            const float* u = a->vertices[a->loop[first + j]];
-            const float* v = a->vertices[a->loop[first + (j + 1) % corners]];
-            least = fmin(least, SegmentDistance(u, v, p));
-            // Inward across the edge: the normal crossed with it.
-            double e[3] = {(double)v[0] - (double)u[0], (double)v[1] - (double)u[1],
-                           (double)v[2] - (double)u[2]};
-            double in[3] = {(double)n[1] * e[2] - (double)n[2] * e[1],
-                            (double)n[2] * e[0] - (double)n[0] * e[2],
-                            (double)n[0] * e[1] - (double)n[1] * e[0]};
-            over = over && in[0] * (p[0] - (double)u[0]) + in[1] * (p[1] - (double)u[1]) +
-                                   in[2] * (p[2] - (double)u[2]) >=
-                               0.0;
-        }
-        least = over && above >= 0.0 ? fmin(least, above) : least;
-    }
-    return least;
+    const double x = (double)q[0];
+    const double y = (double)q[1];
+    const double z = (double)q[2];
+    const double w = (double)q[3];
+    const double t[3] = {2.0 * (y * v[2] - z * v[1]), 2.0 * (z * v[0] - x * v[2]),
+                         2.0 * (x * v[1] - y * v[0])};
+    out[0] = v[0] + w * t[0] + (y * t[2] - z * t[1]);
+    out[1] = v[1] + w * t[1] + (z * t[0] - x * t[2]);
+    out[2] = v[2] + w * t[2] + (x * t[1] - y * t[0]);
 }
 
-static void TestNearestOnBall(void)
+// A body's gap from a collider: for a sphere, the distance from its center
+// to the hull's faces less its radius; for a box (unturned), the hull's
+// lowest vertex over its top. The hull is the view's, scaled by the body's
+// size, turned by its orientation and placed at its position.
+static double Gap(const mvfxEmitterView* view, const TestParticle* body,
+                  const mvfxCollider* collider)
 {
-    // The hull of 60 points on a unit ball (a Fibonacci sphere) and 200
-    // points about it 1.2 to 3 from its center: each nearest distance is
-    // the one its faces, edges and corners give.
-    float ball[3 * 60];
-    for (int32_t i = 0; i < 60; ++i)
+    double world[MVFX_MAX_HULL_VERTICES][3];
+    for (int32_t v = 0; v < view->hullVertexCount; ++v)
     {
-        float z = 1.0f - (2.0f * (float)i + 1.0f) / 60.0f;
-        float r = sqrtf(1.0f - z * z);
-        float angle = 2.3999632f * (float)i;
-        ball[3 * i] = r * cosf(angle);
-        ball[3 * i + 1] = r * sinf(angle);
-        ball[3 * i + 2] = z;
+        double local[3];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            local[k] = (double)(view->hullVertices[3 * v + k] * body->size[k]);
+        }
+        Rotate(body->orientation, local, world[v]);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            world[v][k] += (double)body->position[k];
+        }
     }
-    mvfxHull hull;
-    CHECK(mvfxBuildHull(ball, 60, &(mvfxAllocator){0}, &hull) == mvfx_success, "a ball's hull");
-    static const float unit[3] = {1, 1, 1};
-    static const float origin[3] = {0, 0, 0};
-    mvfxPolytope a;
-    mvfxHullPolytope(&hull, unit, origin, s_identity, &a);
-    double worst = 0.0;
-    for (int32_t i = 0; i < 200; ++i)
+    if (collider->kind == mvfx_colliderBox)
     {
-        float t = (float)i;
-        float d[3] = {sinf(1.7f * t + 0.3f), cosf(2.9f * t), sinf(0.61f * t + 2.0f)};
-        float length = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-        float reach = 1.2f + 1.8f * (0.5f + 0.5f * sinf(3.7f * t));
-        const float p[3] = {reach * d[0] / length, reach * d[1] / length, reach * d[2] / length};
-        const double q[3] = {(double)p[0], (double)p[1], (double)p[2]};
-        float near[3];
-        float distance = mvfxPolytopeNearest(&a, p, near);
-        worst = fmax(worst, fabs((double)distance - FeatureDistance(&a, q)));
+        double lowest = (double)INFINITY;
+        for (int32_t v = 0; v < view->hullVertexCount; ++v)
+        {
+            lowest = fmin(lowest, world[v][1]);
+        }
+        return lowest - (double)(collider->center[1] + collider->halfExtents[1]);
     }
-    CHECK(worst <= 2e-6, "nearest on a ball's hull");
+    const double center[3] = {(double)collider->center[0], (double)collider->center[1],
+                              (double)collider->center[2]};
+    double nearest = (double)INFINITY;
+    for (int32_t f = 0; f < view->hullFaceCount; ++f)
+    {
+        const int32_t first = view->hullFaceStart[f];
+        for (int32_t j = first + 1; j + 1 < view->hullFaceStart[f + 1]; ++j)
+        {
+            nearest = fmin(nearest, TriangleDistance(center, world[view->hullLoop[first]],
+                                                     world[view->hullLoop[j]],
+                                                     world[view->hullLoop[j + 1]]));
+        }
+    }
+    return sqrt(nearest) - (double)collider->radius;
 }
 
-static void TestDepths(void)
+static mvfxContext* s_context;
+static mvfxInstanceId s_instance;
+static mvfxEmitterView s_view;
+
+// A context of its own, a hull of points sized and turned, as one rigid
+// body at place, still, meeting a collider with or without gravity; the
+// hull's center in mesh coordinates in center when it is not NULL. The
+// context stays open for the caller to step and destroy.
+static void Play(const float* points, int32_t count, const float size[3], const float turn[3],
+                 const mvfxCollider* collider, bool gravity, const double place[3])
 {
-    // A lopsided hull against another at 40 turns and offsets: where they
-    // overlap, EPA's depth is the separating axes' least overlap.
-    static const float lopsided[21] = {0,    0, 0,    1, 0, 0,    0, 0.6f, 0,    0,   0,
-                                       0.3f, 1, 0.1f, 0, 0, 0.4f, 0, 0.7f, 0.8f, 1.1f};
-    mvfxHull hull;
-    CHECK(mvfxBuildHull(lopsided, 7, &(mvfxAllocator){0}, &hull) == mvfx_success, "built");
-    static const float unit[3] = {1, 1, 1};
-    int32_t overlapping = 0;
-    bool agree = true;
-    for (int32_t i = 0; i < 40; ++i)
-    {
-        float t = (float)i;
-        float q[4] = {sinf(0.7f * t), cosf(1.3f * t), sinf(0.4f * t + 1.0f), 1.5f};
-        float length = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-        for (int32_t k = 0; k < 4; ++k)
-        {
-            q[k] /= length;
-        }
-        const float x[3] = {0.3f * sinf(t), 0.25f * cosf(0.6f * t), 0.2f * sinf(1.7f * t)};
-        static const float origin[3] = {0, 0, 0};
-        mvfxPolytope a;
-        mvfxPolytope b;
-        mvfxHullPolytope(&hull, unit, x, q, &a);
-        mvfxHullPolytope(&hull, unit, origin, s_identity, &b);
-        float overlap = LeastOverlap(&a, &b);
-        mvfxConvexMeet meet;
-        bool met = mvfxConvexMeets(&a, &b, 0.0f, &meet);
-        if (overlap > 1e-3f)
-        {
-            overlapping += 1;
-            agree = agree && met && fabsf(meet.distance + overlap) <= 1e-4f;
-        }
-    }
-    CHECK(overlapping >= 20 && agree, "depths by the separating axes");
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = points;
+    meshDef.vertexCount = count;
+    mvfxMeshId mesh = {0};
+    CHECK(mvfxCreateMesh(s_context, &meshDef, &mesh) == mvfx_success, "mesh");
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.capacity = 1;
+    emitter.hostSpawnCapacity = 1;
+    emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
+    emitter.motion.gravity[1] = gravity ? -9.81f : 0.0f;
+    emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                      .min = {size[0], size[1], size[2]},
+                                      .max = {size[0], size[1], size[2]}};
+    emitter.orientationMode = mvfx_orientationEuler;
+    emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                             .min = {turn[0], turn[1], turn[2]},
+                                             .max = {turn[0], turn[1], turn[2]}};
+    emitter.rigid = (mvfxRigidDef){.enable = true,
+                                   .shape = mvfx_rigidHull,
+                                   .density = 1.0f,
+                                   .substeps = 8,
+                                   .staticFriction = 0.6f,
+                                   .dynamicFriction = 0.4f,
+                                   .hull = mesh};
+    emitter.collision.enable = true;
+    emitter.colliders = collider;
+    emitter.colliderCount = 1;
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
+    CHECK(mvfxEffect_GetEmitterView(s_context, effect, 0, &s_view) == mvfx_success, "view");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
+    const float still[3] = {0.0f, 0.0f, 0.0f};
+    mvfxSpawnRequest request = {.count = 1, .positions = place, .velocities = still};
+    CHECK(mvfxInstance_Spawn(s_context, s_instance, 0, &request) == mvfx_success, "spawned");
 }
 
-static void TestSteps(void)
+// The body's gap from the collider after a step of 1/60 s.
+static double StepGap(const mvfxCollider* collider)
 {
-    // Slabs 0.001 thick, the upper tilted by 1e-5 to 1e-3 about x, 1e-3
-    // apart and 1e-4 into each other: answered as the separating axes say,
-    // in fewer than half the steps.
-    mvfxPolytope a;
-    mvfxPolytope b;
-    static const float origin[3] = {0, 0, 0};
-    static const float slab[3] = {1, 0.0005f, 1};
-    mvfxBoxPolytope(origin, s_identity, slab, &a);
-    bool accurate = true;
-    int32_t most = 0;
-    for (int32_t i = 0; i < 20; ++i)
+    CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success, "step");
+    TestParticle body;
+    CHECK(ReadParticles(s_context, s_instance, 0, &body, 1) == 1, "a body");
+    return Gap(&s_view, &body, collider);
+}
+
+// A hull of points, sized and turned, dropped from 0.6 onto a collider with
+// gravity and stepped 5 s: whether it never sank more than GAP into it and
+// ended within GAP of it.
+static bool Drops(const float* points, int32_t count, const float size[3], const float turn[3],
+                  const mvfxCollider* collider)
+{
+    static const double place[3] = {0.0, 0.6, 0.0};
+    Play(points, count, size, turn, collider, true, place);
+    double deepest = 0.0;
+    double gap = (double)INFINITY;
+    for (int32_t i = 0; i < 300; ++i)
     {
-        float tilt[4];
-        TurnAbout(0, 1e-5f * (float)(1 + 5 * i), tilt);
-        for (int32_t overlap = 0; overlap < 2; ++overlap)
-        {
-            const float place[3] = {0.1f, overlap != 0 ? 0.0009f : 0.002f, -0.2f};
-            mvfxBoxPolytope(place, tilt, slab, &b);
-            float lowest = INFINITY;
-            for (int32_t v = 0; v < b.vertexCount; ++v)
-            {
-                lowest = fminf(lowest, b.vertices[v][1]);
-            }
-            mvfxConvexMeet meet;
-            mvfxConvexSteps steps;
-            bool met = mvfxConvexMeetsWithin(&b, &a, 1.0f, MVFX_CONVEX_STEPS, &meet, &steps);
-            float expected = overlap != 0 ? -LeastOverlap(&b, &a) : lowest - 0.0005f;
-            accurate = accurate && met && fabsf(meet.distance - expected) <= 2e-6f;
-            most = steps.gjk > most ? steps.gjk : most;
-            most = steps.epa > most ? steps.epa : most;
-        }
+        gap = StepGap(collider);
+        deepest = fmin(deepest, gap);
     }
-    CHECK(accurate && most < MVFX_CONVEX_STEPS / 2, "thin slabs nearly parallel");
-    // Held to one step: GJK's distance at least the true one, EPA's depth
-    // at most the true one, each marked capped.
-    static const float unit[3] = {1, 1, 1};
-    mvfxBoxPolytope(origin, s_identity, unit, &a);
-    float turn[4];
-    TurnAbout(1, 0.6f, turn);
-    bool bounded = true;
-    for (int32_t overlap = 0; overlap < 2; ++overlap)
+    mvfxDestroyContext(s_context);
+    return deepest >= -GAP && fabs(gap) <= GAP;
+}
+
+static void TestOnSpheres(void)
+{
+    // A ball's hull and a turned cube's on spheres of radius 8 and 16,
+    // their tops at the origin: each rolls but stays on.
+    static const float unit[3] = {1.0f, 1.0f, 1.0f};
+    static const float turn[3] = {0.2f, 0.3f, 0.1f};
+    bool held = true;
+    for (int32_t radius = 8; radius <= 16; radius *= 2)
     {
-        // Apart by 0.31 (the turned box reaches 1.39 along x), or into it.
-        const float place[3] = {overlap != 0 ? 0.8f : 2.7f, 0.3f, 0.2f};
-        mvfxBoxPolytope(place, turn, unit, &b);
-        mvfxConvexMeet full;
-        mvfxConvexMeet held;
-        mvfxConvexSteps steps;
-        bool met = mvfxConvexMeetsWithin(&b, &a, 10.0f, MVFX_CONVEX_STEPS, &full, &steps);
-        bool heldMet = mvfxConvexMeetsWithin(&b, &a, 10.0f, 1, &held, &steps);
-        // Apart, the distance an upper bound; overlapping, the depth a
-        // lower one: either way never less than the full answer.
-        bounded = bounded && met && heldMet && steps.gjk <= 1 && steps.epa <= 1 &&
-                  held.distance >= full.distance - 1e-6f && held.capped && !full.capped;
-        // A GJK stopped short is met whatever the margin: the pair may
-        // still touch, and is kept rather than missed (overlapping pairs
-        // held to one step were answered apart).
-        mvfxConvexMeet near;
-        bool kept = mvfxConvexMeetsWithin(&b, &a, 0.01f, 1, &near, &steps);
-        bool dropped = !mvfxConvexMeetsWithin(&b, &a, 0.01f, MVFX_CONVEX_STEPS, &near, &steps);
-        bounded = bounded && kept && (overlap != 0 || dropped);
+        const mvfxCollider sphere = {.kind = mvfx_colliderSphere,
+                                     .center = {0.0f, -(float)radius, 0.0f},
+                                     .radius = (float)radius};
+        held = held && Drops(s_ball, 60, unit, turn, &sphere);
+        held = held && Drops(s_cube, 8, unit, turn, &sphere);
     }
-    CHECK(bounded, "searches held to their steps");
+    CHECK(held, "on spheres by the distance to their centers");
+}
+
+static void TestOnATable(void)
+{
+    // A cube's hull turned onto its edge, a ball's hull, and each scaled to
+    // 1.5 by 0.7 by 1 (a hull's planes scale by the inverse), dropped onto
+    // a box whose top is at the origin.
+    static const mvfxCollider table = {.kind = mvfx_colliderBox,
+                                       .center = {0.0f, -0.5f, 0.0f},
+                                       .halfExtents = {4.0f, 0.5f, 4.0f},
+                                       .rotation = {0.0f, 0.0f, 0.0f, 1.0f}};
+    static const float unit[3] = {1.0f, 1.0f, 1.0f};
+    static const float uneven[3] = {1.5f, 0.7f, 1.0f};
+    static const float edge[3] = {0.2f, 0.3f, 0.785398f};
+    static const float turn[3] = {0.2f, 0.3f, 0.1f};
+    bool held = Drops(s_cube, 8, unit, edge, &table) && Drops(s_ball, 60, unit, turn, &table) &&
+                Drops(s_cube, 8, uneven, turn, &table) && Drops(s_ball, 60, uneven, turn, &table);
+    CHECK(held, "on a table by its top");
+}
+
+static void TestThroughAnEdge(void)
+{
+    // A tetrahedron A B C E 0.106 inside a sphere of radius 1, unturned,
+    // without gravity: its face A B C is nearest the center, at a point of
+    // its edge A C 0.894 away. Pushed out in one step. A nearest-point
+    // search that took edge A B for A C found it farther than the radius
+    // and left it inside.
+    static const float points[12] = {-2.0f, 2.0f, 0.0f, 2.2f, 1.5f,  0.0f,
+                                     1.0f,  0.5f, 0.0f, 0.4f, 1.33f, 3.0f};
+    static const mvfxCollider sphere = {
+        .kind = mvfx_colliderSphere, .center = {0.0f, 0.0f, 0.0f}, .radius = 1.0f};
+    static const float unit[3] = {1.0f, 1.0f, 1.0f};
+    static const float square[3] = {0.0f, 0.0f, 0.0f};
+    // The body's place, the hull's center: its points where the mesh has
+    // them.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = points;
+    meshDef.vertexCount = 4;
+    mvfxMeshId mesh = {0};
+    CHECK(mvfxCreateMesh(context, &meshDef, &mesh) == mvfx_success, "mesh");
+    bool hull = false;
+    float center[3] = {0.0f, 0.0f, 0.0f};
+    CHECK(mvfxMesh_GetHullCenter(context, mesh, &hull, center) == mvfx_success && hull, "center");
+    mvfxDestroyContext(context);
+    const double place[3] = {(double)center[0], (double)center[1], (double)center[2]};
+    Play(points, 4, unit, square, &sphere, false, place);
+    const TestParticle start = {.position = {center[0], center[1], center[2]},
+                                .size = {1.0f, 1.0f, 1.0f},
+                                .orientation = {0.0f, 0.0f, 0.0f, 1.0f}};
+    const double inside = Gap(&s_view, &start, &sphere);
+    const double out = StepGap(&sphere);
+    mvfxDestroyContext(s_context);
+    CHECK(fabs(inside + 0.1056) <= 1e-3 && out >= -GAP, "pushed out across a triangle's edge");
 }
 
 int main(void)
 {
-    TestApart();
-    TestOverlap();
-    TestConcentric();
-    TestManifolds();
-    TestNearestOnBall();
-    TestDepths();
-    TestSteps();
+    MakeBall();
+    TestOnSpheres();
+    TestOnATable();
+    TestThroughAnEdge();
     return s_failures == 0 ? 0 : 1;
 }
