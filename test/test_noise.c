@@ -1,228 +1,85 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Curl noise: zero at lattice points, analytic gradients against finite
-// differences, continuous across cells, within its range, its curl the
-// finite-difference curl of the potential and without divergence,
-// octaves, gain and scroll, the 32-bit wrap of the lattice, huge
-// coordinates, and seeds; and its bake into a periodic grid, the
-// unbounded curl's bits within the period and no seam where it repeats.
+// Curl noise as a turbulence force gives it, read as particles' velocities
+// after a step from rest: the bake into a periodic grid is the force's
+// curl bit for bit within the period, with no seam where it repeats, and
+// writes nothing when it refuses, and takes the longest period; octaves
+// (each its own noise, at the lacunarity times the last's frequency),
+// gain, seeds and scroll; the field continuous across a cell's face and
+// without divergence; the lattice's 32-bit wrap, and a place 2^52 out at
+// the highest frequency.
 
-#include "noise.h"
+#include "particles.h"
 #include "test_harness.h"
 
+#include "maul-vfx/context.h"
+#include "maul-vfx/effect.h"
+#include "maul-vfx/instance.h"
+
 #include <math.h>
+#include <string.h>
 
-// A point in [-8, 8)^3 from an index, spread by a fixed sequence.
-static void PointOf(int32_t i, double p[3])
-{
-    p[0] = fmod(0.7548776662466927 * (i + 1), 1.0) * 16.0 - 8.0;
-    p[1] = fmod(0.5698402909980532 * (i + 1), 1.0) * 16.0 - 8.0;
-    p[2] = fmod(0.3141592653589793 * (i + 1) + 0.25, 1.0) * 16.0 - 8.0;
-}
-
-static void TestLatticeAndRange(void)
-{
-    float value[3];
-    float gradient[3][3];
-    bool zero = true;
-    for (int32_t i = -3; i <= 3; ++i)
-    {
-        const double p[3] = {i, 2 * i + 1, -i};
-        mvfxGradientNoise3(p, 7u, value, gradient);
-        zero = zero && value[0] == 0.0f && value[1] == 0.0f && value[2] == 0.0f;
-    }
-    CHECK(zero, "zero at every lattice point");
-    float largest = 0.0f;
-    for (int32_t i = 0; i < 20000; ++i)
-    {
-        double p[3];
-        PointOf(i, p);
-        mvfxGradientNoise3(p, 7u, value, gradient);
-        for (int32_t c = 0; c < 3; ++c)
-        {
-            largest = fmaxf(largest, fabsf(value[c]));
-        }
-    }
-    CHECK(largest > 0.5f && largest <= 1.1f, "within its range, and not flat");
-}
-
-static void TestGradients(void)
-{
-    // Central differences of the value, in binary64 steps.
-    const double h = 1e-3;
-    double worst = 0.0;
-    for (int32_t i = 0; i < 2000; ++i)
-    {
-        double p[3];
-        PointOf(i, p);
-        float value[3];
-        float gradient[3][3];
-        mvfxGradientNoise3(p, 11u, value, gradient);
-        for (int32_t a = 0; a < 3; ++a)
-        {
-            double plus[3] = {p[0], p[1], p[2]};
-            double minus[3] = {p[0], p[1], p[2]};
-            plus[a] += h;
-            minus[a] -= h;
-            float vp[3];
-            float vm[3];
-            float unused[3][3];
-            mvfxGradientNoise3(plus, 11u, vp, unused);
-            mvfxGradientNoise3(minus, 11u, vm, unused);
-            for (int32_t c = 0; c < 3; ++c)
-            {
-                double difference = ((double)vp[c] - (double)vm[c]) / (2.0 * h);
-                worst = fmax(worst, fabs(difference - (double)gradient[c][a]));
-            }
-        }
-    }
-    CHECK(worst <= 2e-3, "analytic gradients match finite differences");
-
-    // Across a cell's face: the value and the gradient agree on both sides.
-    float below[3];
-    float above[3];
-    float gb[3][3];
-    float ga[3][3];
-    const double p1[3] = {2.0 - 1e-7, 0.3, 0.6};
-    const double p2[3] = {2.0, 0.3, 0.6};
-    mvfxGradientNoise3(p1, 3u, below, gb);
-    mvfxGradientNoise3(p2, 3u, above, ga);
-    bool continuous = true;
-    for (int32_t c = 0; c < 3; ++c)
-    {
-        continuous = continuous && fabsf(below[c] - above[c]) <= 1e-5f;
-        for (int32_t a = 0; a < 3; ++a)
-        {
-            continuous = continuous && fabsf(gb[c][a] - ga[c][a]) <= 1e-4f;
-        }
-    }
-    CHECK(continuous, "continuous across a cell's face");
-}
+// The most particles a scene places.
+#define MOST 1536
 
 static const mvfxNoise s_noise = {
     .frequency = 0.75f, .octaves = 3, .lacunarity = 2.0f, .gain = 0.5f, .scroll = {0, 0, 0}};
 
-// The potential the noise's curl is the curl of, in binary64 over float
-// noises: each octave's noise over its frequency.
-static void Potential(const mvfxNoise* noise, uint32_t seed, const double p[3], double out[3])
-{
-    out[0] = 0.0;
-    out[1] = 0.0;
-    out[2] = 0.0;
-    double frequency = (double)noise->frequency;
-    double weight = 1.0;
-    for (int32_t o = 0; o < noise->octaves; ++o)
-    {
-        double q[3] = {p[0] * frequency, p[1] * frequency, p[2] * frequency};
-        float value[3];
-        float gradient[3][3];
-        mvfxGradientNoise3(q, seed + (uint32_t)o * 0x9E3779B9u, value, gradient);
-        for (int32_t c = 0; c < 3; ++c)
-        {
-            out[c] += weight * (double)value[c] / frequency;
-        }
-        frequency *= (double)noise->lacunarity;
-        weight *= (double)noise->gain;
-    }
-}
+static TestParticle s_read[MOST];
 
-static void TestCurl(void)
+static const double s_zero[3] = {0.0, 0.0, 0.0};
+
+// The curl of noise at count places, in an instance at origin (which
+// keeps a place near it exact) that has run for seconds: each a
+// particle's velocity after a step of 1/1024 s from rest under a world
+// turbulence of strength 1, times 1,024, which is exact.
+static void Curls(const mvfxNoise* noise, const double origin[3], double seconds,
+                  const double* places, int32_t count, float* out)
 {
-    const double h = 1e-3;
-    double worstCurl = 0.0;
-    double worstDivergence = 0.0;
-    double largest = 0.0;
-    for (int32_t i = 0; i < 1000; ++i)
+    mvfxForce force = {
+        .kind = mvfx_forceTurbulence, .strength = mvfxMakeRangeSource(1.0f, 1.0f), .noise = *noise};
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.capacity = MOST;
+    emitter.hostSpawnCapacity = MOST;
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
+    emitter.forces = &force;
+    emitter.forceCount = 1;
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    memcpy(instanceDef.origin, origin, sizeof instanceDef.origin);
+    mvfxInstanceId instance = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    // In steps of at most a second.
+    for (double left = seconds; left > 0.0; left -= 1.0)
     {
-        double p[3];
-        PointOf(i, p);
-        float curl[3];
-        mvfxCurlNoise(&s_noise, 5u, p, 0.0, curl);
-        // d[a][c]: the potential's component c along axis a, differenced.
-        double d[3][3];
-        double divergence = 0.0;
-        for (int32_t a = 0; a < 3; ++a)
-        {
-            double plus[3] = {p[0], p[1], p[2]};
-            double minus[3] = {p[0], p[1], p[2]};
-            plus[a] += h;
-            minus[a] -= h;
-            double up[3];
-            double down[3];
-            Potential(&s_noise, 5u, plus, up);
-            Potential(&s_noise, 5u, minus, down);
-            for (int32_t c = 0; c < 3; ++c)
-            {
-                d[a][c] = (up[c] - down[c]) / (2.0 * h);
-            }
-            float cp[3];
-            float cm[3];
-            mvfxCurlNoise(&s_noise, 5u, plus, 0.0, cp);
-            mvfxCurlNoise(&s_noise, 5u, minus, 0.0, cm);
-            divergence += ((double)cp[a] - (double)cm[a]) / (2.0 * h);
-        }
-        const double reference[3] = {d[1][2] - d[2][1], d[2][0] - d[0][2], d[0][1] - d[1][0]};
+        double part = left < 1.0 ? left : 1.0;
+        CHECK(mvfxContext_StepTicks(context, (int64_t)(part * MVFX_TICKS_PER_SECOND)) ==
+                  mvfx_success,
+              "run");
+    }
+    static float rest[MOST * 3];
+    mvfxSpawnRequest request = {.count = count, .positions = places, .velocities = rest};
+    CHECK(mvfxInstance_Spawn(context, instance, 0, &request) == mvfx_success, "placed");
+    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 1024) == mvfx_success, "step");
+    CHECK(ReadParticles(context, instance, 0, s_read, MOST) == count, "read");
+    for (int32_t i = 0; i < count; ++i)
+    {
         for (int32_t k = 0; k < 3; ++k)
         {
-            worstCurl = fmax(worstCurl, fabs((double)curl[k] - reference[k]));
-            largest = fmax(largest, fabs((double)curl[k]));
+            out[3 * i + k] = 1024.0f * s_read[i].velocity[k];
         }
-        worstDivergence = fmax(worstDivergence, fabs(divergence));
     }
-    CHECK(worstCurl <= 5e-3, "the curl of the potential");
-    CHECK(worstDivergence <= 2e-2 && largest > 0.5, "without divergence, and not flat");
-}
-
-static void TestOctavesScrollAndWrap(void)
-{
-    const double p[3] = {1.25, -3.5, 0.375};
-    float a[3];
-    float b[3];
-    // A gain of 0 leaves the first octave alone.
-    mvfxNoise one = s_noise;
-    one.octaves = 1;
-    mvfxNoise silent = s_noise;
-    silent.gain = 0.0f;
-    mvfxCurlNoise(&one, 9u, p, 0.0, a);
-    mvfxCurlNoise(&silent, 9u, p, 0.0, b);
-    CHECK(a[0] == b[0] && a[1] == b[1] && a[2] == b[2], "gain 0 is one octave");
-    mvfxCurlNoise(&s_noise, 9u, p, 0.0, b);
-    CHECK(a[0] != b[0], "more octaves add detail");
-
-    // The field scrolls: at time t it is at p what it was at p + scroll t.
-    mvfxNoise scrolled = s_noise;
-    scrolled.scroll[0] = 2.0f;
-    scrolled.scroll[2] = -0.5f;
-    const double moved[3] = {p[0] + 2.0 * 1.5, p[1], p[2] - 0.5 * 1.5};
-    mvfxCurlNoise(&scrolled, 9u, p, 1.5, a);
-    mvfxCurlNoise(&s_noise, 9u, moved, 0.0, b);
-    CHECK(fabsf(a[0] - b[0]) <= 1e-6f && fabsf(a[1] - b[1]) <= 1e-6f && fabsf(a[2] - b[2]) <= 1e-6f,
-          "scrolled over time");
-
-    // The lattice wraps every 2^32 cells, and any finite place is sampled.
-    float value[3];
-    float wrapped[3];
-    float gradient[3][3];
-    // Fractions a binary64 holds exactly that far out.
-    const double near[3] = {0.25, 0.75, 0.125};
-    const double far[3] = {0.25 + 4294967296.0, 0.75 - 4294967296.0, 0.125 + 8589934592.0};
-    mvfxGradientNoise3(near, 1u, value, gradient);
-    mvfxGradientNoise3(far, 1u, wrapped, gradient);
-    CHECK(value[0] == wrapped[0] && value[1] == wrapped[1] && value[2] == wrapped[2],
-          "periodic over 2^32 cells");
-    const double huge[3] = {0x1p70 + 0.0, -0x1p66, 1e300};
-    mvfxGradientNoise3(huge, 1u, value, gradient);
-    CHECK(isfinite(value[0]) && isfinite(gradient[2][2]), "finite at huge places");
-    const double wild[3] = {(double)INFINITY, (double)NAN, -(double)INFINITY};
-    mvfxGradientNoise3(wild, 1u, value, gradient);
-    CHECK(isfinite(value[0]) && isfinite(value[1]) && isfinite(gradient[0][0]),
-          "finite where a place is not");
-
-    // Seeds differ.
-    mvfxCurlNoise(&s_noise, 1u, p, 0.0, a);
-    mvfxCurlNoise(&s_noise, 2u, p, 0.0, b);
-    CHECK(a[0] != b[0] || a[1] != b[1], "seeds differ");
+    mvfxDestroyContext(context);
 }
 
 // The bake into a periodic grid: a noise of two octaves at lacunarity 2,
@@ -234,7 +91,8 @@ enum
     BAKE_Y = 8,
     BAKE_Z = 12,
     BAKE_PERIOD = 4,
-    BAKE_VALUES = 3 * BAKE_X * BAKE_Y * BAKE_Z
+    BAKE_POINTS = BAKE_X * BAKE_Y * BAKE_Z,
+    BAKE_VALUES = 3 * BAKE_POINTS
 };
 
 static float s_baked[BAKE_VALUES];
@@ -288,7 +146,11 @@ static void TestBakeRefusals(const mvfxNoise* baked, const int32_t size[3])
         mvfxBakeCurlNoise(&noise, BAKE_PERIOD, empty, s_baked, BAKE_VALUES) == mvfx_errorInvalid &&
         mvfxBakeCurlNoise(&noise, BAKE_PERIOD, size, s_baked, BAKE_VALUES - 1) == mvfx_errorInvalid;
     CHECK(refused && s_baked[0] == 12345.0f, "refusals write nothing");
+    const int32_t point[3] = {1, 1, 1};
+    CHECK(mvfxBakeCurlNoise(&noise, MVFX_MAX_NOISE_PERIOD, point, s_baked, 3) == mvfx_success,
+          "the longest period bakes");
 }
+
 // Whether a place in the bake's grid lies, at every octave, outside its
 // period's last cell.
 static bool IsInner(const double place[3])
@@ -314,43 +176,266 @@ static void TestBake(void)
     const int32_t size[3] = {BAKE_X, BAKE_Y, BAKE_Z};
     CHECK(mvfxBakeCurlNoise(&noise, BAKE_PERIOD, size, s_baked, BAKE_VALUES) == mvfx_success,
           "baked");
-    // Where no octave's cell is its period's last, the unbounded curl's
-    // bits.
+    // Where no octave's cell is its period's last, the turbulence's curl's
+    // bits: a layer along Z at a time, its instance's origin at its place,
+    // so a third of a cell is held exactly.
+    static double places[MOST * 3];
+    static float curls[MOST * 3];
     int32_t compared = 0;
     int32_t same = 0;
     for (int32_t z = 0; z < BAKE_Z; ++z)
     {
+        const double layer[3] = {0.0, 0.0, (double)z * BAKE_PERIOD / BAKE_Z};
+        int32_t count = 0;
         for (int32_t y = 0; y < BAKE_Y; ++y)
         {
             for (int32_t x = 0; x < BAKE_X; ++x)
             {
                 const double place[3] = {(double)x * BAKE_PERIOD / BAKE_X,
-                                         (double)y * BAKE_PERIOD / BAKE_Y,
-                                         (double)z * BAKE_PERIOD / BAKE_Z};
-                if (!IsInner(place))
+                                         (double)y * BAKE_PERIOD / BAKE_Y, layer[2]};
+                if (IsInner(place))
                 {
-                    continue;
+                    memcpy(&places[3 * count], place, sizeof place);
+                    count += 1;
                 }
-                float curl[3];
-                mvfxCurlNoise(&noise, noise.seed, place, 0.0, curl);
-                const float* baked = BakedAt(x, y, z);
-                compared += 1;
-                same += baked[0] == curl[0] && baked[1] == curl[1] && baked[2] == curl[2];
             }
         }
+        if (count == 0)
+        {
+            continue;
+        }
+        Curls(&noise, layer, 0.0, places, count, curls);
+        for (int32_t i = 0; i < count; ++i)
+        {
+            int32_t x = (int32_t)(places[3 * i] * BAKE_X / BAKE_PERIOD);
+            int32_t y = (int32_t)(places[3 * i + 1] * BAKE_Y / BAKE_PERIOD);
+            same += memcmp(BakedAt(x, y, z), &curls[3 * i], 3 * sizeof(float)) == 0 ? 1 : 0;
+        }
+        compared += count;
     }
     // Within along X 12 of 16 points, along Y 6 of 8, along Z 9 of 12.
-    CHECK(compared == 12 * 6 * 9 && same == compared, "the unbounded curl's bits within");
+    CHECK(compared == 12 * 6 * 9 && same == compared, "the turbulence's curl's bits within");
     TestBakeSeam();
     TestBakeRefusals(&noise, size);
 }
 
+// A noise's bake of 8 points along each axis over a period of 4 cells.
+static void Bake(const mvfxNoise* noise, float* out)
+{
+    const int32_t size[3] = {8, 8, 8};
+    CHECK(mvfxBakeCurlNoise(noise, 4, size, out, 3 * 512) == mvfx_success, "baked");
+}
+
+static void TestOctavesAndSeeds(void)
+{
+    static float a[3 * 512];
+    static float b[3 * 512];
+    // A gain of 0 leaves the first octave alone.
+    mvfxNoise one = s_noise;
+    one.octaves = 1;
+    mvfxNoise silent = s_noise;
+    silent.gain = 0.0f;
+    Bake(&one, a);
+    Bake(&silent, b);
+    CHECK(memcmp(a, b, sizeof a) == 0, "gain 0 is one octave");
+    Bake(&s_noise, b);
+    CHECK(memcmp(a, b, sizeof a) != 0, "more octaves add detail");
+    float largest = 0.0f;
+    for (int32_t i = 0; i < 3 * 512; ++i)
+    {
+        largest = fmaxf(largest, fabsf(b[i]));
+    }
+    CHECK(largest > 0.5f && isfinite(largest), "not flat");
+    mvfxNoise seeded = s_noise;
+    seeded.seed = 1u;
+    Bake(&seeded, a);
+    seeded.seed = 2u;
+    Bake(&seeded, b);
+    CHECK(memcmp(a, b, sizeof a) != 0, "seeds differ");
+}
+
+// The root mean square of a curl's change along X over h, from its values
+// at count pairs of places, the second of each h past the first.
+static double Steepness(const float* curls, int32_t count, double h)
+{
+    double sum = 0.0;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        for (int32_t c = 0; c < 3; ++c)
+        {
+            double d = ((double)curls[3 * (2 * i + 1) + c] - (double)curls[3 * (2 * i) + c]) / h;
+            sum += d * d;
+        }
+    }
+    return sqrt(sum / (3.0 * count));
+}
+
+static void TestOctaveFrequencies(void)
+{
+    // The second octave alone, two octaves at gain 1 less the first, at
+    // pairs of places h apart along X spread over [-8, 8)^3: at a
+    // lacunarity of 3 it changes three times as fast as the first, and at
+    // 2 it is not the first again at twice the place.
+    enum
+    {
+        PAIRS = 256
+    };
+    const double h = 0x1p-8;
+    static double places[PAIRS * 2 * 3];
+    static double twice[PAIRS * 2 * 3];
+    for (int32_t i = 0; i < PAIRS; ++i)
+    {
+        double* p = &places[6 * i];
+        p[0] = floor((fmod(0.7548776662466927 * (i + 1), 1.0) * 16.0 - 8.0) * 256.0) / 256.0;
+        p[1] = floor((fmod(0.5698402909980532 * (i + 1), 1.0) * 16.0 - 8.0) * 256.0) / 256.0;
+        p[2] = floor((fmod(0.3141592653589793 * (i + 1) + 0.25, 1.0) * 16.0 - 8.0) * 256.0) / 256.0;
+        p[3] = p[0] + h;
+        p[4] = p[1];
+        p[5] = p[2];
+    }
+    for (int32_t i = 0; i < PAIRS * 2 * 3; ++i)
+    {
+        twice[i] = 2.0 * places[i];
+    }
+    static float first[PAIRS * 2 * 3];
+    static float both[PAIRS * 2 * 3];
+    static float second[PAIRS * 2 * 3];
+    mvfxNoise one = s_noise;
+    one.frequency = 1.0f;
+    one.octaves = 1;
+    mvfxNoise two = one;
+    two.octaves = 2;
+    two.gain = 1.0f;
+    two.lacunarity = 3.0f;
+    Curls(&one, s_zero, 0.0, places, 2 * PAIRS, first);
+    Curls(&two, s_zero, 0.0, places, 2 * PAIRS, both);
+    for (int32_t i = 0; i < PAIRS * 2 * 3; ++i)
+    {
+        second[i] = both[i] - first[i];
+    }
+    double ratio = Steepness(second, PAIRS, h) / Steepness(first, PAIRS, h);
+    CHECK(ratio >= 2.4 && ratio <= 3.6, "each octave lacunarity times the last's frequency");
+
+    two.lacunarity = 2.0f;
+    static float doubled[PAIRS * 2 * 3];
+    Curls(&two, s_zero, 0.0, places, 2 * PAIRS, both);
+    Curls(&one, s_zero, 0.0, twice, 2 * PAIRS, doubled);
+    float apart = 0.0f;
+    for (int32_t i = 0; i < PAIRS * 2 * 3; ++i)
+    {
+        apart = fmaxf(apart, fabsf(both[i] - first[i] - doubled[i]));
+    }
+    CHECK(apart > 0.1f, "each octave its own noise, not the first again");
+}
+
+static bool Near(const float* a, const float* b, float tolerance)
+{
+    return fabsf(a[0] - b[0]) <= tolerance && fabsf(a[1] - b[1]) <= tolerance &&
+           fabsf(a[2] - b[2]) <= tolerance;
+}
+
+static void TestScroll(void)
+{
+    // The field scrolls: at time t it is at p what it was at p + scroll t.
+    mvfxNoise scrolled = s_noise;
+    scrolled.scroll[0] = 2.0f;
+    scrolled.scroll[2] = -0.5f;
+    static const double p[3] = {1.25, -3.5, 0.375};
+    static const double moved[3] = {1.25 + 2.0 * 1.5, -3.5, 0.375 - 0.5 * 1.5};
+    float a[3];
+    float b[3];
+    Curls(&scrolled, s_zero, 1.5, p, 1, a);
+    Curls(&s_noise, s_zero, 0.0, moved, 1, b);
+    CHECK(Near(a, b, 1e-6f), "scrolled over time");
+}
+
+static void TestWrapAndFar(void)
+{
+    // The lattice wraps every 2^32 cells: at frequency 1, places 2^32 apart
+    // along X and Y and 2^33 along Z give the same bits, each in an
+    // instance at its whole cell, so the fraction is held exactly.
+    mvfxNoise unit = s_noise;
+    unit.frequency = 1.0f;
+    static const double far[3] = {4294967296.0, -4294967296.0, 8589934592.0};
+    static const double near[3] = {0.25, 0.75, 0.125};
+    const double out[3] = {far[0] + near[0], far[1] + near[1], far[2] + near[2]};
+    float a[3];
+    float b[3];
+    Curls(&unit, s_zero, 0.0, near, 1, a);
+    Curls(&unit, far, 0.0, out, 1, b);
+    CHECK(memcmp(a, b, sizeof a) == 0, "periodic over 2^32 cells");
+    // A place 2^52 out at the highest frequency, past 2^64 cells.
+    mvfxNoise fast = s_noise;
+    fast.frequency = MVFX_MAX_FREQUENCY;
+    static const double huge[3] = {0x1p52, -0x1p52, 0x1p51};
+    Curls(&fast, huge, 0.0, huge, 1, a);
+    CHECK(isfinite(a[0]) && isfinite(a[1]) && isfinite(a[2]) &&
+              (a[0] != 0.0f || a[1] != 0.0f || a[2] != 0.0f),
+          "finite far out");
+}
+
+static void TestContinuousAndDivergenceFree(void)
+{
+    // Across a cell's face at frequency 1: the curl agrees on both sides.
+    mvfxNoise unit = s_noise;
+    unit.frequency = 1.0f;
+    unit.octaves = 1;
+    static const double face[6] = {2.0 - 0x1p-22, 0.3125, 0.625, 2.0, 0.3125, 0.625};
+    float sides[6];
+    Curls(&unit, s_zero, 0.0, face, 2, sides);
+    CHECK(Near(sides, sides + 3, 1e-4f), "continuous across a cell's face");
+
+    // Central differences of the curl, a step of 2^-10 each way along each
+    // axis, at 200 places on a grid of 2^-8 in [-8, 8)^3: the divergence
+    // near 0, against a curl not flat.
+    enum
+    {
+        PLACES = 200
+    };
+    const double h = 0x1p-10;
+    static double around[PLACES * 6 * 3];
+    static float curls[PLACES * 6 * 3];
+    for (int32_t i = 0; i < PLACES; ++i)
+    {
+        double p[3] = {
+            floor((fmod(0.7548776662466927 * (i + 1), 1.0) * 16.0 - 8.0) * 256.0) / 256.0,
+            floor((fmod(0.5698402909980532 * (i + 1), 1.0) * 16.0 - 8.0) * 256.0) / 256.0,
+            floor((fmod(0.3141592653589793 * (i + 1) + 0.25, 1.0) * 16.0 - 8.0) * 256.0) / 256.0};
+        for (int32_t a = 0; a < 3; ++a)
+        {
+            for (int32_t side = 0; side < 2; ++side)
+            {
+                double* q = &around[3 * (6 * i + 2 * a + side)];
+                memcpy(q, p, sizeof p);
+                q[a] += side == 0 ? h : -h;
+            }
+        }
+    }
+    Curls(&s_noise, s_zero, 0.0, around, PLACES * 6, curls);
+    double worst = 0.0;
+    double largest = 0.0;
+    for (int32_t i = 0; i < PLACES; ++i)
+    {
+        double divergence = 0.0;
+        for (int32_t a = 0; a < 3; ++a)
+        {
+            const float* plus = &curls[3 * (6 * i + 2 * a)];
+            const float* minus = plus + 3;
+            divergence += ((double)plus[a] - (double)minus[a]) / (2.0 * h);
+            largest = fmax(largest, fabs((double)plus[a]));
+        }
+        worst = fmax(worst, fabs(divergence));
+    }
+    CHECK(worst <= 2e-2 && largest > 0.5, "without divergence, and not flat");
+}
+
 int main(void)
 {
-    TestLatticeAndRange();
-    TestGradients();
-    TestCurl();
-    TestOctavesScrollAndWrap();
     TestBake();
+    TestOctavesAndSeeds();
+    TestOctaveFrequencies();
+    TestScroll();
+    TestWrapAndFar();
+    TestContinuousAndDivergenceFree();
     return s_failures == 0 ? 0 : 1;
 }
