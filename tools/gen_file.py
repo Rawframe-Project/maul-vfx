@@ -876,7 +876,8 @@ def layout_header(typedefs, structs, order, tags):
     for name in order:
         rows = []
         if name in COOKIES:
-            rows.append((0, f'{{0, "cookie", offsetof({name}, cookie), sizeof(uint32_t), '
+            rows.append((0, f'{{0, "cookie", offsetof({name}, cookie), '
+                            f'sizeof((({name}*)0)->cookie), '
                             f'fileFieldCookie, NULL, 0, 1, 0}}'))
         for kind, field, dims, pointer, wire in stored(typedefs, structs, name):
             tag = tags[name][field]
@@ -890,7 +891,7 @@ def layout_header(typedefs, structs, order, tags):
                 count, _, per = ARRAYS[(name, field)]
                 nested = (f"&{layout_name(kind)}" if scalar(typedefs, kind) is None else "NULL")
                 rows.append((tag, f'{{{tag}, "{field}", {at}, {size}, fileFieldArray, {nested}, '
-                                  f'sizeof({kind}), {per}, offsetof({name}, {count})}}'))
+                                  f'sizeof(*(({name}*)0)->{field}), {per}, offsetof({name}, {count})}}'))
                 continue
             if scalar(typedefs, kind) is not None:
                 what, nested = "fileFieldScalar", "NULL"
