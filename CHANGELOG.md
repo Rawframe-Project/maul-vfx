@@ -221,8 +221,8 @@ API takes the family's names, types and results throughout.
   component past it. Results change only for particles past the bound
   off an axis
   ([#135](https://github.com/Rawframe-Project/maul-vfx/pull/135)).
-- `mvfxSinCos` reduces an argument past 2^24 exactly, where it gave
-  sin 0 and cos 1: a body turning more than 2^24 radians in half a
+- The core's sine and cosine reduce an argument past 2^24 exactly,
+  where they gave sin 0 and cos 1: a body turning more than 2^24 radians in half a
   substep never turned. Results up to 2^24 are unchanged
   ([#133](https://github.com/Rawframe-Project/maul-vfx/pull/133)).
 - Units stay finite where a squared length passes binary32's range:
@@ -231,8 +231,8 @@ API takes the family's names, types and results throughout.
   went NaN, infinite or zero. Values within range keep their bits
   ([#146](https://github.com/Rawframe-Project/maul-vfx/pull/146)).
 - **Breaking: a short vector is measured scaled up**, so no square
-  flushes on a device that flushes subnormals. `mvfxLengthOf`, and every
-  length the core measures, changes its bits only for a vector whose
+  flushes on a device that flushes subnormals. Every length the core
+  measures changes its bits only for a vector whose
   largest component is below 2^-38 and some of whose squares were
   subnormal
   ([#159](https://github.com/Rawframe-Project/maul-vfx/pull/159)).
