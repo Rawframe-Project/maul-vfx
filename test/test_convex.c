@@ -7,7 +7,8 @@
 // sinking into them by more than 2e-5 and touching them at the end; a
 // cube's hull dropped on its edge, a ball's hull, and both scaled
 // unevenly, falling onto a box collider, never under its top by more than
-// 2e-5 and resting on it.
+// 2e-5 and resting on it; a tetrahedron inside a sphere, found nearest it
+// across a triangle's edge, pushed out in one step.
 
 #include "particles.h"
 #include "test_harness.h"
@@ -181,26 +182,30 @@ static double Gap(const mvfxEmitterView* view, const TestParticle* body,
     return sqrt(nearest) - (double)collider->radius;
 }
 
-// A hull of points, sized and turned, dropped from 0.6 onto a collider with
-// gravity and stepped 5 s: whether it never sank more than GAP into it and
-// ended within GAP of it.
-static bool Drops(const float* points, int32_t count, const float size[3], const float turn[3],
-                  const mvfxCollider* collider)
+static mvfxContext* s_context;
+static mvfxInstanceId s_instance;
+static mvfxEmitterView s_view;
+
+// A context of its own, a hull of points sized and turned, as one rigid
+// body at place, still, meeting a collider with or without gravity; the
+// hull's center in mesh coordinates in center when it is not NULL. The
+// context stays open for the caller to step and destroy.
+static void Play(const float* points, int32_t count, const float size[3], const float turn[3],
+                 const mvfxCollider* collider, bool gravity, const double place[3])
 {
-    mvfxContext* context = NULL;
     mvfxContextDef contextDef = mvfxDefaultContextDef();
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
     mvfxMeshDef meshDef = mvfxDefaultMeshDef();
     meshDef.positions = points;
     meshDef.vertexCount = count;
     mvfxMeshId mesh = {0};
-    CHECK(mvfxCreateMesh(context, &meshDef, &mesh) == mvfx_success, "mesh");
+    CHECK(mvfxCreateMesh(s_context, &meshDef, &mesh) == mvfx_success, "mesh");
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
     emitter.rate = 0.0f;
     emitter.capacity = 1;
     emitter.hostSpawnCapacity = 1;
     emitter.lifetime = mvfxMakeRangeSource(1000.0f, 1000.0f);
-    emitter.motion.gravity[1] = -9.81f;
+    emitter.motion.gravity[1] = gravity ? -9.81f : 0.0f;
     emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange,
                                       .min = {size[0], size[1], size[2]},
                                       .max = {size[0], size[1], size[2]}};
@@ -222,28 +227,41 @@ static bool Drops(const float* points, int32_t count, const float size[3], const
     def.emitters = &emitter;
     def.emitterCount = 1;
     mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
-    mvfxEmitterView view;
-    CHECK(mvfxEffect_GetEmitterView(context, effect, 0, &view) == mvfx_success, "view");
+    CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
+    CHECK(mvfxEffect_GetEmitterView(s_context, effect, 0, &s_view) == mvfx_success, "view");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
     instanceDef.effect = effect;
-    mvfxInstanceId instance = {0};
-    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
-    const double place[3] = {0.0, 0.6, 0.0};
+    CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
     const float still[3] = {0.0f, 0.0f, 0.0f};
     mvfxSpawnRequest request = {.count = 1, .positions = place, .velocities = still};
-    CHECK(mvfxInstance_Spawn(context, instance, 0, &request) == mvfx_success, "spawned");
+    CHECK(mvfxInstance_Spawn(s_context, s_instance, 0, &request) == mvfx_success, "spawned");
+}
+
+// The body's gap from the collider after a step of 1/60 s.
+static double StepGap(const mvfxCollider* collider)
+{
+    CHECK(mvfxContext_StepTicks(s_context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success, "step");
+    TestParticle body;
+    CHECK(ReadParticles(s_context, s_instance, 0, &body, 1) == 1, "a body");
+    return Gap(&s_view, &body, collider);
+}
+
+// A hull of points, sized and turned, dropped from 0.6 onto a collider with
+// gravity and stepped 5 s: whether it never sank more than GAP into it and
+// ended within GAP of it.
+static bool Drops(const float* points, int32_t count, const float size[3], const float turn[3],
+                  const mvfxCollider* collider)
+{
+    static const double place[3] = {0.0, 0.6, 0.0};
+    Play(points, count, size, turn, collider, true, place);
     double deepest = 0.0;
     double gap = (double)INFINITY;
     for (int32_t i = 0; i < 300; ++i)
     {
-        CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success, "step");
-        TestParticle body;
-        CHECK(ReadParticles(context, instance, 0, &body, 1) == 1, "a body");
-        gap = Gap(&view, &body, collider);
+        gap = StepGap(collider);
         deepest = fmin(deepest, gap);
     }
-    mvfxDestroyContext(context);
+    mvfxDestroyContext(s_context);
     return deepest >= -GAP && fabs(gap) <= GAP;
 }
 
@@ -283,10 +301,49 @@ static void TestOnATable(void)
     CHECK(held, "on a table by its top");
 }
 
+static void TestThroughAnEdge(void)
+{
+    // A tetrahedron A B C E 0.106 inside a sphere of radius 1, unturned,
+    // without gravity: its face A B C is nearest the center, at a point of
+    // its edge A C 0.894 away. Pushed out in one step. A nearest-point
+    // search that took edge A B for A C found it farther than the radius
+    // and left it inside.
+    static const float points[12] = {-2.0f, 2.0f, 0.0f, 2.2f, 1.5f,  0.0f,
+                                     1.0f,  0.5f, 0.0f, 0.4f, 1.33f, 3.0f};
+    static const mvfxCollider sphere = {
+        .kind = mvfx_colliderSphere, .center = {0.0f, 0.0f, 0.0f}, .radius = 1.0f};
+    static const float unit[3] = {1.0f, 1.0f, 1.0f};
+    static const float square[3] = {0.0f, 0.0f, 0.0f};
+    // The body's place, the hull's center: its points where the mesh has
+    // them.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = points;
+    meshDef.vertexCount = 4;
+    mvfxMeshId mesh = {0};
+    CHECK(mvfxCreateMesh(context, &meshDef, &mesh) == mvfx_success, "mesh");
+    bool hull = false;
+    float center[3] = {0.0f, 0.0f, 0.0f};
+    CHECK(mvfxMesh_GetHullCenter(context, mesh, &hull, center) == mvfx_success && hull, "center");
+    mvfxDestroyContext(context);
+    const double place[3] = {(double)center[0], (double)center[1], (double)center[2]};
+    Play(points, 4, unit, square, &sphere, false, place);
+    const TestParticle start = {.position = {center[0], center[1], center[2]},
+                                .size = {1.0f, 1.0f, 1.0f},
+                                .orientation = {0.0f, 0.0f, 0.0f, 1.0f}};
+    const double inside = Gap(&s_view, &start, &sphere);
+    const double out = StepGap(&sphere);
+    mvfxDestroyContext(s_context);
+    CHECK(fabs(inside + 0.1056) <= 1e-3 && out >= -GAP, "pushed out across a triangle's edge");
+}
+
 int main(void)
 {
     MakeBall();
     TestOnSpheres();
     TestOnATable();
+    TestThroughAnEdge();
     return s_failures == 0 ? 0 : 1;
 }
