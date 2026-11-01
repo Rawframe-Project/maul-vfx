@@ -176,7 +176,7 @@ API takes the family's names, types and results throughout.
   and the GPU part took a sphere of size {1e-20, 1e6, 1e6} as a point.
   An effect, effect file or spawn request that sets them unlike X is
   refused with `mvfx_errorInvalid`, a host module that writes such a
-  size has its particle killed (counted in `valuesKilled`), and a drawn,
+  size has its particle killed (counted in `valueKillCount`), and a drawn,
   a parameter's or an inherited size takes X's value there. The golden
   hashes change
   ([#109](https://github.com/Rawframe-Project/maul-vfx/pull/109)).
@@ -200,9 +200,9 @@ API takes the family's names, types and results throughout.
   validator accepts. A body is solved in its own units, a pair in the
   lighter body's, and a needle's inverse inertia is held at 2^40 in its
   units. In local probes of the cases the validator accepts, 90 of 396
-  bodies went non-finite and 69 more lost their spin, and 48 of 504
-  needles went non-finite; now all of them stay finite and keep their
-  spin, and with the new flow above no needle stops turning. Results
+  bodies went non-finite and 69 more lost their spin, and at least 54
+  of 504 needles went non-finite; now all of them stay finite and keep
+  their spin, and with the new flow above no needle stops turning. Results
   within binary32's normal range are the same bits, except for needles
   thinner than about a millionth of their length
   ([#106](https://github.com/Rawframe-Project/maul-vfx/pull/106),
