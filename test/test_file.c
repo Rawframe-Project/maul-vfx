@@ -12,8 +12,7 @@
 // runs the whole scene through files, and test_file_padding writes each
 // of its effects whatever their structs' padding holds.
 
-#include "file_codec.h"
-#include "file_fields.h"
+#include "file_layout.h"
 #include "test_harness.h"
 
 #include "maul-vfx/file.h"
@@ -157,42 +156,42 @@ static bool SameBytesAgain(const uint8_t* bytes, int64_t size, mvfxEffectDef* re
            rewritten == size && memcmp(bytes, again, (size_t)size) == 0;
 }
 
-// The field of a table at an offset of its struct, its cookie aside.
-static const mvfxFileField* FieldOf(const mvfxFileType* type, size_t offset)
+// The field of a layout at an offset of its struct, its cookie aside.
+static const FileLayoutField* FieldOf(const FileLayout* type, size_t offset)
 {
     for (int32_t i = 0; i < type->fieldCount; ++i)
     {
-        if (type->fields[i].offset == offset && type->fields[i].kind != mvfx_fieldCookie)
+        if (type->fields[i].offset == offset && type->fields[i].kind != fileFieldCookie)
         {
             return &type->fields[i];
         }
     }
-    CHECK(false, "a field of the table");
+    CHECK(false, "a field of the layout");
     return &type->fields[0];
 }
 
-static uint32_t TagOf(const mvfxFileType* type, size_t offset)
+static uint32_t TagOf(const FileLayout* type, size_t offset)
 {
     return FieldOf(type, offset)->tag;
 }
 
-static const mvfxFileType* TypeOf(const mvfxFileType* type, size_t offset)
+static const FileLayout* TypeOf(const FileLayout* type, size_t offset)
 {
     return FieldOf(type, offset)->type;
 }
 
-// The tag past a table's last, which only a later version would write.
-static uint32_t LaterTag(const mvfxFileType* type)
+// The tag past a layout's last, which only a later version would write.
+static uint32_t LaterTag(const FileLayout* type)
 {
     return type->fields[type->fieldCount - 1].tag + 1;
 }
 
-static const mvfxFileType* EmitterType(void)
+static const FileLayout* EmitterType(void)
 {
-    return TypeOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters));
+    return TypeOf(&s_layoutEffectDef, offsetof(mvfxEffectDef, emitters));
 }
 
-static const mvfxFileType* ColliderType(void)
+static const FileLayout* ColliderType(void)
 {
     return TypeOf(EmitterType(), offsetof(mvfxEmitterDef, colliders));
 }
@@ -279,7 +278,7 @@ static Span Emitter(const uint8_t* bytes)
 {
     return Item(
         bytes,
-        Head(bytes, EffectOf(bytes), TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters))),
+        Head(bytes, EffectOf(bytes), TagOf(&s_layoutEffectDef, offsetof(mvfxEffectDef, emitters))),
         0);
 }
 
@@ -300,18 +299,18 @@ static int64_t EmitterPayload(const uint8_t* bytes, size_t offset)
 // The head of the list of an emitter's three size curves.
 static int64_t SizeCurves(const uint8_t* bytes)
 {
-    const mvfxFileType* overLife = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, overLife));
-    const mvfxFileType* size = TypeOf(overLife, offsetof(mvfxOverLife, size));
+    const FileLayout* overLife = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, overLife));
+    const FileLayout* size = TypeOf(overLife, offsetof(mvfxOverLife, size));
     Span span = Nested(bytes, EmitterPayload(bytes, offsetof(mvfxEmitterDef, overLife)) - 8);
     span = Nested(bytes, Head(bytes, span, TagOf(overLife, offsetof(mvfxOverLife, size))));
     return Head(bytes, span, TagOf(size, offsetof(mvfxSizeOverLife, size)));
 }
 
-// The table of the size curves' items.
-static const mvfxFileType* CurveType(void)
+// The layout of the size curves' items.
+static const FileLayout* CurveType(void)
 {
-    const mvfxFileType* overLife = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, overLife));
-    const mvfxFileType* size = TypeOf(overLife, offsetof(mvfxOverLife, size));
+    const FileLayout* overLife = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, overLife));
+    const FileLayout* size = TypeOf(overLife, offsetof(mvfxOverLife, size));
     return TypeOf(size, offsetof(mvfxSizeOverLife, size));
 }
 
@@ -544,7 +543,7 @@ static void TestDefaults(void)
               mvfx_success,
           "a default emitter written");
     Span span = EffectOf(bytes);
-    int64_t head = Head(bytes, span, TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters)));
+    int64_t head = Head(bytes, span, TagOf(&s_layoutEffectDef, offsetof(mvfxEffectDef, emitters)));
     CHECK(size == 64 && Get32(bytes, 12) == 1 && span.at == 40 && span.end - span.at == 24 &&
               Get32(bytes, head + 4) == 16 && Get32(bytes, head + 8) == 1 &&
               Get32(bytes, head + 16) == 0,
@@ -569,7 +568,7 @@ static void TestDefaults(void)
     CHECK(mvfxWriteEffect(&effect, s_assets, 4, bytes, sizeof bytes, &size, NULL).result ==
               mvfx_success,
           "a radius written");
-    const mvfxFileType* shape = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, shape));
+    const FileLayout* shape = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, shape));
     Span item = Emitter(bytes);
     int64_t shapeHead = Head(bytes, item, TagOf(EmitterType(), offsetof(mvfxEmitterDef, shape)));
     Span fields = Nested(bytes, shapeHead);
@@ -740,9 +739,9 @@ static void TestNames(void)
     Expect(bytes, size, 64, 1, mvfx_errorFormat, 76, "bytes left in a section");
     // Three counted: the next name's length runs out of the section.
     Expect(bytes, size, 64, 3, mvfx_errorFormat, 86, "a name past its section's end");
-    Expect(bytes, size, 64, MVFX_FILE_MAX_GRIDS + 1, mvfx_errorFormat, 64,
+    Expect(bytes, size, 64, FILE_LAYOUT_MAX_GRIDS + 1, mvfx_errorFormat, 64,
            "more grid names than a def refers to");
-    Expect(bytes, size, 88, MVFX_FILE_MAX_MODULES + 1, mvfx_errorFormat, 88, "more module names");
+    Expect(bytes, size, 88, FILE_LAYOUT_MAX_MODULES + 1, mvfx_errorFormat, 88, "more module names");
     // The grid names' section taking its padding: two bytes after the names.
     Expect(bytes, size, 32, 24, mvfx_errorFormat, 86, "a section's bytes left over");
     // A grid names section of 2 bytes, too short for its count, before an
@@ -776,7 +775,7 @@ static void TestFields(void)
     CHECK(SameBytesAgain(bytes, size, &read), "the def read");
     Span effect = EffectOf(bytes);
     int64_t emitters =
-        Head(bytes, effect, TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters)));
+        Head(bytes, effect, TagOf(&s_layoutEffectDef, offsetof(mvfxEffectDef, emitters)));
     int64_t listEnd = emitters + 8 + Get32(bytes, emitters + 4);
     Expect(bytes, size, emitters + 8, (uint32_t)-1, mvfx_errorFormat, emitters + 8,
            "a count below 0");
@@ -828,10 +827,10 @@ static void TestLaterFields(void)
     int64_t size = Write(&def, bytes);
     Span effect = EffectOf(bytes);
     int64_t emitters =
-        Head(bytes, effect, TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters)));
+        Head(bytes, effect, TagOf(&s_layoutEffectDef, offsetof(mvfxEffectDef, emitters)));
     CHECK(Padded(emitters + 8 + Get32(bytes, emitters + 4)) == effect.end,
           "the effect's last field");
-    Expect(bytes, size, emitters, LaterTag(mvfxFileEffectDef), mvfx_errorVersion, emitters,
+    Expect(bytes, size, emitters, LaterTag(&s_layoutEffectDef), mvfx_errorVersion, emitters,
            "a later field of the effect");
     // The emitter's last field: its colliders, modules and shape come first.
     Span fields = Emitter(bytes);
@@ -842,7 +841,7 @@ static void TestLaterFields(void)
     }
     Expect(bytes, size, last, LaterTag(EmitterType()), mvfx_errorVersion, last,
            "a later field of an emitter");
-    const mvfxFileType* shape = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, shape));
+    const FileLayout* shape = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, shape));
     int64_t radius = EmitterPayload(bytes, offsetof(mvfxEmitterDef, shape));
     Expect(bytes, size, radius, LaterTag(shape), mvfx_errorVersion, radius,
            "a later field of a nested struct");
@@ -1034,7 +1033,7 @@ static void TestParts(void)
         .enable = true, .distance = 0.5f, .maxLinks = 1, .maxPerParticle = 1, .width = 0.01f};
     _Alignas(16) uint8_t bytes[4096];
     int64_t size = Write(&def, bytes);
-    const mvfxFileType* plexus = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, plexus));
+    const FileLayout* plexus = TypeOf(EmitterType(), offsetof(mvfxEmitterDef, plexus));
     int64_t links =
         Head(bytes, Nested(bytes, EmitterPayload(bytes, offsetof(mvfxEmitterDef, plexus)) - 8),
              TagOf(plexus, offsetof(mvfxPlexusDef, maxLinks))) +
@@ -1142,7 +1141,7 @@ static void TestRefusedFields(void)
               refusal.result == mvfx_success && refusal.tagCount == 0,
           "the spawning effect written");
     int64_t list =
-        Head(bytes, EffectOf(bytes), TagOf(mvfxFileEffectDef, offsetof(mvfxEffectDef, emitters)));
+        Head(bytes, EffectOf(bytes), TagOf(&s_layoutEffectDef, offsetof(mvfxEffectDef, emitters)));
     int64_t events =
         Head(bytes, Item(bytes, list, 0), TagOf(EmitterType(), offsetof(mvfxEmitterDef, events)));
     int64_t spawn = Head(bytes, Item(bytes, list, 1),
@@ -1176,11 +1175,12 @@ static void TestMemory(void)
               (int64_t)(sizeof(mvfxEmitterDef) + 2 * sizeof(mvfxCollider) + sizeof(mvfxHostModule)),
           "the arrays' bytes");
     int64_t again = 0;
+    memset(s_memory, 0xAB, sizeof s_memory);
     CHECK(
         Refused(mvfxReadEffect(bytes, size, s_assets, 4, s_memory, needed - 1, &again, &read, NULL),
                 mvfx_errorCapacity, -1) &&
-            again == needed,
-        "a byte short");
+            again == needed && Filled(s_memory, sizeof s_memory, 0xAB),
+        "a byte short, nothing laid");
     memset(s_memory, 0xAB, sizeof s_memory);
     CHECK(Refused(mvfxReadEffect(bytes, size, s_assets, 4, s_memory, needed, &again, &read, NULL),
                   mvfx_success, -1) &&
@@ -1217,36 +1217,6 @@ static void TestMemory(void)
                   mvfxReadEffect(both, size, s_assets, 4, both + end, needed, &again, &read, NULL),
                   mvfx_success, -1),
           "memory overlapping the bytes refused");
-}
-
-// A walk given less memory than it lays, as when the bytes change between
-// a read's measuring walk and its reading walk: refused, never laid past.
-static void TestMemoryGuard(void)
-{
-    Def def;
-    MakeDef(&def);
-    def.emitter.colliderCount = 0;
-    def.emitter.hostModuleCount = 0;
-    _Alignas(16) uint8_t bytes[4096];
-    int64_t size = Write(&def, bytes);
-    int64_t needed = 0;
-    mvfxEffectDef read;
-    CHECK(mvfxReadEffect(bytes, size, s_assets, 4, NULL, 0, &needed, &read, NULL).result ==
-              mvfx_errorCapacity,
-          "measured");
-    memset(s_memory, 0xAB, sizeof s_memory);
-    Span effect = EffectOf(bytes);
-    mvfxCodec codec = {.in = bytes,
-                       .at = (size_t)effect.at,
-                       .end = (size_t)effect.end,
-                       .defaults = mvfxFileDefaults,
-                       .memory = s_memory,
-                       .capacity = (size_t)needed - 1,
-                       .faultAt = -1};
-    mvfxEffectDef def2 = {0};
-    mvfxReadFields(&codec, mvfxFileEffectDef, (uint8_t*)&def2, (size_t)effect.end);
-    CHECK(codec.fault == mvfx_errorCapacity && s_memory[needed - 1] == 0xAB,
-          "nothing laid past the memory");
 }
 
 // Allocations of a test allocator, failing when told to.
@@ -1538,7 +1508,6 @@ int main(void)
     TestParts();
     TestRefusedFields();
     TestMemory();
-    TestMemoryGuard();
     TestCreate();
     TestUntrustedAssets();
     TestArgumentMisuse();
