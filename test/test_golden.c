@@ -14,7 +14,7 @@
 // Before every include: the C library's fopen without MSVC's warning.
 #define _CRT_SECURE_NO_WARNINGS
 
-#include "vfx_scene.h"
+#include "vfx_scene_run.h"
 
 #include <inttypes.h>
 #include <stdio.h>

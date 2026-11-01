@@ -7,7 +7,7 @@
 // step (docs/internals/determinism.md).
 // ThreadSanitizer runs it in CI.
 
-#include "vfx_scene.h"
+#include "vfx_scene_run.h"
 
 #include <pthread.h>
 #include <stdatomic.h>

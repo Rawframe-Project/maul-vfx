@@ -7,7 +7,7 @@
 // likewise, gives the same bytes as the def itself. A suite of its own, as
 // the scene's frame and the file test's together pass WebAssembly's stack.
 
-#include "file_fields.h"
+#include "file_layout.h"
 #include "test_harness.h"
 #include "vfx_scene.h"
 
@@ -15,10 +15,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-
-// The bytes of a scalar field of each kind, as the file's table names
-// them.
-static const size_t s_scalarBytes[mvfx_fieldF64 + 1] = {1, 1, 1, 2, 2, 4, 4, 8, 8, 4, 8};
 
 // Storage for the copies of a def, each struct and array filled with a
 // byte before its fields are set.
@@ -38,67 +34,58 @@ static uint8_t* Patterned(size_t bytes, size_t alignment, uint8_t pattern)
     return s_patterned + at;
 }
 
-// Sets the fields of a struct of a table, one by one from another, its
+// Sets the fields of a struct of a layout, one by one from another, its
 // arrays copied likewise into patterned storage: the bytes between and
 // after the fields keep the pattern.
-static void SetFields(const mvfxFileType* type, const uint8_t* from, uint8_t* to, uint8_t pattern)
+static void SetFields(const FileLayout* type, const uint8_t* from, uint8_t* to, uint8_t pattern)
 {
     for (int32_t i = 0; i < type->fieldCount; ++i)
     {
-        const mvfxFileField* f = &type->fields[i];
+        const FileLayoutField* f = &type->fields[i];
         const uint8_t* source = from + f->offset;
         uint8_t* target = to + f->offset;
         switch (f->kind)
         {
-        case mvfx_fieldStruct:
-            for (uint32_t k = 0; k < f->count; ++k)
+        case fileFieldStruct:
+            for (size_t k = 0; k < f->size / f->type->size; ++k)
             {
-                SetFields(f->type, source + (size_t)k * f->type->size,
-                          target + (size_t)k * f->type->size, pattern);
+                SetFields(f->type, source + k * f->type->size, target + k * f->type->size, pattern);
             }
             break;
-        case mvfx_fieldArray:
+        case fileFieldArray:
         {
             int32_t count = 0;
             memcpy(&count, from + f->at, sizeof count);
             memcpy(to + f->at, &count, sizeof count);
             const uint8_t* items = NULL;
             memcpy((void*)&items, source, sizeof items);
-            bool scalar = f->element != mvfx_fieldStruct;
-            size_t size = scalar ? s_scalarBytes[f->element] : f->type->size;
-            size_t n = count > 0 ? (size_t)count * f->count : 0;
+            size_t n = count > 0 ? (size_t)count * f->per : 0;
             uint8_t* copy = NULL;
             if (items != NULL && n > 0)
             {
-                copy = Patterned(n * size, scalar ? size : f->type->alignment, pattern);
+                copy = Patterned(n * f->element, f->type == NULL ? f->element : f->type->alignment,
+                                 pattern);
                 for (size_t k = 0; copy != NULL && k < n; ++k)
                 {
-                    if (scalar)
+                    if (f->type == NULL)
                     {
-                        memcpy(copy + k * size, items + k * size, size);
+                        memcpy(copy + k * f->element, items + k * f->element, f->element);
                     }
                     else
                     {
-                        SetFields(f->type, items + k * size, copy + k * size, pattern);
+                        SetFields(f->type, items + k * f->element, copy + k * f->element, pattern);
                     }
                 }
             }
             memcpy(target, (const void*)&copy, sizeof copy);
             break;
         }
-        case mvfx_fieldGrid:
-        case mvfx_fieldMesh:
-            memcpy(target, source, f->count * sizeof(mvfxGridId));
-            break;
-        case mvfx_fieldModule:
-            memcpy(target, source, sizeof(mvfxModuleFunction*));
+        case fileFieldModule:
+            memcpy(target, source, f->size);
             memcpy(to + f->at, from + f->at, sizeof(void*));
             break;
-        case mvfx_fieldCookie:
-            memcpy(target, source, sizeof(uint32_t));
-            break;
         default:
-            memcpy(target, source, s_scalarBytes[f->kind] * f->count);
+            memcpy(target, source, f->size);
             break;
         }
     }
@@ -114,7 +101,7 @@ static uint8_t* WrittenPatterned(const mvfxEffectDef* def, uint8_t pattern, int6
     {
         return NULL;
     }
-    SetFields(mvfxFileEffectDef, (const uint8_t*)def, copy, pattern);
+    SetFields(&s_layoutEffectDef, (const uint8_t*)def, copy, pattern);
     mvfxFileResult measured = mvfxWriteEffect((const mvfxEffectDef*)copy, s_sceneAssets,
                                               s_sceneAssetCount, NULL, 0, size, NULL);
     uint8_t* bytes = malloc((size_t)*size);
