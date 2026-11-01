@@ -1,22 +1,82 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Hulls of point sets: a cube's corners amid inner points and repeats
-// giving eight vertices, six square faces, its volume and moments; a
-// tetrahedron of unequal legs off the origin giving its centroid and its
-// moments by the closed form; points of a ball's hull all inside every
-// face, each face's corners on its plane and in order; a fan of nearly
-// coplanar triangles merged by one plane, its faces sound and its volume
-// exact; a hull of near-degenerate points hashed the same on every
-// platform; hulls of 200 and 500 points counted past the most; points
-// spanning no volume, and a hull of more than the most vertices, refused.
+// Hulls of point sets as a rigid hull particle takes them, read from its
+// emitter's view and its mesh's hull center and count: a cube's corners
+// amid inner points and repeats giving eight vertices, six square faces,
+// its volume and moments; a tetrahedron of unequal legs off the origin
+// giving its centroid and its moments by the closed form; points of a
+// ball's hull all inside every face, each face's corners on its plane and
+// in order; a fan of nearly coplanar triangles merged by one plane, its
+// faces sound and its volume exact; a hull of near-degenerate points
+// hashed the same on every platform; hulls of 200 and 500 points counted
+// past the most; points spanning no volume, and a hull of more than the
+// most vertices, refused.
 
-#include "hull.h"
 #include "test_harness.h"
 
-#include <math.h>
+#include "maul-vfx/context.h"
+#include "maul-vfx/effect.h"
+#include "maul-vfx/mesh.h"
+#include "maul-vfx/plan.h"
 
-static const mvfxAllocator s_allocator = {0};
+#include <math.h>
+#include <string.h>
+
+static mvfxContext* s_context;
+static mvfxMeshId s_mesh;
+static mvfxEmitterView s_view;
+static float s_center[3];
+
+// The hull of count points as a rigid hull particle takes it: a mesh of
+// them in a context of its own, an effect of one rigid hull emitter over
+// it, its emitter's view (the hull at a size of 1 about its centroid) in
+// s_view, the mesh's hull center in s_center. Returns the effect's
+// creation; the context stays open until Close.
+static mvfxResult HullOf(const float* points, int32_t count)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = points;
+    meshDef.vertexCount = count;
+    CHECK(mvfxCreateMesh(s_context, &meshDef, &s_mesh) == mvfx_success, "mesh");
+    bool hull = false;
+    CHECK(mvfxMesh_GetHullCenter(s_context, s_mesh, &hull, s_center) == mvfx_success, "center");
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.capacity = 1;
+    emitter.rigid = (mvfxRigidDef){
+        .enable = true, .shape = mvfx_rigidHull, .density = 1.0f, .substeps = 1, .hull = s_mesh};
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    mvfxResult made = mvfxCreateEffect(s_context, &def, &effect, NULL);
+    memset(&s_view, 0, sizeof s_view);
+    if (made == mvfx_success)
+    {
+        CHECK(mvfxEffect_GetEmitterView(s_context, effect, 0, &s_view) == mvfx_success, "view");
+    }
+    return made;
+}
+
+static void Close(void)
+{
+    mvfxDestroyContext(s_context);
+    s_context = NULL;
+}
+
+// Vertex i and face f's plane of the view's hull.
+static const float* Vertex(int32_t i)
+{
+    return &s_view.hullVertices[3 * i];
+}
+
+static const float* Plane(int32_t f)
+{
+    return &s_view.hullPlanes[4 * f];
+}
 
 static void TestCube(void)
 {
@@ -40,24 +100,24 @@ static void TestCube(void)
         points[3 * n + k] = inner[k];
     }
     n += 2;
-    mvfxHull hull;
-    CHECK(mvfxBuildHull(points, n, &s_allocator, &hull) == mvfx_success, "a box's hull");
-    bool squares = hull.faceCount == 6;
+    CHECK(HullOf(points, n) == mvfx_success, "a box's hull");
+    bool squares = s_view.hullFaceCount == 6;
     for (int32_t f = 0; squares && f < 6; ++f)
     {
-        squares = hull.faceStart[f + 1] - hull.faceStart[f] == 4;
+        squares = s_view.hullFaceStart[f + 1] - s_view.hullFaceStart[f] == 4;
     }
     // Moments of a box about its center: its volume times its side
     // squared over 12, nothing across.
     float volume = 6.0f;
-    CHECK(hull.vertexCount == 8 && squares && fabsf(hull.volume - volume) <= 1e-5f &&
-              fabsf(hull.moments[0] - volume * 4.0f / 12.0f) <= 1e-4f &&
-              fabsf(hull.moments[1] - volume * 1.0f / 12.0f) <= 1e-4f &&
-              fabsf(hull.moments[2] - volume * 9.0f / 12.0f) <= 1e-4f &&
-              fabsf(hull.moments[3]) <= 1e-5f && fabsf(hull.moments[4]) <= 1e-5f &&
-              fabsf(hull.moments[5]) <= 1e-5f && fabsf(hull.centroid[0] - 2.0f) <= 1e-5f &&
-              fabsf(hull.centroid[1] - 2.5f) <= 1e-5f && fabsf(hull.centroid[2] - 4.5f) <= 1e-5f,
+    CHECK(s_view.hullVertexCount == 8 && squares && fabsf(s_view.hullVolume - volume) <= 1e-5f &&
+              fabsf(s_view.hullMoments[0] - volume * 4.0f / 12.0f) <= 1e-4f &&
+              fabsf(s_view.hullMoments[1] - volume * 1.0f / 12.0f) <= 1e-4f &&
+              fabsf(s_view.hullMoments[2] - volume * 9.0f / 12.0f) <= 1e-4f &&
+              fabsf(s_view.hullMoments[3]) <= 1e-5f && fabsf(s_view.hullMoments[4]) <= 1e-5f &&
+              fabsf(s_view.hullMoments[5]) <= 1e-5f && fabsf(s_center[0] - 2.0f) <= 1e-5f &&
+              fabsf(s_center[1] - 2.5f) <= 1e-5f && fabsf(s_center[2] - 4.5f) <= 1e-5f,
           "a box's mass");
+    Close();
 }
 
 static void TestTetrahedron(void)
@@ -67,8 +127,7 @@ static void TestTetrahedron(void)
     // moments V a a 3/80 along each axis and -V a b / 80 across (from the
     // integrals V a a / 10 and V a b / 20 about the corner).
     const float points[12] = {5, -1, 2, 6, -1, 2, 5, 1, 2, 5, -1, 5};
-    mvfxHull hull;
-    CHECK(mvfxBuildHull(points, 4, &s_allocator, &hull) == mvfx_success, "a tetrahedron's hull");
+    CHECK(HullOf(points, 4) == mvfx_success, "a tetrahedron's hull");
     const double legs[3] = {1.0, 2.0, 3.0};
     double v = 1.0;
     static const int32_t rows[3] = {0, 0, 1};
@@ -78,13 +137,15 @@ static void TestTetrahedron(void)
     {
         double along = v * legs[k] * legs[k] * 3.0 / 80.0;
         double across = -v * legs[rows[k]] * legs[columns[k]] / 80.0;
-        moments = moments && fabs((double)hull.moments[k] - along) <= 1e-5 &&
-                  fabs((double)hull.moments[3 + k] - across) <= 1e-5;
+        moments = moments && fabs((double)s_view.hullMoments[k] - along) <= 1e-5 &&
+                  fabs((double)s_view.hullMoments[3 + k] - across) <= 1e-5;
     }
-    CHECK(hull.vertexCount == 4 && hull.faceCount == 4 && fabs((double)hull.volume - v) <= 1e-5 &&
-              moments && fabsf(hull.centroid[0] - 5.25f) <= 1e-5f &&
-              fabsf(hull.centroid[1] + 0.5f) <= 1e-5f && fabsf(hull.centroid[2] - 2.75f) <= 1e-5f,
+    CHECK(s_view.hullVertexCount == 4 && s_view.hullFaceCount == 4 &&
+              fabs((double)s_view.hullVolume - v) <= 1e-5 && moments &&
+              fabsf(s_center[0] - 5.25f) <= 1e-5f && fabsf(s_center[1] + 0.5f) <= 1e-5f &&
+              fabsf(s_center[2] - 2.75f) <= 1e-5f,
           "a tetrahedron's mass");
+    Close();
 }
 
 // A point of a hash in [-1, 1).
@@ -116,30 +177,29 @@ static void TestConvex(void)
             ++n;
         }
     }
-    mvfxHull hull;
-    mvfxResult built = mvfxBuildHull(points, n, &s_allocator, &hull);
+    mvfxResult built = HullOf(points, n);
     CHECK(built == mvfx_success, "a ball's hull");
     bool inside = true;
     bool corners = true;
-    for (int32_t f = 0; f < hull.faceCount; ++f)
+    for (int32_t f = 0; f < s_view.hullFaceCount; ++f)
     {
-        const float* plane = hull.planes[f];
+        const float* plane = Plane(f);
         for (int32_t i = 0; i < n; ++i)
         {
             float d = 0.0f;
             for (int32_t k = 0; k < 3; ++k)
             {
-                d += plane[k] * (points[3 * i + k] - hull.centroid[k]);
+                d += plane[k] * (points[3 * i + k] - s_center[k]);
             }
             inside = inside && d - plane[3] <= 1e-5f;
         }
-        int32_t first = hull.faceStart[f];
-        int32_t count = hull.faceStart[f + 1] - first;
+        int32_t first = s_view.hullFaceStart[f];
+        int32_t count = s_view.hullFaceStart[f + 1] - first;
         for (int32_t j = 0; j < count; ++j)
         {
-            const float* a = hull.vertices[hull.loop[first + j]];
-            const float* b = hull.vertices[hull.loop[first + (j + 1) % count]];
-            const float* c = hull.vertices[hull.loop[first + (j + 2) % count]];
+            const float* a = Vertex(s_view.hullLoop[first + j]);
+            const float* b = Vertex(s_view.hullLoop[first + (j + 1) % count]);
+            const float* c = Vertex(s_view.hullLoop[first + (j + 2) % count]);
             float e1[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
             float e2[3] = {c[0] - b[0], c[1] - b[1], c[2] - b[2]};
             float turn = plane[0] * (e1[1] * e2[2] - e1[2] * e2[1]) +
@@ -150,6 +210,7 @@ static void TestConvex(void)
         }
     }
     CHECK(inside && corners, "a convex hull");
+    Close();
 }
 
 static void TestFan(void)
@@ -198,28 +259,27 @@ static void TestFan(void)
         area += p[0] * q[1] - q[0] * p[1];
     }
     double volume = 2.0 * fabs(0.5 * area);
-    mvfxHull hull;
-    CHECK(mvfxBuildHull(points, n, &s_allocator, &hull) == mvfx_success, "a fan's hull");
+    CHECK(HullOf(points, n) == mvfx_success, "a fan's hull");
     bool sound = true;
-    for (int32_t f = 0; f < hull.faceCount; ++f)
+    for (int32_t f = 0; f < s_view.hullFaceCount; ++f)
     {
-        const float* plane = hull.planes[f];
+        const float* plane = Plane(f);
         for (int32_t i = 0; i < n; ++i)
         {
             float d = 0.0f;
             for (int32_t k = 0; k < 3; ++k)
             {
-                d += plane[k] * (points[3 * i + k] - hull.centroid[k]);
+                d += plane[k] * (points[3 * i + k] - s_center[k]);
             }
             sound = sound && d - plane[3] <= 2e-6f;
         }
-        int32_t first = hull.faceStart[f];
-        int32_t count = hull.faceStart[f + 1] - first;
+        int32_t first = s_view.hullFaceStart[f];
+        int32_t count = s_view.hullFaceStart[f + 1] - first;
         for (int32_t j = 0; j < count; ++j)
         {
-            const float* a = hull.vertices[hull.loop[first + j]];
-            const float* b = hull.vertices[hull.loop[first + (j + 1) % count]];
-            const float* c = hull.vertices[hull.loop[first + (j + 2) % count]];
+            const float* a = Vertex(s_view.hullLoop[first + j]);
+            const float* b = Vertex(s_view.hullLoop[first + (j + 1) % count]);
+            const float* c = Vertex(s_view.hullLoop[first + (j + 2) % count]);
             float e1[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
             float e2[3] = {c[0] - b[0], c[1] - b[1], c[2] - b[2]};
             float turn = plane[0] * (e1[1] * e2[2] - e1[2] * e2[1]) +
@@ -231,29 +291,30 @@ static void TestFan(void)
     }
     // Chained, the whole top would be one face; by one plane it is several.
     int32_t tops = 0;
-    for (int32_t f = 0; f < hull.faceCount; ++f)
+    for (int32_t f = 0; f < s_view.hullFaceCount; ++f)
     {
-        tops += hull.planes[f][2] > 0.99f ? 1 : 0;
+        tops += Plane(f)[2] > 0.99f ? 1 : 0;
     }
-    CHECK(sound && tops >= 3 && fabs((double)hull.volume - volume) <= 1e-5 * volume,
+    CHECK(sound && tops >= 3 && fabs((double)s_view.hullVolume - volume) <= 1e-5 * volume,
           "a fan merged by one plane");
+    Close();
 }
 
-// The hash of everything a hull holds.
-static uint64_t HashHull(const mvfxHull* hull)
+// The hash of everything the view's hull holds, and its center.
+static uint64_t HashHull(void)
 {
-    uint64_t h = mvfxHash64(0u, &hull->vertexCount, (int64_t)sizeof hull->vertexCount);
-    h = mvfxHash64(h, &hull->faceCount, (int64_t)sizeof hull->faceCount);
-    h = mvfxHash64(h, hull->vertices,
-                   (int64_t)(sizeof hull->vertices[0] * (size_t)hull->vertexCount));
-    h = mvfxHash64(h, hull->planes, (int64_t)(sizeof hull->planes[0] * (size_t)hull->faceCount));
-    h = mvfxHash64(h, hull->faceStart,
-                   (int64_t)(sizeof hull->faceStart[0] * (size_t)(hull->faceCount + 1)));
-    h = mvfxHash64(h, hull->loop,
-                   (int64_t)(sizeof hull->loop[0] * (size_t)hull->faceStart[hull->faceCount]));
-    h = mvfxHash64(h, &hull->volume, (int64_t)sizeof hull->volume);
-    h = mvfxHash64(h, hull->centroid, (int64_t)sizeof hull->centroid);
-    return mvfxHash64(h, hull->moments, (int64_t)sizeof hull->moments);
+    const mvfxEmitterView* v = &s_view;
+    uint64_t h = mvfxHash64(0u, &v->hullVertexCount, (int64_t)sizeof v->hullVertexCount);
+    h = mvfxHash64(h, &v->hullFaceCount, (int64_t)sizeof v->hullFaceCount);
+    h = mvfxHash64(h, v->hullVertices, (int64_t)(3 * sizeof(float) * (size_t)v->hullVertexCount));
+    h = mvfxHash64(h, v->hullPlanes, (int64_t)(4 * sizeof(float) * (size_t)v->hullFaceCount));
+    h = mvfxHash64(h, v->hullFaceStart,
+                   (int64_t)(sizeof v->hullFaceStart[0] * (size_t)(v->hullFaceCount + 1)));
+    h = mvfxHash64(h, v->hullLoop,
+                   (int64_t)(sizeof v->hullLoop[0] * (size_t)v->hullFaceStart[v->hullFaceCount]));
+    h = mvfxHash64(h, &v->hullVolume, (int64_t)sizeof v->hullVolume);
+    h = mvfxHash64(h, s_center, (int64_t)sizeof s_center);
+    return mvfxHash64(h, v->hullMoments, (int64_t)sizeof v->hullMoments);
 }
 
 static void TestNearDegenerate(void)
@@ -278,10 +339,11 @@ static void TestNearDegenerate(void)
         points[3 * n + 1] = 0.45f * Hashed(2001u + 3u * i);
         points[3 * n + 2] = 0.5f + 3e-7f * Hashed(2002u + 3u * i);
     }
-    mvfxHull hull;
-    CHECK(mvfxBuildHull(points, n, &s_allocator, &hull) == mvfx_success, "a near-degenerate hull");
-    CHECK(hull.vertexCount == 12 && hull.faceCount == 8 && HashHull(&hull) == 0xA4B089E4BC1A4BABu,
+    CHECK(HullOf(points, n) == mvfx_success, "a near-degenerate hull");
+    CHECK(s_view.hullVertexCount == 12 && s_view.hullFaceCount == 8 &&
+              HashHull() == 0xA4B089E4BC1A4BABu,
           "a near-degenerate hull, the same everywhere");
+    Close();
 }
 
 static void TestRefused(void)
@@ -302,13 +364,22 @@ static void TestRefused(void)
         ball[3 * i + 1] = r * sinf(angle);
         ball[3 * i + 2] = z;
     }
-    mvfxHull hull;
-    CHECK(mvfxBuildHull(flat, 5, &s_allocator, &hull) == mvfx_errorUnsupported &&
-              mvfxBuildHull(line, 4, &s_allocator, &hull) == mvfx_errorUnsupported &&
-              mvfxBuildHull(same, 4, &s_allocator, &hull) == mvfx_errorUnsupported &&
-              mvfxBuildHull(same, 3, &s_allocator, &hull) == mvfx_errorUnsupported &&
-              mvfxBuildHull(ball, 200, &s_allocator, &hull) == mvfx_errorLimit,
-          "refused");
+    // No hull: the effect refused as unsupported, the mesh without a
+    // center; past the most vertices, refused as past a limit.
+    bool refused = true;
+    const float* none[4] = {flat, line, same, same};
+    const int32_t counts[4] = {5, 4, 4, 3};
+    for (int32_t i = 0; i < 4; ++i)
+    {
+        bool hull = true;
+        refused = refused && HullOf(none[i], counts[i]) == mvfx_errorUnsupported &&
+                  mvfxMesh_GetHullCenter(s_context, s_mesh, &hull, s_center) == mvfx_success &&
+                  !hull;
+        Close();
+    }
+    refused = refused && HullOf(ball, 200) == mvfx_errorLimit;
+    Close();
+    CHECK(refused, "refused");
 }
 
 static void TestCount(void)
@@ -318,7 +389,6 @@ static void TestCount(void)
     // of 1,500 past what a count holds, refused with a count of 0; a flat
     // set counted 0, no hull built.
     static float ball[3 * 1500];
-    mvfxHull hull;
     bool counted = true;
     for (int32_t total = 200; total <= 1500; total += total == 500 ? 1000 : 300)
     {
@@ -331,18 +401,22 @@ static void TestCount(void)
             ball[3 * i + 1] = r * sinf(angle);
             ball[3 * i + 2] = z;
         }
-        mvfxHullMeasure m = {.count = -1};
-        counted = counted &&
-                  mvfxMeasureHull(ball, total, &s_allocator, &m, &hull) == mvfx_success &&
-                  m.built == mvfx_errorLimit &&
-                  (total > MVFX_MAX_HULL_COUNT ? m.counted == mvfx_errorLimit && m.count == 0
-                                               : m.counted == mvfx_success && m.count == total);
+        int32_t count = -1;
+        counted =
+            counted && HullOf(ball, total) == mvfx_errorLimit &&
+            (total > MVFX_MAX_HULL_COUNT
+                 ? mvfxMesh_GetHullVertexCount(s_context, s_mesh, &count) == mvfx_errorLimit &&
+                       count == 0
+                 : mvfxMesh_GetHullVertexCount(s_context, s_mesh, &count) == mvfx_success &&
+                       count == total);
+        Close();
     }
     const float flat[15] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0.5f, 0.5f, 0};
-    mvfxHullMeasure none = {.count = -1};
-    bool flatNone = mvfxMeasureHull(flat, 5, &s_allocator, &none, &hull) == mvfx_success &&
-                    none.counted == mvfx_success && none.count == 0 &&
-                    none.built == mvfx_errorUnsupported;
+    int32_t none = -1;
+    bool flatNone = HullOf(flat, 5) == mvfx_errorUnsupported &&
+                    mvfxMesh_GetHullVertexCount(s_context, s_mesh, &none) == mvfx_success &&
+                    none == 0;
+    Close();
     CHECK(counted && flatNone, "hull vertices counted");
 }
 
