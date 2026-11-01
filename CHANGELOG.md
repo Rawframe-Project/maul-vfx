@@ -46,9 +46,9 @@ API takes the family's names, types and results throughout.
   know, and the writer leaves out every field that holds its default, so
   a field added to a def no longer changes every file's bytes. The
   golden scene's smallest effect goes from 2,492 bytes to 1,704. With
-  #184 and #206
-  below, `MVFX_FILE_VERSION` goes from 1 to 4 and the effect JSON form
-  from format 1 to 5; files of earlier versions are refused with
+  the force's strength above and the kinds' types below,
+  `MVFX_FILE_VERSION` goes from 1 to 4 and the effect JSON form from
+  format 1 to 5; files of earlier versions are refused with
   `mvfx_errorVersion`. Results are unchanged by the format itself
   ([#180](https://github.com/Rawframe-Project/maul-vfx/pull/180),
   [#184](https://github.com/Rawframe-Project/maul-vfx/pull/184),
@@ -225,8 +225,8 @@ API takes the family's names, types and results throughout.
   sin 0 and cos 1: a body turning more than 2^24 radians in half a
   substep never turned. Results up to 2^24 are unchanged
   ([#133](https://github.com/Rawframe-Project/maul-vfx/pull/133)).
-- Units stay finite where a squared length passes
-  binary32's range: at the largest spacing and scale, or with places
+- Units stay finite where a squared length passes binary32's range:
+  at the largest spacing and scale, or with places
   past 2^63 apart, a sheet's drag, a projection and a tear's direction
   went NaN, infinite or zero. Values within range keep their bits
   ([#146](https://github.com/Rawframe-Project/maul-vfx/pull/146)).
