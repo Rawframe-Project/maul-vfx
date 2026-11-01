@@ -9,8 +9,7 @@
 #ifndef MAUL_VFX_TEST_VFX_SCENE_RUN_H
 #define MAUL_VFX_TEST_VFX_SCENE_RUN_H
 
-#include "context.h"
-#include "instance.h"
+#include "test_hooks.h"
 #include "vfx_scene.h"
 
 // Moves every instance of the context before a step: along a fixed path
@@ -55,15 +54,11 @@ static inline mvfxDepthImage SceneDepth(const double origin[3])
 static inline void AnswerScene(mvfxContext* context, int32_t step)
 {
     uint32_t every = step < 8 ? 3u : 2u;
-    for (uint32_t i = 0; i < context->instances.capacity; ++i)
+    const Scene* scene = SceneOf(context);
+    for (int32_t i = 0; i < scene->count; ++i)
     {
-        const mvfxInstance* instance = context->instances.slots[i].object;
-        if (instance == NULL)
-        {
-            continue;
-        }
-        mvfxInstanceId id = {i + 1, context->instances.slots[i].generation};
-        for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+        mvfxInstanceId id = scene->instances[i].id;
+        for (int32_t e = 0; e < scene->instances[i].emitterCount; ++e)
         {
             const mvfxSceneQuery* queries = NULL;
             int32_t count = 0;
@@ -118,23 +113,20 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
 {
     AnswerScene(context, step);
     static const float turns[2][4] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.6f, 0.8f}};
-    for (uint32_t i = 0; i < context->instances.capacity; ++i)
+    Scene* scene = SceneOf(context);
+    for (int32_t i = 0; i < scene->count; ++i)
     {
-        if (context->instances.slots[i].object == NULL)
-        {
-            continue;
-        }
-        mvfxInstanceId id = {i + 1, context->instances.slots[i].generation};
+        SceneInstance* kept = &scene->instances[i];
+        mvfxInstanceId id = kept->id;
         double far = step >= 10 ? 3000.0 : 0.0;
         const double origin[3] = {far + 2.5 * step + (double)i, 0.125 * step * step, -1.0 * step};
         CHECK(mvfxInstance_SetTransform(context, id, origin, turns[step % 2],
                                         step % 3 == 0 ? 1.5f : 1.0f, step == 10) == mvfx_success,
               "scene moved");
-        const mvfxEffect* effect =
-            ((const mvfxInstance*)context->instances.slots[i].object)->effect;
+        memcpy(kept->origin, origin, sizeof kept->origin);
         // The gases' host obstacle: a sphere in the instance's frame
         // crossing the 3D gas, so it moves through the box.
-        if (effect->gasCount > 0)
+        if (kept->gasCount > 0)
         {
             const mvfxCollider ball = {.kind = mvfx_colliderSphere,
                                        .space = mvfx_spaceLocal,
@@ -142,11 +134,11 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
                                        .radius = 0.15f};
             CHECK(mvfxInstance_SetColliders(context, id, &ball, 1) == mvfx_success, "gas ball");
         }
-        if (effect->waterCount > 0)
+        if (kept->waterCount > 0)
         {
             PushSceneWater(context, id, origin, step);
         }
-        if (step == 5 && effect->emitterCount == 5 && effect->parameterCount > 0)
+        if (step == 5 && kept->emitterCount == 5 && kept->parameterCount > 0)
         {
             static const float aimed[4] = {-2.0f, 3.0f, 1.0f, 0.0f};
             CHECK(mvfxInstance_SetParameter(context, id, 0, aimed) == mvfx_success, "scene aim");
@@ -157,9 +149,9 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
         }
         // Banners' frames: one swinging round the instance, one unset until
         // step 4.
-        for (int32_t e = 0; e < effect->emitterCount; ++e)
+        for (int32_t e = 0; e < kept->emitterCount; ++e)
         {
-            if (effect->emitters[e].unit.attach != mvfx_attachHost)
+            if ((kept->hostFrames >> e & 1u) == 0)
             {
                 continue;
             }
@@ -181,9 +173,8 @@ static inline void MoveScene(mvfxContext* context, int32_t step)
             }
         }
         // The throttled unseen over the longest step, the paused for three.
-        const mvfxInstance* live = context->instances.slots[i].object;
-        bool hidden = (live->offscreen == mvfx_offscreenThrottle && step >= 3 && step < 15) ||
-                      (live->offscreen == mvfx_offscreenPause && step >= 7 && step < 10);
+        bool hidden = (kept->offscreen == mvfx_offscreenThrottle && step >= 3 && step < 15) ||
+                      (kept->offscreen == mvfx_offscreenPause && step >= 7 && step < 10);
         CHECK(mvfxInstance_SetVisible(context, id, !hidden) == mvfx_success, "scene seen");
         mvfxDepthImage depth = SceneDepth(origin);
         CHECK(mvfxInstance_SetDepthImage(context, id, &depth) == mvfx_success, "scene depth");
@@ -380,8 +371,7 @@ static inline uint64_t HashPlexus(mvfxContext* context, mvfxInstanceId id, int32
 
 // Hashes every emitter's records of an instance for a view at (1500, 3,
 // -2), through a layout made on the context the first time.
-static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
-                                  const mvfxInstance* instance, uint64_t hash)
+static inline uint64_t HashOutput(mvfxContext* context, const SceneInstance* kept, uint64_t hash)
 {
     mvfxLayoutDef def = mvfxDefaultLayoutDef();
     def.fields = s_sceneFields;
@@ -399,7 +389,8 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
                                   .up = {0.0f, 1.0f, 0.25f}};
     static _Alignas(16) unsigned char records[SCENE_RECORDS * SCENE_RECORD_BYTES];
     static uint32_t scratch[SCENE_RECORDS * 4];
-    for (int32_t e = 0; e < instance->effect->emitterCount; ++e)
+    mvfxInstanceId id = kept->id;
+    for (int32_t e = 0; e < kept->emitterCount; ++e)
     {
         int64_t count = 0;
         CHECK(mvfxInstance_WriteParticles(context, id, e, layout, &view, scratch, sizeof scratch,
@@ -426,14 +417,14 @@ static inline uint64_t HashOutput(mvfxContext* context, mvfxInstanceId id,
 // its output.
 // An instance's water surfaces as the host reads them: the pond sampled
 // across it and past its edge, and the strip's normals in unorm16.
-static inline uint64_t HashWater(mvfxContext* context, mvfxInstanceId id,
-                                 const mvfxInstance* instance, uint64_t hash)
+static inline uint64_t HashWater(mvfxContext* context, const SceneInstance* kept, uint64_t hash)
 {
-    if (instance->effect->waterCount == 0)
+    if (kept->waterCount == 0)
     {
         return hash;
     }
-    const double* at = instance->to.origin;
+    mvfxInstanceId id = kept->id;
+    const double* at = kept->origin;
     const double points[9] = {at[0] - 0.5,  at[1],       at[2] + 0.1, at[0] + 0.33, at[1],
                               at[2] - 0.41, at[0] + 1.3, at[1],       at[2]};
     mvfxWaterSample samples[3];
@@ -467,21 +458,19 @@ static inline uint64_t HashWater(mvfxContext* context, mvfxInstanceId id,
 static inline uint64_t HashScene(mvfxContext* context)
 {
     uint64_t hash = MVFX_HASH_INIT;
-    for (uint32_t i = 0; i < context->instances.capacity; ++i)
+    const Scene* scene = SceneOf(context);
+    for (int32_t i = 0; i < scene->count; ++i)
     {
-        const mvfxInstance* instance = context->instances.slots[i].object;
-        if (instance != NULL)
-        {
-            hash = mvfxHashInstance(instance, hash);
-            mvfxInstanceId id = {i + 1, context->instances.slots[i].generation};
-            hash = HashOutput(context, id, instance, hash);
-            hash = HashWater(context, id, instance, hash);
-            mvfxBounds bounds = {0};
-            CHECK(mvfxInstance_GetBounds(context, id, -1, &bounds) == mvfx_success, "scene bounds");
-            hash = mvfxHash64(hash, &bounds.empty, 1);
-            hash = mvfxHash64(hash, bounds.min, (int64_t)sizeof bounds.min);
-            hash = mvfxHash64(hash, bounds.max, (int64_t)sizeof bounds.max);
-        }
+        const SceneInstance* kept = &scene->instances[i];
+        CHECK(mvfxTestHashInstance(context, kept->id, &hash), "scene state hashed");
+        hash = HashOutput(context, kept, hash);
+        hash = HashWater(context, kept, hash);
+        mvfxBounds bounds = {0};
+        CHECK(mvfxInstance_GetBounds(context, kept->id, -1, &bounds) == mvfx_success,
+              "scene bounds");
+        hash = mvfxHash64(hash, &bounds.empty, 1);
+        hash = mvfxHash64(hash, bounds.min, (int64_t)sizeof bounds.min);
+        hash = mvfxHash64(hash, bounds.max, (int64_t)sizeof bounds.max);
     }
     // The draw order for a view looking down +x past a plane at x = 1490.
     static const double eye[3] = {1500.0, 3.0, -2.0};

@@ -184,3 +184,14 @@ bool mvfxTestWriteWaterFaces(mvfxContext* context, mvfxInstanceId instance, int3
     }
     return true;
 }
+
+bool mvfxTestHashInstance(const mvfxContext* context, mvfxInstanceId instance, uint64_t* hash)
+{
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr)
+    {
+        return false;
+    }
+    *hash = mvfxHashInstance(live, *hash);
+    return true;
+}

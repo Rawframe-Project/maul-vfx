@@ -315,9 +315,12 @@ if(MAUL_VFX_BUILD_TESTS)
     # The suites that use the tests' hooks.
     if(NOT MAUL_VFX_BUILD_SHARED)
         foreach(suite attach gas gas_couple gas_forces gas_liquid gas_pressure gas_read gas_solid
-                emitter_step plan rigid_pair surface_mesh tear water_couple water_shallow)
+                emitter_step golden plan rigid_pair surface_mesh tear water_couple water_shallow)
             target_link_libraries(test_${suite} PRIVATE maul-vfx-test-hooks)
         endforeach()
+        if(NOT EMSCRIPTEN)
+            target_link_libraries(test_twins PRIVATE maul-vfx-test-hooks)
+        endif()
     endif()
     if(MAUL_VFX_RHI)
         # The GPU part's kernels on a real device; skipped (77) without an
