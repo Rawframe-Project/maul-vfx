@@ -3,10 +3,8 @@
 
 #include "rhi_waters.h"
 
-#include "instance.h"
-#include "instance_api.h"
 #include "test_harness.h"
-#include "water.h"
+#include "test_hooks.h"
 
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/resources.h"
@@ -195,8 +193,13 @@ static bool SameCounts(int32_t w, float tolerance)
     {
         return false;
     }
-    float cpuReach = mvfxContextInstance(RunContext(), CpuInstance())->waters[w].reach;
-    float plannedReach = mvfxContextInstance(RunContext(), PlannedInstance())->waters[w].reach;
+    float cpuReach = 0.0f;
+    float plannedReach = 0.0f;
+    if (!mvfxTestWaterReach(RunContext(), CpuInstance(), w, &cpuReach) ||
+        !mvfxTestWaterReach(RunContext(), PlannedInstance(), w, &plannedReach))
+    {
+        return false;
+    }
     double poured = fabs(planned.volumePoured - cpu.volumePoured) / (1.0 + cpu.volumePoured);
     float reach = fabsf(plannedReach - cpuReach) / (1.0f + cpuReach);
     s_poured = fmax(s_poured, cpu.volumePoured);

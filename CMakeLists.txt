@@ -333,7 +333,8 @@ if(MAUL_VFX_BUILD_TESTS)
             target_sources(test_${suite} PRIVATE ${PROJECT_SOURCE_DIR}/test/rhi_harness.c
                 ${PROJECT_SOURCE_DIR}/test/rhi_apart.c ${PROJECT_SOURCE_DIR}/test/rhi_waters.c
                 ${PROJECT_SOURCE_DIR}/test/rhi_surfaces.c ${PROJECT_SOURCE_DIR}/test/rhi_samples.c)
-            target_link_libraries(test_${suite} PRIVATE maul-vfx-rhi)
+            # The hooks lock-step the CPU twin with the GPU (test_hooks.h).
+            target_link_libraries(test_${suite} PRIVATE maul-vfx-rhi maul-vfx-test-hooks)
             target_include_directories(test_${suite} PRIVATE "${MVFX_KERNEL_HEADERS}")
             add_dependencies(test_${suite} mvfx-test-kernels)
             # Each compares a step at a time on lavapipe, and compiles every

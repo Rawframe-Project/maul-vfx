@@ -104,4 +104,60 @@ bool mvfxTestWriteWaterFaces(mvfxContext* context, mvfxInstanceId instance, int3
 // reads), so a difference would surface late or not at all.
 bool mvfxTestHashInstance(const mvfxContext* context, mvfxInstanceId instance, uint64_t* hash);
 
+// The next six exist only so the GPU part's harness (test/rhi_harness.c)
+// can lock-step a CPU instance with a planned one of the same effect:
+// read its stored values as the GPU's are read, set them to the GPU's
+// after each step so both paths step from the same state, and find again
+// from those what a step finds from its own places. A host module can
+// neither run in an effect a GPU plays nor set a value between steps, and
+// records give values as drawn (through the instance's transform and the
+// values over life), not as stored.
+
+// Copies an emitter's live particles' words of one of its arrays, in the
+// order it holds them: array is an index the emitter's view gives
+// (mvfxEmitterView's arrays, a value's first array plus its component).
+// Returns the live count, copying up to capacity, or -1 for an id that
+// names no live instance, an emitter out of range or an array it does not
+// store.
+int32_t mvfxTestReadParticles(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                              int32_t array, uint32_t* out, int32_t capacity);
+
+// Sets one of an emitter's arrays, as mvfxTestReadParticles reads it, to
+// count words, its live count. Returns false for an id that names no live
+// instance, an emitter out of range, an array it does not store or
+// another count.
+bool mvfxTestAdoptParticles(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                            int32_t array, const uint32_t* words, int32_t count);
+
+// The id an emitter gives its next ribbon, or -1 for an id that names no
+// live instance or an emitter out of range. A planned instance's plan
+// carries its own (mvfxEmitterPlan's ribbonCounter); no public call reads
+// a CPU instance's.
+int64_t mvfxTestRibbonCounter(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter);
+
+// Finds an emitter's plexus links again from its particles' places as
+// they are, as a step's end does, and copies up to capacity of them, each
+// a pair of particle indices (the owner first), into links; dropped
+// receives the links this finding dropped, the emitter's count of drops
+// left as it was. Returns the links found, or -1 for an id that names no
+// live instance or an emitter out of range or without plexus links. A
+// step finds links only from places it moved, and
+// mvfxInstance_WritePlexus writes a link's ends, not its particles.
+int32_t mvfxTestFindLinks(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                          int32_t* links, int32_t capacity, uint64_t* dropped);
+
+// A water surface's reach above and below its grid's center, which a
+// planned instance's reports set (mvfxInstance_SetWaterCounts), into
+// reach. Returns false for an id that names no live instance or a surface
+// out of range. The bounds hold it joined with the emitters' boxes.
+bool mvfxTestWaterReach(const mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                        float* reach);
+
+// The substeps an instance's liquid gases take in a step of ticks, from
+// their fastest particles' speeds (a planned instance's reported,
+// mvfxInstance_SetLiquidSpeed), or -1 for an id that names no live
+// instance. A planned instance's plan gives its own (mvfxPlannedLiquid);
+// no public call gives a CPU instance's.
+int32_t mvfxTestLiquidSubsteps(const mvfxContext* context, mvfxInstanceId instance, int64_t ticks);
+
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H
