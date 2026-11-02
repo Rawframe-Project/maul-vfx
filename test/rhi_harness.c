@@ -8,7 +8,10 @@
 // the same order; its place and velocity within a tolerance (the GPU's
 // floats are not the CPU's bits); the bounds; the records; and every
 // statistics word of a count, the CPU path's, for the features an emitter
-// lacks too (0 for a count it does not keep).
+// lacks too (0 for a count it does not keep). The CPU path is read and
+// lock-stepped with the GPU through the tests' hooks (test_hooks.h), its
+// counts through its statistics and outputs; it includes no other header
+// from src/.
 
 // getenv is standard C; MSVC's runtime deprecates it for its own.
 #define _CRT_SECURE_NO_WARNINGS
