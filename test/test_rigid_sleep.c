@@ -11,7 +11,8 @@
 // host table set again unchanged leaves a box asleep, moved wakes it to
 // fall; changed colliders wake only the bodies near them; a
 // heightfield's values changed wake a box, and one taken away and
-// destroyed is never read; a heightfield's points changed wake only the
+// destroyed is never read; one kept below, taken away far from a box,
+// leaves it asleep; a heightfield's points changed wake only the
 // boxes near them, at any height; a depth image set again wakes a box;
 // the host wakes bodies within a sphere; no sleep speed, no sleeping; the
 // checks.
@@ -496,6 +497,41 @@ static void TestGridChanges(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestFarFieldTakenAway(void)
+{
+    // A box asleep on the ground, 50 m from a host's heightfield that
+    // keeps particles below it: the heightfield taken away, the box is
+    // far outside where it was and sleeps on.
+    OpenContext();
+    mvfxEmitterDef boxes = Boxes();
+    boxes.collision.hostColliders = true;
+    Play(&boxes);
+    static const float flat[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 3;
+    def.size[2] = 3;
+    def.values = flat;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(s_scene.context, &def, &grid) == mvfx_success, "heights");
+    const mvfxCollider field = {.kind = mvfx_colliderHeightfield,
+                                .inside = true,
+                                .center = {50, 0, 0},
+                                .halfExtents = {2, 0, 2},
+                                .rotation = {0, 0, 0, 1},
+                                .grid = grid};
+    CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, &field, 1) == mvfx_success,
+          "field");
+    static const double place[3] = {0, 0.5, 0};
+    Spawn(place, 1);
+    Steps(60);
+    bool slept = Asleep(0);
+    CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, NULL, 0) == mvfx_success,
+          "taken away");
+    Steps(2);
+    CHECK(slept && Asleep(0), "a far heightfield kept below taken away");
+    mvfxDestroyContext(s_scene.context);
+}
+
 // Heights for a 9 by 9 heightfield, 1 m apart from -4 to 4.
 static float s_heights[81];
 
@@ -814,6 +850,7 @@ int main(void)
     TestFarPileSleeps();
     TestWorldNear();
     TestGridChanges();
+    TestFarFieldTakenAway();
     TestGridRegions();
     TestGridRises();
     TestDepthWakes();
