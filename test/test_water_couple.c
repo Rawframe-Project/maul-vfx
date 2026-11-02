@@ -246,6 +246,58 @@ static void TestRoom(void)
     Close();
 }
 
+// An allocator that counts the bytes it holds.
+static void* CountingAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    *(size_t*)context += size;
+    return malloc(size);
+}
+
+static void CountingFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    *(size_t*)context -= size;
+    free(memory);
+}
+
+static void TestRoomHeld(void)
+{
+    // The memory for crossings, 20 bytes a particle of the emitter's
+    // capacity, is held on the surface it meets alone: an instance of 16
+    // particles meeting surface 1 of two holds 320 bytes more than one of
+    // the same emitter meeting none.
+    size_t held = 0;
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    contextDef.allocator = (mvfxAllocator){CountingAlloc, CountingFree, &held};
+    CHECK(mvfxCreateContext(&contextDef, &s_context) == mvfx_success, "context");
+    const mvfxWaterDef waters[2] = {Surface(mvfx_waterWaves), Surface(mvfx_waterWaves)};
+    size_t bytes[2] = {0, 0};
+    for (int32_t met = 0; met < 2; ++met)
+    {
+        mvfxWaterCoupling coupling = Coupling();
+        coupling.water = 1;
+        coupling.enable = met != 0;
+        mvfxEmitterDef emitter = Coupled(&coupling);
+        emitter.events = met != 0 ? emitter.events : mvfx_eventMaskDeath;
+        mvfxEffectDef def = mvfxDefaultEffectDef();
+        def.emitters = &emitter;
+        def.emitterCount = 1;
+        def.waters = waters;
+        def.waterCount = 2;
+        mvfxEffectId effect = {0};
+        CHECK(mvfxCreateEffect(s_context, &def, &effect, NULL) == mvfx_success, "effect");
+        mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+        instanceDef.effect = effect;
+        size_t before = held;
+        CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_instance) == mvfx_success, "instance");
+        bytes[met] = held - before;
+    }
+    CHECK(bytes[1] == bytes[0] + 16 * 20, "room for crossings on the surface met alone");
+    Close();
+    CHECK(held == 0, "everything returned");
+}
+
 static void TestFloat(void)
 {
     // Under gravity at buoyancy 1.25, a particle of radius 0.05 let go at
@@ -792,6 +844,7 @@ int main(void)
 {
     TestRefusals();
     TestRoom();
+    TestRoomHeld();
     TestFloat();
     TestMoving();
     TestScaled();
