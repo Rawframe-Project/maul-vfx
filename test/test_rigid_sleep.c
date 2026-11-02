@@ -12,7 +12,9 @@
 // fall; changed colliders wake only the bodies near them; a
 // heightfield's values changed wake a box, and one taken away and
 // destroyed is never read; a heightfield's points changed wake only the
-// boxes near them, at any height; a depth image set again wakes a box;
+// boxes near them, at any height, those changed before one step together
+// and those changed over steps a paused instance did not take as well; a
+// depth image set again wakes a box;
 // the host wakes bodies within a sphere; no sleep speed, no sleeping; the
 // checks.
 //
@@ -518,18 +520,10 @@ static void Dig(mvfxGridId grid, int32_t x, int32_t z, int32_t n, float drop)
           "dug");
 }
 
-static void TestGridRegions(void)
+// Opens boxes on a host's 9 by 9 heightfield of s_heights, all 0, 8 m
+// across; gives its grid.
+static mvfxGridId OpenField(void)
 {
-    // Boxes asleep at x = -3 and 3 on a heightfield: the heights lowered
-    // under the second (points 6 to 8 along X, 3 to 5 along Z, so the
-    // cells from x = 1 to the edge and z = -2 to 2) wake it alone, which
-    // settles lower; a corner far from both lowered wakes neither; heights
-    // lowered under the second before a step of no time and at that
-    // corner after it wake it, the step of no time meeting the first; a
-    // point at x = -2 or at x = -4 lowered wakes the first, the cells on
-    // either side of a point changing with it; new heights everywhere
-    // wake both. A sleeper's height above the heightfield never keeps it
-    // asleep: its heights may rise to any.
     OpenContext();
     mvfxEmitterDef boxes = Boxes();
     boxes.colliders = NULL;
@@ -552,6 +546,22 @@ static void TestGridRegions(void)
                                 .grid = grid};
     CHECK(mvfxInstance_SetColliders(s_scene.context, s_scene.instance, &field, 1) == mvfx_success,
           "field");
+    return grid;
+}
+
+static void TestGridRegions(void)
+{
+    // Boxes asleep at x = -3 and 3 on a heightfield: the heights lowered
+    // under the second (points 6 to 8 along X, 3 to 5 along Z, so the
+    // cells from x = 1 to the edge and z = -2 to 2) wake it alone, which
+    // settles lower; a corner far from both lowered wakes neither; heights
+    // lowered under the second before a step of no time and at that
+    // corner after it wake it, the step of no time meeting the first; a
+    // point at x = -2 or at x = -4 lowered wakes the first, the cells on
+    // either side of a point changing with it; new heights everywhere
+    // wake both. A sleeper's height above the heightfield never keeps it
+    // asleep: its heights may rise to any.
+    mvfxGridId grid = OpenField();
     static const double places[6] = {-3, 0.5, 0, 3, 0.5, 0};
     Spawn(places, 2);
     Steps(60);
@@ -584,6 +594,40 @@ static void TestGridRegions(void)
     bool both = !Asleep(0) && !Asleep(1);
     CHECK(slept && one && settled && neither && kept && sides && both,
           "a heightfield's changed points wake the bodies near them");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestGridChangesHeld(void)
+{
+    // Boxes asleep at x = -3 and 3 on a heightfield, as in TestGridRegions.
+    // The heights lowered under the second and then at the corner past it,
+    // far from both, before one step wake the second alone: the points
+    // changed over a step are held together. Then, the instance paused
+    // unseen, the heights lowered under the first before a step it does not
+    // take and at that corner before the next: seen again, its step wakes
+    // the first, the change it missed not lost.
+    mvfxGridId grid = OpenField();
+    static const double places[6] = {-3, 0.5, 0, 3, 0.5, 0};
+    Spawn(places, 2);
+    Steps(60);
+    bool slept = Asleep(0) && Asleep(1);
+    Dig(grid, 6, 3, 3, 0.2f);
+    Dig(grid, 7, 7, 2, 0.2f);
+    Steps(1);
+    bool together = Asleep(0) && !Asleep(1);
+    Steps(60);
+    bool settled = Asleep(0) && Asleep(1);
+    CHECK(mvfxInstance_SetOffscreen(s_scene.context, s_scene.instance, mvfx_offscreenPause, 0) ==
+                  mvfx_success &&
+              mvfxInstance_SetVisible(s_scene.context, s_scene.instance, false) == mvfx_success,
+          "paused unseen");
+    Dig(grid, 0, 3, 3, 0.2f);
+    Steps(1);
+    Dig(grid, 7, 7, 2, 0.2f);
+    CHECK(mvfxInstance_SetVisible(s_scene.context, s_scene.instance, true) == mvfx_success, "seen");
+    Steps(1);
+    bool missed = !Asleep(0);
+    CHECK(slept && together && settled && missed, "a heightfield's points changed held over steps");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -815,6 +859,7 @@ int main(void)
     TestWorldNear();
     TestGridChanges();
     TestGridRegions();
+    TestGridChangesHeld();
     TestGridRises();
     TestDepthWakes();
     TestWakeWithin();
