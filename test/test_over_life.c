@@ -6,9 +6,9 @@
 // size uniform, per axis and by speed, the flipbook over life and at a
 // rate, looping or held, from a start frame, custom attributes by a
 // curve, the stored values never written, rotation speed over life (which
-// a step applies), and the refusals. Read from the particles' records;
-// the frames' exact products at ages a test cannot reach by stepping are
-// in test_over_life_internal.c.
+// a step applies), the frames moved the floor of the exact product where
+// binary64 rounds it up, over life and at a rate, and the refusals. Read
+// from the particles' records.
 
 #include "particles.h"
 #include "test_harness.h"
@@ -229,6 +229,37 @@ static void TestFrames(void)
     mvfxDestroyContext(scene.context);
 }
 
+static void TestExactFrames(void)
+{
+    // The frames moved are the floor of the exact product, where binary64
+    // rounds up to the next integer. A life of a second, 707,095 ticks old,
+    // so its normalized age is that over 2^20, times 512.0426635742188
+    // cycles of 65,531 frames: just below 22,627,199, so frame 19,003
+    // looping (binary64 gives 19,004).
+    mvfxEmitterDef emitter = Held();
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
+    emitter.overLife.frame = (mvfxFrameOverLife){.animation = mvfx_frameOverLife,
+                                                 .frameCount = 65531,
+                                                 .cycles = 512.0426635742188f,
+                                                 .loop = true};
+    Scene scene = Run(&emitter, 0.0f, 707095);
+    CHECK(Record(&scene).frame == 19003u, "over life, exactly");
+    mvfxDestroyContext(scene.context);
+    // 1,202,926,387 ticks old (about 1,147.2 seconds) at
+    // 4096.00244140625 frames a second (at least 2^12, so its product with
+    // the ticks is shifted by fewer than 32 bits): just below 4,698,934, so
+    // frame 45,948 looping (binary64 gives 45,949).
+    emitter = Held();
+    emitter.lifetime = mvfxMakeRangeSource(2000.0f, 2000.0f);
+    emitter.overLife.frame = (mvfxFrameOverLife){.animation = mvfx_frameAtRate,
+                                                 .frameCount = 65535,
+                                                 .frameRate = 4096.00244140625f,
+                                                 .loop = true};
+    scene = Run(&emitter, 0.0f, 1202926387);
+    CHECK(Record(&scene).frame == 45948u, "at a rate, exactly");
+    mvfxDestroyContext(scene.context);
+}
+
 static void TestCustomAndRotation(void)
 {
     // A custom attribute (3, 4) scaled by twice the rising curve: (1.5, 2)
@@ -354,6 +385,7 @@ int main(void)
     TestColor();
     TestSize();
     TestFrames();
+    TestExactFrames();
     TestCustomAndRotation();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
