@@ -116,4 +116,4 @@ gas_plan: context force fpenv gas gas_api gas_solid instance instance_api plan_r
 water_plan: box context effect effect_api force fpenv instance instance_api plan_resolved water water_api water_ground water_shallow water_step
 gradient: field_path refusal
 elementary:
-test_hooks: effect gas instance instance_api water
+test_hooks: effect gas gas_liquid instance instance_api plexus water

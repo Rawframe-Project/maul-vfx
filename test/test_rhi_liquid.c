@@ -18,11 +18,9 @@
 // last substep.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
-#include "gas_liquid.h"
-#include "instance.h"
-#include "instance_api.h"
 #include "rhi_harness.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-vfx/plan.h"
 
@@ -340,9 +338,8 @@ static void TestFastest(Gpu* gpu, mvfxGpu* kernels)
     mvfxContext* context = RunContext();
     bool stepped = sim != NULL && mvfxContext_StepTicks(context, StepTicks()) == mvfx_success &&
                    Simulate(gpu, sim) && ReportGases(gpu, sim);
-    int32_t planned =
-        mvfxLiquidSubsteps(mvfxContextInstance(context, PlannedInstance()), StepTicks());
-    int32_t cpu = mvfxLiquidSubsteps(mvfxContextInstance(context, CpuInstance()), StepTicks());
+    int32_t planned = mvfxTestLiquidSubsteps(context, PlannedInstance(), StepTicks());
+    int32_t cpu = mvfxTestLiquidSubsteps(context, CpuInstance(), StepTicks());
     CHECK(stepped && planned == cpu && planned > 1 && planned < MVFX_MAX_PLAN_STEPS,
           "a liquid gas's fastest speed reported");
     mvfxDestroyGpuSim(sim);

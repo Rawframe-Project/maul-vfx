@@ -15,13 +15,11 @@
 // past the box; the refusals.
 // Skips (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
-#include "gas.h"
-#include "gas_api.h"
-#include "instance.h"
 #include "rhi_harness.h"
 #include "rhi_samples.h"
 #include "rhi_surfaces.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/resources.h"
@@ -396,16 +394,8 @@ static bool AdoptField(Gpu* gpu, mvfxGpuSim* sim, const mvfxGasDef* gas)
     int64_t cells = (int64_t)n[0] * n[1] * n[2];
     const mvfxGasRead read = {
         .field = mvfx_gasDistance, .format = mvfx_formatFloat32, .size = {n[0], n[1], n[2]}};
-    mvfxResult found = mvfx_success;
-    mvfxInstance* live = (mvfxInstance*)mvfxFindGas(RunContext(), CpuInstance(), 0, &found);
-    if (cells > MESH_CELLS || live == NULL ||
-        !ReadBytes(gpu, sim, &read, 4u * (uint64_t)cells, s_field))
-    {
-        return false;
-    }
-    mvfxGasState* state = &live->gases[0];
-    memcpy(state->scalars[0][state->current], s_field, (size_t)cells * sizeof(float));
-    return true;
+    return cells <= MESH_CELLS && ReadBytes(gpu, sim, &read, 4u * (uint64_t)cells, s_field) &&
+           mvfxTestWriteGasScalar(RunContext(), CpuInstance(), 0, mvfx_gasDistance, s_field, cells);
 }
 
 // The bytes before each of the device's buffers, so the offsets count.

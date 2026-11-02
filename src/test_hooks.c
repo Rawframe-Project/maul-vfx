@@ -7,8 +7,10 @@
 
 #include "effect.h"
 #include "gas.h"
+#include "gas_liquid.h"
 #include "instance.h"
 #include "instance_api.h"
+#include "plexus.h"
 #include "water.h"
 
 bool mvfxTestSetOwed(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, uint64_t owed)
@@ -194,4 +196,101 @@ bool mvfxTestHashInstance(const mvfxContext* context, mvfxInstanceId instance, u
     }
     *hash = mvfxHashInstance(live, *hash);
     return true;
+}
+
+// A live instance's emitter's state and its array, or NULL.
+static uint32_t* ArrayAt(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                         int32_t array, mvfxEmitterState** stateOut)
+{
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || emitter < 0 || emitter >= live->effect->emitterCount || array < 0 ||
+        array >= live->effect->emitters[emitter].plan.arrayCount)
+    {
+        return nullptr;
+    }
+    mvfxEmitterState* state = &live->emitters[emitter];
+    *stateOut = state;
+    return (uint32_t*)(state->particles + (size_t)array * state->arrayBytes);
+}
+
+int32_t mvfxTestReadParticles(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                              int32_t array, uint32_t* out, int32_t capacity)
+{
+    mvfxEmitterState* state = nullptr;
+    const uint32_t* words = ArrayAt(context, instance, emitter, array, &state);
+    if (words == nullptr)
+    {
+        return -1;
+    }
+    for (int32_t i = 0; i < state->count && i < capacity; ++i)
+    {
+        out[i] = words[i];
+    }
+    return state->count;
+}
+
+bool mvfxTestAdoptParticles(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                            int32_t array, const uint32_t* words, int32_t count)
+{
+    mvfxEmitterState* state = nullptr;
+    uint32_t* to = ArrayAt(context, instance, emitter, array, &state);
+    if (to == nullptr || count != state->count)
+    {
+        return false;
+    }
+    for (int32_t i = 0; i < count; ++i)
+    {
+        to[i] = words[i];
+    }
+    return true;
+}
+
+int64_t mvfxTestRibbonCounter(const mvfxContext* context, mvfxInstanceId instance, int32_t emitter)
+{
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || emitter < 0 || emitter >= live->effect->emitterCount)
+    {
+        return -1;
+    }
+    return live->emitters[emitter].ribbonCounter;
+}
+
+int32_t mvfxTestFindLinks(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                          int32_t* links, int32_t capacity, uint64_t* dropped)
+{
+    mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || emitter < 0 || emitter >= live->effect->emitterCount ||
+        !live->effect->emitters[emitter].plexus.enable)
+    {
+        return -1;
+    }
+    mvfxEmitterState* state = &live->emitters[emitter];
+    uint64_t kept = state->linksDropped;
+    state->linksDropped = 0;
+    mvfxFindLinks(live, emitter);
+    *dropped = state->linksDropped;
+    state->linksDropped = kept;
+    for (int32_t l = 0; l < 2 * state->plexus.linkCount && l < 2 * capacity; ++l)
+    {
+        links[l] = state->plexus.links[l];
+    }
+    return state->plexus.linkCount;
+}
+
+bool mvfxTestWaterReach(const mvfxContext* context, mvfxInstanceId instance, int32_t water,
+                        float* reach)
+{
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    if (live == nullptr || water < 0 || water >= live->effect->waterCount)
+    {
+        return false;
+    }
+    *reach = live->waters[water].reach;
+    return true;
+}
+
+int32_t mvfxTestLiquidSubsteps(const mvfxContext* context, mvfxInstanceId instance, int64_t ticks)
+{
+    const mvfxInstance* live = mvfxContextInstance(context, instance);
+    return live != nullptr ? mvfxLiquidSubsteps(live, ticks) : -1;
 }
