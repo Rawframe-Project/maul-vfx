@@ -7,10 +7,6 @@
 // first, sorted by place); and the records defs the part refuses. Skips
 // (77) without an adapter, unless MVFX_RHI_REQUIRED is set.
 
-#include "emitter_step.h"
-#include "half.h"
-#include "instance.h"
-#include "instance_api.h"
 #include "rhi_harness.h"
 #include "test_harness.h"
 

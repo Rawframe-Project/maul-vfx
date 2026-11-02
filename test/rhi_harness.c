@@ -15,18 +15,12 @@
 
 #include "rhi_harness.h"
 
-#include "emitter_step.h"
-#include "force.h"
-#include "half.h"
-#include "instance.h"
-#include "instance_api.h"
-#include "output.h"
-#include "plexus.h"
 #include "rhi_apart.h"
 #include "rhi_driver.h"
 #include "rhi_surfaces.h"
 #include "rhi_waters.h"
 #include "test_harness.h"
+#include "test_hooks.h"
 
 #include "kernels/depth_fill_container.h"
 #include "maul-rhi/encoder.h"
@@ -351,6 +345,74 @@ static bool s_bodiesMeet[RUN_EMITTERS];
 
 static int32_t s_capacity;
 
+// The context of a run: a CPU instance and a planned one side by side,
+// and the planned one's emitters' defs, as the run gave them.
+static mvfxContext* s_context;
+static mvfxInstanceId s_cpu;
+static mvfxInstanceId s_planned;
+static mvfxEmitterDef s_emitters[RUN_EMITTERS];
+static int32_t s_emitterCount;
+
+// The instances' place and turn as last set, which a CPU instance's
+// records and world-space spawns are taken from.
+static double s_origin[3];
+static float s_rotation[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+
+// The CPU twin's particles as it stores them, read through the hooks
+// (test_hooks.h) in the arrays the GPU's are read back in, as both
+// instances play one effect: an emitter's arrays, each read once until
+// the twin changes (a step, or values set in it).
+static uint32_t s_twinWords[MOST_WORDS * (1 << 17)];
+static uint32_t s_twinRead[MOST_WORDS];
+static uint32_t s_twinAge = 1;
+static int32_t s_twinEmitter = -1;
+
+// Forgets what was read of the twin, after it changed.
+static void TwinChanged(void)
+{
+    s_twinAge += 1;
+}
+
+// The CPU twin's words of an emitter's array, its live particles'.
+static const uint32_t* TwinWords(int32_t e, int32_t array)
+{
+    if (e != s_twinEmitter)
+    {
+        s_twinEmitter = e;
+        TwinChanged();
+    }
+    uint32_t* words = &s_twinWords[(size_t)array << 17];
+    if (s_twinRead[array] != s_twinAge)
+    {
+        CHECK(mvfxTestReadParticles(s_context, s_cpu, e, array, words, 1 << 17) >= 0,
+              "the CPU twin read");
+        s_twinRead[array] = s_twinAge;
+    }
+    return words;
+}
+
+static float TwinFloat(int32_t e, int32_t array, int32_t i)
+{
+    float f;
+    memcpy(&f, &TwinWords(e, array)[i], sizeof f);
+    return f;
+}
+
+// The CPU twin's statistics of an emitter.
+static mvfxEmitterStats TwinStats(int32_t e)
+{
+    mvfxEmitterStats stats = {0};
+    CHECK(mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success, "stats");
+    return stats;
+}
+
+// Sets an array of the CPU twin's emitter to count words.
+static bool TwinAdopt(int32_t e, int32_t array, const uint32_t* words, int32_t count)
+{
+    TwinChanged();
+    return mvfxTestAdoptParticles(s_context, s_cpu, e, array, words, count);
+}
+
 bool ReadBack(Gpu* gpu, const mvfxGpuSim* sim, int32_t emitter)
 {
     mvfxGpuParticles particles;
@@ -443,9 +505,25 @@ static bool s_deathsWithin = true;
 // before 2^24 ticks of age, where binary32 holds every age; past it the
 // GPU's integer to binary32 conversion may round the other way, by half a
 // binary32 unit of the age in ticks (one tick to 32 seconds).
+// The first tick at which a particle born at birth has ended (plan.h):
+// its age in seconds, a binary32, times its inverse life reaches 1.
+static int64_t DeathTick(int64_t birth, float inverseLife)
+{
+    int64_t tick = birth + 1;
+    int64_t step = (int64_t)1 << 40;
+    // The least tick whose age reaches 1, by halving steps from below.
+    for (; step > 0; step /= 2)
+    {
+        int64_t next = tick + step - 1;
+        float age = (float)((double)(next - birth) / (double)MVFX_TICKS_PER_SECOND);
+        tick = age * inverseLife < 1.0f ? next + 1 : tick;
+    }
+    return tick;
+}
+
 static void CompareDeath(int32_t g, int64_t birth, float inverseLife)
 {
-    int64_t cpu = mvfxDeathTick(birth, inverseLife);
+    int64_t cpu = DeathTick(birth, inverseLife);
     int32_t death = s_arrays.count;
     int64_t gpu = (int64_t)((uint64_t)Word(death, g) | (uint64_t)Word(death + 1, g) << 32u);
     int64_t age = cpu - birth;
@@ -463,13 +541,13 @@ static void CompareDeath(int32_t g, int64_t birth, float inverseLife)
 // A drawn value of the GPU's particle g against the CPU path's particle c:
 // its components from its first word (none where not stored), as binary32
 // within the tolerance or as words equal.
-static bool SameValue(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c, int16_t first,
-                      int32_t attribute, int32_t components, bool words)
+static bool SameValue(int32_t e, int32_t g, int32_t c, int16_t first, int32_t components,
+                      bool words)
 {
     bool same = true;
     for (int32_t k = 0; first >= 0 && k < components; ++k)
     {
-        const uint32_t* cpuWords = mvfxAttributeArray(cpu, e, (mvfxAttribute)(attribute + k));
+        const uint32_t* cpuWords = TwinWords(e, first + k);
         float cpuValue = 0.0f;
         memcpy(&cpuValue, &cpuWords[c], sizeof cpuValue);
         float gpuValue = FloatOf(first + k, g);
@@ -489,7 +567,7 @@ static int64_t s_neighborsCompared;
 // particle c, where the emitter has them: the count exactly, the offsets
 // as words or, as each is a mean less the particle's own place or
 // velocity, within the tolerance of that place, or of both velocities.
-static bool SameNeighbors(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
+static bool SameNeighbors(int32_t e, int32_t g, int32_t c)
 {
     const mvfxAttributeArrays* a = &s_arrays;
     if (a->neighborCount < 0)
@@ -499,25 +577,22 @@ static bool SameNeighbors(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t
     ++s_neighborsCompared;
     if (s_exactNeighbors)
     {
-        return SameValue(cpu, e, g, c, a->neighborCount, mvfx_attributeNeighborCount, 1, true) &&
-               SameValue(cpu, e, g, c, a->neighborCenter, mvfx_attributeNeighborCenterX, 3, true) &&
-               SameValue(cpu, e, g, c, a->neighborVelocity, mvfx_attributeNeighborVelocityX, 3,
-                         true);
+        return SameValue(e, g, c, a->neighborCount, 1, true) &&
+               SameValue(e, g, c, a->neighborCenter, 3, true) &&
+               SameValue(e, g, c, a->neighborVelocity, 3, true);
     }
-    bool same = SameValue(cpu, e, g, c, a->neighborCount, mvfx_attributeNeighborCount, 1, true);
+    bool same = SameValue(e, g, c, a->neighborCount, 1, true);
     for (int32_t k = 0; k < 3; ++k)
     {
-        const float* p = mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributePositionX + k));
-        const float* v = mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeVelocityX + k));
-        const float* center =
-            mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeNeighborCenterX + k));
-        const float* mean =
-            mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributeNeighborVelocityX + k));
+        float p = TwinFloat(e, a->position + k, c);
+        float v = TwinFloat(e, a->velocity + k, c);
+        float center = TwinFloat(e, a->neighborCenter + k, c);
+        float mean = TwinFloat(e, a->neighborVelocity + k, c);
         // The mean velocity is the neighbors', each within the tolerance of
         // its own size, as the particle's is of its.
-        float dc = fabsf(FloatOf(a->neighborCenter + k, g) - center[c]) / (1.0f + fabsf(p[c]));
-        float dv = fabsf(FloatOf(a->neighborVelocity + k, g) - mean[c]) /
-                   (2.0f + fabsf(v[c]) + fabsf(mean[c] + v[c]));
+        float dc = fabsf(FloatOf(a->neighborCenter + k, g) - center) / (1.0f + fabsf(p));
+        float dv =
+            fabsf(FloatOf(a->neighborVelocity + k, g) - mean) / (2.0f + fabsf(v) + fabsf(mean + v));
         same = same && dc <= s_tolerance && dv <= s_tolerance;
     }
     return same;
@@ -526,27 +601,21 @@ static bool SameNeighbors(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t
 // Every value a birth draws, as moved since, of the GPU's particle g
 // against the CPU path's particle c, its affine matrix (a grid liquid's)
 // and its neighbor attributes.
-static bool SameValues(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
+static bool SameValues(int32_t e, int32_t g, int32_t c)
 {
     const mvfxAttributeArrays* a = &s_arrays;
-    const mvfxCompiledEmitter* compiled = &cpu->effect->emitters[e];
-    bool same = SameValue(cpu, e, g, c, a->size, mvfx_attributeSizeX, 3, false) &&
-                SameValue(cpu, e, g, c, a->color, mvfx_attributeColorR, 4, false) &&
-                SameValue(cpu, e, g, c, a->frame, mvfx_attributeFrame, 1, true) &&
-                SameValue(cpu, e, g, c, a->mesh, mvfx_attributeMesh, 1, true) &&
-                SameValue(cpu, e, g, c, a->angle, mvfx_attributeAngle, 1, false) &&
-                SameValue(cpu, e, g, c, a->spin, mvfx_attributeSpin, 1, false) &&
-                SameValue(cpu, e, g, c, a->orientation, mvfx_attributeOrientationX, 4, false) &&
-                SameValue(cpu, e, g, c, a->angular, mvfx_attributeAngularX, 3, false) &&
-                SameValue(cpu, e, g, c, a->drag, mvfx_attributeDrag, 1, false) &&
-                SameValue(cpu, e, g, c, a->sleep, mvfx_attributeSleep, 4, false) &&
-                SameValue(cpu, e, g, c, a->affine, mvfx_attributeAffine, 9, false);
-    for (int32_t n = 0; same && n < compiled->customCount; ++n)
+    const mvfxEmitterDef* def = &s_emitters[e];
+    bool same = SameValue(e, g, c, a->size, 3, false) && SameValue(e, g, c, a->color, 4, false) &&
+                SameValue(e, g, c, a->frame, 1, true) && SameValue(e, g, c, a->mesh, 1, true) &&
+                SameValue(e, g, c, a->angle, 1, false) && SameValue(e, g, c, a->spin, 1, false) &&
+                SameValue(e, g, c, a->orientation, 4, false) &&
+                SameValue(e, g, c, a->angular, 3, false) && SameValue(e, g, c, a->drag, 1, false) &&
+                SameValue(e, g, c, a->sleep, 4, false) && SameValue(e, g, c, a->affine, 9, false);
+    for (int32_t n = 0; same && n < def->customCount; ++n)
     {
-        same = SameValue(cpu, e, g, c, a->custom[n], mvfx_attributeCustom + 4 * n,
-                         compiled->custom[n].components, false);
+        same = SameValue(e, g, c, a->custom[n], def->custom[n].components, false);
     }
-    return same && SameNeighbors(cpu, e, g, c);
+    return same && SameNeighbors(e, g, c);
 }
 
 // Ribbons compared up to their ids (sim.h): a break by distance whose gap
@@ -576,10 +645,10 @@ static int32_t s_breaksApart;
 
 // Whether an emitter's ribbon id is the counter's: every id by the
 // counter, those with the top bit by source, none by batch.
-static bool IsCounterId(const mvfxCompiledEmitter* compiled, uint32_t id)
+static bool IsCounterId(const mvfxEmitterDef* def, uint32_t id)
 {
-    return compiled->ribbonIds == mvfx_ribbonOne ||
-           (compiled->ribbonIds == mvfx_ribbonPerSource && (id & 0x80000000u) != 0);
+    return def->ribbon.ids == mvfx_ribbonOne ||
+           (def->ribbon.ids == mvfx_ribbonPerSource && (id & 0x80000000u) != 0);
 }
 
 // The shift of the counter's ids for a particle of a serial.
@@ -611,35 +680,33 @@ static bool IsApartChain(const RibbonState* r, uint32_t gpu, uint32_t cpu)
 // broke its ribbon and the other did not, the gap (the distance the
 // joining path added) within the tolerance of the break distance; a
 // distance within the tolerance but on a chain through such a birth.
-static bool SameRibbon(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
+static bool SameRibbon(int32_t e, int32_t g, int32_t c)
 {
     const mvfxAttributeArrays* a = &s_arrays;
     if (a->ribbon < 0)
     {
         return true;
     }
-    const mvfxCompiledEmitter* compiled = &cpu->effect->emitters[e];
-    const uint32_t* ids = mvfxAttributeArray(cpu, e, mvfx_attributeRibbon);
-    const float* alongs =
-        a->ribbonDistance >= 0 ? mvfxAttributeArray(cpu, e, mvfx_attributeRibbonDistance) : NULL;
+    const mvfxEmitterDef* def = &s_emitters[e];
+    bool alongs = a->ribbonDistance >= 0;
     RibbonState* r = &s_ribbons[e];
     uint32_t gpu = Word(a->ribbon, g);
-    uint32_t cpuId = ids[c];
-    float gpuAlong = alongs != NULL ? FloatOf(a->ribbonDistance, g) : 0.0f;
-    float cpuAlong = alongs != NULL ? alongs[c] : 0.0f;
-    if (!IsCounterId(compiled, cpuId))
+    uint32_t cpuId = TwinWords(e, a->ribbon)[c];
+    float gpuAlong = alongs ? FloatOf(a->ribbonDistance, g) : 0.0f;
+    float cpuAlong = alongs ? TwinFloat(e, a->ribbonDistance, c) : 0.0f;
+    if (!IsCounterId(def, cpuId))
     {
-        return gpu == cpuId && (alongs == NULL || fabsf(gpuAlong - cpuAlong) <=
-                                                      s_tolerance * (1.0f + fabsf(cpuAlong)));
+        return gpu == cpuId &&
+               (!alongs || fabsf(gpuAlong - cpuAlong) <= s_tolerance * (1.0f + fabsf(cpuAlong)));
     }
     uint32_t serial = Word(a->serial, g);
     bool same = gpu + ShiftAt(r, serial) == cpuId;
-    if (!same && r->seen && alongs != NULL && r->shifts < MOST_SHIFTS)
+    if (!same && r->seen && alongs && r->shifts < MOST_SHIFTS)
     {
         bool gpuBroke = gpu != r->gpu;
         bool cpuBroke = cpuId != r->cpu;
         float gap = gpuBroke ? cpuAlong - r->cpuAlong : gpuAlong - r->gpuAlong;
-        float d = compiled->ribbonBreakDistance;
+        float d = def->ribbon.breakDistance;
         float near = 4.0f * s_tolerance * (1.0f + d + fabsf(gpuBroke ? cpuAlong : gpuAlong));
         if (gpuBroke != cpuBroke && fabsf(gap - d) <= near)
         {
@@ -652,7 +719,7 @@ static bool SameRibbon(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
             same = true;
         }
     }
-    if (same && alongs != NULL && !IsApartChain(r, gpu, cpuId))
+    if (same && alongs && !IsApartChain(r, gpu, cpuId))
     {
         same = fabsf(gpuAlong - cpuAlong) <= s_tolerance * (1.0f + fabsf(cpuAlong));
     }
@@ -664,69 +731,53 @@ static bool SameRibbon(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
     return same;
 }
 
-// The context of a run: a CPU instance and a planned one side by side.
-static mvfxContext* s_context;
-static mvfxInstanceId s_cpu;
-static mvfxInstanceId s_planned;
+// The birth tick of the CPU path's particle c.
+static int64_t CpuBirth(int32_t e, int32_t c)
+{
+    const uint32_t* low = TwinWords(e, s_arrays.birth);
+    const uint32_t* high = TwinWords(e, s_arrays.birth + 1);
+    return (int64_t)((uint64_t)high[c] << 32u | low[c]);
+}
 
 // The GPU's particle g against the CPU path's particle c of the same
 // serial: ticks, life and contacts equal, places, velocities and values
 // within the tolerance.
-static bool SameParticle(const mvfxInstance* cpu, int32_t e, int32_t g, int32_t c)
+static bool SameParticle(int32_t e, int32_t g, int32_t c)
 {
-    const uint32_t* low = mvfxAttributeArray(cpu, e, mvfx_attributeBirthLow);
-    const uint32_t* high = mvfxAttributeArray(cpu, e, mvfx_attributeBirthHigh);
-    const float* inverseLife = mvfxAttributeArray(cpu, e, mvfx_attributeInverseLife);
-    const mvfxAttributePlan* plan = &cpu->effect->emitters[e].plan;
-    const uint32_t* collisions = mvfxHasAttribute(plan, mvfx_attributeCollisions)
-                                     ? mvfxAttributeArray(cpu, e, mvfx_attributeCollisions)
-                                     : NULL;
-    static const mvfxAttribute places[3] = {mvfx_attributePositionX, mvfx_attributePositionY,
-                                            mvfx_attributePositionZ};
-    static const mvfxAttribute velocities[3] = {mvfx_attributeVelocityX, mvfx_attributeVelocityY,
-                                                mvfx_attributeVelocityZ};
+    const mvfxAttributeArrays* a = &s_arrays;
     // Births from collisions are born at their contacts' ticks, which
     // round a share of the move the GPU finds in binary32: within a
     // thousandth of the step, as the events' (SameEvent).
-    const mvfxEventSpawn* spawn = &cpu->effect->emitters[e].eventSpawn;
+    const mvfxEventSpawn* spawn = &s_emitters[e].eventSpawn;
     int64_t slack =
         spawn->enable && spawn->kind == mvfx_eventCollision ? 1 + s_stepTicks / 1000 : 0;
-    uint32_t lifeBits;
-    memcpy(&lifeBits, &inverseLife[c], sizeof lifeBits);
-    const mvfxAttributeArrays* a = &s_arrays;
+    uint32_t lifeBits = TwinWords(e, a->inverseLife)[c];
     int64_t gpuBirth = (int64_t)((uint64_t)Word(a->birth + 1, g) << 32u | Word(a->birth, g));
-    int64_t cpuBirth = (int64_t)((uint64_t)high[c] << 32u | low[c]);
+    int64_t cpuBirth = CpuBirth(e, c);
     bool same = llabs(gpuBirth - cpuBirth) <= slack && Word(a->inverseLife, g) == lifeBits &&
-                (collisions == NULL || Word(a->collisions, g) == collisions[c]);
+                (a->collisions < 0 || Word(a->collisions, g) == TwinWords(e, a->collisions)[c]);
     if (s_deathTicks)
     {
-        CompareDeath(g, cpuBirth, inverseLife[c]);
+        CompareDeath(g, cpuBirth, TwinFloat(e, a->inverseLife, c));
     }
     for (int32_t k = 0; k < 3; ++k)
     {
-        const float* p = mvfxAttributeArray(cpu, e, places[k]);
-        const float* v = mvfxAttributeArray(cpu, e, velocities[k]);
+        float p = TwinFloat(e, a->position + k, c);
+        float v = TwinFloat(e, a->velocity + k, c);
         // Relative to the size, as places reach the rebase distance.
-        float dp = fabsf(FloatOf(a->position + k, g) - p[c]) / (1.0f + fabsf(p[c]));
-        float dv = fabsf(FloatOf(a->velocity + k, g) - v[c]) / (1.0f + fabsf(v[c]));
+        float dp = fabsf(FloatOf(a->position + k, g) - p) / (1.0f + fabsf(p));
+        float dv = fabsf(FloatOf(a->velocity + k, g) - v) / (1.0f + fabsf(v));
         s_placeError = dp > s_placeError ? dp : s_placeError;
         s_velocityError = dv > s_velocityError ? dv : s_velocityError;
         same = same && dp <= s_tolerance && dv <= s_tolerance;
     }
-    return same && SameValues(cpu, e, g, c);
+    return same && SameValues(e, g, c);
 }
 
-// The birth tick of the GPU's particle g, and of the CPU path's c.
+// The birth tick of the GPU's particle g.
 static int64_t GpuBirth(int32_t g)
 {
     return (int64_t)((uint64_t)Word(s_arrays.birth + 1, g) << 32u | Word(s_arrays.birth, g));
-}
-
-static int64_t CpuBirth(const mvfxInstance* cpu, int32_t e, int32_t c)
-{
-    const uint32_t* low = mvfxAttributeArray(cpu, e, mvfx_attributeBirthLow);
-    const uint32_t* high = mvfxAttributeArray(cpu, e, mvfx_attributeBirthHigh);
-    return (int64_t)((uint64_t)high[c] << 32u | low[c]);
 }
 
 // The most particles of an emitter spawning from events left out at a
@@ -740,11 +791,11 @@ static bool s_leftOut[RUN_EMITTERS];
 // paths, the rest the same in order (SameParticle), each pair's serials
 // apart by an offset that changes only across an uncertain tick (the
 // births one path gave alone took serials).
-static bool SameChildren(const mvfxInstance* cpu, int32_t e)
+static bool SameChildren(int32_t e)
 {
     s_ribbons[e].seen = false;
-    const mvfxEmitterState* state = &cpu->emitters[e];
-    const uint32_t* serial = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
+    int32_t count = TwinStats(e).live;
+    const uint32_t* serial = TwinWords(e, s_arrays.serial);
     int64_t slack = 1 + s_stepTicks / 1000;
     int32_t held = (int32_t)s_record[0];
     bool same = s_record[2] == 0;
@@ -754,7 +805,7 @@ static bool SameChildren(const mvfxInstance* cpu, int32_t e)
     int32_t left = 0;
     int32_t g = 0;
     int32_t c = 0;
-    while (same && (g < held || c < state->count))
+    while (same && (g < held || c < count))
     {
         if (g < held && IsUncertain(GpuBirth(g), slack))
         {
@@ -762,23 +813,23 @@ static bool SameChildren(const mvfxInstance* cpu, int32_t e)
             ++left;
             continue;
         }
-        if (c < state->count && IsUncertain(CpuBirth(cpu, e, c), slack))
+        if (c < count && IsUncertain(CpuBirth(e, c), slack))
         {
             ++c;
             ++left;
             continue;
         }
-        same = g < held && c < state->count;
-        int64_t birth = same ? CpuBirth(cpu, e, c) : 0;
+        same = g < held && c < count;
+        int64_t birth = same ? CpuBirth(e, c) : 0;
         int64_t apart = same ? (int64_t)Word(s_arrays.serial, g) - (int64_t)serial[c] : 0;
         // The first pair's offset counts the births given alone before it.
         same =
             same && (paired ? apart == offset || UncertainBetween(lastBirth, birth, slack)
                             : apart == 0 || UncertainBetween(INT64_MIN + slack + 1, birth, slack));
-        same = same && SameParticle(cpu, e, g, c) && SameRibbon(cpu, e, g, c);
+        same = same && SameParticle(e, g, c) && SameRibbon(e, g, c);
         if (!same)
         {
-            printf("child %d of %d (GPU), %d of %d (CPU) differs\n", g, held, c, state->count);
+            printf("child %d of %d (GPU), %d of %d (CPU) differs\n", g, held, c, count);
         }
         paired = true;
         offset = apart;
@@ -806,45 +857,46 @@ static mvfxResult LastPlan(int32_t e, mvfxEmitterPlan* plan)
 // pools keep serial order): each pair the same (SameParticle), and a
 // particle that differs, or that one path holds alone, only one gone
 // apart (rhi_apart.h), compared no more.
-static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
+static float s_twinPlaces[3][1 << 17];
+
+static bool SameAsCpu(int32_t e)
 {
     s_leftOut[e] = false;
     s_ribbons[e].seen = false;
-    if (cpu->effect->emitters[e].eventSpawn.enable)
+    if (s_emitters[e].eventSpawn.enable)
     {
-        return SameChildren(cpu, e);
+        return SameChildren(e);
     }
-    const mvfxEmitterState* state = &cpu->emitters[e];
-    const uint32_t* serial = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
-    const mvfxAttributePlan* attributes = &cpu->effect->emitters[e].plan;
-    const uint32_t* collisions = mvfxHasAttribute(attributes, mvfx_attributeCollisions)
-                                     ? mvfxAttributeArray(cpu, e, mvfx_attributeCollisions)
-                                     : NULL;
-    const float* places[3] = {mvfxAttributeArray(cpu, e, mvfx_attributePositionX),
-                              mvfxAttributeArray(cpu, e, mvfx_attributePositionY),
-                              mvfxAttributeArray(cpu, e, mvfx_attributePositionZ)};
+    int32_t count = TwinStats(e).live;
+    const uint32_t* serial = TwinWords(e, s_arrays.serial);
+    const uint32_t* collisions =
+        s_arrays.collisions >= 0 ? TwinWords(e, s_arrays.collisions) : NULL;
+    const float* places[3] = {s_twinPlaces[0], s_twinPlaces[1], s_twinPlaces[2]};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        memcpy(s_twinPlaces[k], TwinWords(e, s_arrays.position + k), (size_t)count * sizeof(float));
+    }
     mvfxEmitterPlan plan;
     if (LastPlan(e, &plan) != mvfx_success || s_record[2] != 0)
     {
         printf("no plan, or births refused: %u\n", s_record[2]);
         return false;
     }
-    ApartTakeStep(e, serial, places, state->count, &plan, s_tolerance, s_bodyRadius[e],
-                  s_bodiesMeet[e]);
+    ApartTakeStep(e, serial, places, count, &plan, s_tolerance, s_bodyRadius[e], s_bodiesMeet[e]);
     int32_t held = (int32_t)s_record[0];
     bool same = true;
     int32_t g = 0;
     int32_t c = 0;
-    while (same && (g < held || c < state->count))
+    while (same && (g < held || c < count))
     {
         uint32_t gs = g < held ? Word(s_arrays.serial, g) : UINT32_MAX;
-        uint32_t cs = c < state->count ? serial[c] : UINT32_MAX;
+        uint32_t cs = c < count ? serial[c] : UINT32_MAX;
         uint32_t at = gs < cs ? gs : cs;
         bool apart = IsApart(e, at);
         if (gs == cs && !apart)
         {
             s_contacts += collisions != NULL ? collisions[c] : 0u;
-            same = SameParticle(cpu, e, g, c) && SameRibbon(cpu, e, g, c);
+            same = SameParticle(e, g, c) && SameRibbon(e, g, c);
         }
         // One path holds it alone: only one that may go apart.
         same = same && (gs == cs || apart);
@@ -854,7 +906,7 @@ static bool SameAsCpu(const mvfxInstance* cpu, int32_t e)
         if (!same)
         {
             printf("particle of serial %u differs (GPU %d of %d, CPU %d of %d)\n", at, g, held, c,
-                   state->count);
+                   count);
         }
         g += gs <= cs ? 1 : 0;
         c += cs <= gs ? 1 : 0;
@@ -1216,12 +1268,12 @@ static bool SameEvent(const uint32_t* w, const mvfxEvent* cpu, const double anch
 // An emitter's events of the step on the GPU against the CPU path's: as
 // many, as many dropped, each alike in the same order.
 // Whether an emitter of the effect spawns from the source's events.
-static bool SpawnedFrom(const mvfxInstance* cpu, int32_t source)
+static bool SpawnedFrom(int32_t source)
 {
     bool spawned = false;
-    for (int32_t e = 0; e < cpu->effect->emitterCount; ++e)
+    for (int32_t e = 0; e < s_emitterCount; ++e)
     {
-        const mvfxEventSpawn* spawn = &cpu->effect->emitters[e].eventSpawn;
+        const mvfxEventSpawn* spawn = &s_emitters[e].eventSpawn;
         spawned = spawned || (spawn->enable && spawn->source == source);
     }
     return spawned;
@@ -1246,7 +1298,7 @@ static bool SameEvents(int32_t emitter)
     // other the same in order. Those, and events whose ticks differ where
     // an emitter spawns from them (their births' count and draws follow
     // from the tick), are uncertain.
-    bool spawned = SpawnedFrom(mvfxContextInstance(s_context, s_cpu), emitter);
+    bool spawned = SpawnedFrom(emitter);
     int32_t written = (int32_t)s_record[MVFX_GPU_EVENTS_WRITTEN];
     bool same = s_record[MVFX_GPU_EVENTS_WRITTEN + 1] == dropped;
     int32_t g = 0;
@@ -1311,6 +1363,16 @@ static uint32_t FieldBytes(mvfxFormat format)
                                                                         : 4u;
 }
 
+// A binary16's value.
+static float FromHalf(uint16_t h)
+{
+    int32_t exponent = (h >> 10) & 0x1F;
+    float magnitude = exponent == 0    ? ldexpf((float)(h & 0x3FF), -24)
+                      : exponent == 31 ? ((h & 0x3FF) != 0 ? NAN : INFINITY)
+                                       : ldexpf((float)((h & 0x3FF) | 0x400), exponent - 25);
+    return (h & 0x8000u) != 0 ? -magnitude : magnitude;
+}
+
 static double Decoded(mvfxFormat format, const uint8_t* at)
 {
     uint32_t word = 0;
@@ -1322,7 +1384,7 @@ static double Decoded(mvfxFormat format, const uint8_t* at)
         memcpy(&value, &word, sizeof value);
         return (double)value;
     case mvfx_formatFloat16:
-        return (double)mvfxFloatFromHalf((uint16_t)word);
+        return (double)FromHalf((uint16_t)word);
     case mvfx_formatSnorm8:
         return (int8_t)word;
     case mvfx_formatSnorm16:
@@ -1511,7 +1573,44 @@ static bool SameSorted(int64_t written)
 // The CPU path's places and distances of the emitter whose ribbons are
 // written, kept while the GPU's stand in for them.
 #define MOST_POINTS 16384
-static float s_keptPlaces[4][MOST_POINTS];
+static uint32_t s_keptPlaces[4][MOST_POINTS];
+static uint32_t s_taken[1 << 17];
+
+// Whether an emitter's pool on the CPU twin is the GPU's, read back last,
+// serial by serial, and at most most particles; its count.
+static bool SamePool(int32_t e, int32_t most, int32_t* countOut)
+{
+    int32_t count = TwinStats(e).live;
+    const uint32_t* serials = TwinWords(e, s_arrays.serial);
+    bool alike = (int32_t)s_record[0] == count && count <= most;
+    for (int32_t i = 0; alike && i < count; ++i)
+    {
+        alike = Word(s_arrays.serial, i) == serials[i];
+    }
+    if (!alike)
+    {
+        printf("the pools differ: %d particles, GPU %u\n", count, s_record[0]);
+    }
+    *countOut = count;
+    return alike;
+}
+
+// Gives the CPU twin's emitter array words of the GPU's array, read back
+// last, each a binary32 times scale (1 keeps the words).
+static bool TakeGpu(int32_t e, int32_t array, int32_t count, float scale)
+{
+    for (int32_t i = 0; i < count; ++i)
+    {
+        uint32_t word = Word(array, i);
+        if (scale != 1.0f)
+        {
+            float value = FloatOf(array, i) * scale;
+            memcpy(&word, &value, sizeof word);
+        }
+        s_taken[i] = word;
+    }
+    return TwinAdopt(e, array, s_taken, count);
+}
 
 // Swaps the GPU's places and ribbon distances (read back last) into the
 // CPU path's emitter, or back: false when its pool is not the GPU's,
@@ -1521,37 +1620,29 @@ static float s_keptPlaces[4][MOST_POINTS];
 // places the points compare the kernels' sums and turns alone.
 static bool SwapPlaces(bool in)
 {
-    mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
     int32_t e = s_recordEmitter;
-    int32_t count = cpu->emitters[e].count;
-    const uint32_t* serials = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
-    bool alike = (int32_t)s_record[0] == count && count <= MOST_POINTS;
-    for (int32_t i = 0; alike && i < count; ++i)
+    int32_t count = 0;
+    if (!SamePool(e, MOST_POINTS, &count))
     {
-        alike = Word(s_arrays.serial, i) == serials[i];
-    }
-    if (!alike)
-    {
-        printf("the pools differ: %d particles, GPU %u\n", count, s_record[0]);
         return false;
     }
-    static const mvfxAttribute swapped[4] = {mvfx_attributePositionX, mvfx_attributePositionY,
-                                             mvfx_attributePositionZ, mvfx_attributeRibbonDistance};
-    const int32_t gpu[4] = {s_arrays.position, s_arrays.position + 1, s_arrays.position + 2,
-                            s_arrays.ribbonDistance};
+    const int32_t arrays[4] = {s_arrays.position, s_arrays.position + 1, s_arrays.position + 2,
+                               s_arrays.ribbonDistance};
+    bool swapped = true;
     for (int32_t k = 0; k < 4; ++k)
     {
-        float* values = gpu[k] >= 0 ? mvfxAttributeArray(cpu, e, swapped[k]) : NULL;
-        for (int32_t i = 0; values != NULL && i < count; ++i)
+        if (arrays[k] < 0)
         {
-            if (in)
-            {
-                s_keptPlaces[k][i] = values[i];
-            }
-            values[i] = in ? FloatOf(gpu[k], i) : s_keptPlaces[k][i];
+            continue;
         }
+        if (in)
+        {
+            memcpy(s_keptPlaces[k], TwinWords(e, arrays[k]), (size_t)count * sizeof(uint32_t));
+        }
+        swapped = swapped && (in ? TakeGpu(e, arrays[k], count, 1.0f)
+                                 : TwinAdopt(e, arrays[k], s_keptPlaces[k], count));
     }
-    return true;
+    return swapped;
 }
 
 // SwapPlaces for an output, and for plexus links their links found again
@@ -1563,14 +1654,10 @@ static bool SwapOutputPlaces(bool in)
     {
         return false;
     }
-    if (s_plexus)
-    {
-        mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
-        uint64_t kept = cpu->emitters[s_recordEmitter].linksDropped;
-        mvfxFindLinks(cpu, s_recordEmitter);
-        cpu->emitters[s_recordEmitter].linksDropped = kept;
-    }
-    return true;
+    int32_t none[2];
+    uint64_t dropped = 0;
+    return !s_plexus ||
+           mvfxTestFindLinks(s_context, s_cpu, s_recordEmitter, none, 0, &dropped) >= 0;
 }
 
 // The most rigid bodies of the first emitter the GPU held asleep at a
@@ -1620,17 +1707,9 @@ static float Perturbation(void)
 // serial by serial.
 static bool AdoptGpu(int32_t e)
 {
-    mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
-    int32_t count = cpu->emitters[e].count;
-    const uint32_t* serials = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
-    bool alike = (int32_t)s_record[0] == count;
-    for (int32_t i = 0; alike && i < count; ++i)
+    int32_t count = 0;
+    if (!SamePool(e, 1 << 17, &count))
     {
-        alike = Word(s_arrays.serial, i) == serials[i];
-    }
-    if (!alike)
-    {
-        printf("the pools differ: %d particles, GPU %u\n", count, s_record[0]);
         return false;
     }
     if (e == 0 && s_arrays.sleep >= 0)
@@ -1642,28 +1721,20 @@ static bool AdoptGpu(int32_t e)
     const struct
     {
         int16_t first;
-        mvfxAttribute attribute;
         int32_t components;
-    } adopted[6] = {{s_arrays.position, mvfx_attributePositionX, 3},
-                    {s_arrays.velocity, mvfx_attributeVelocityX, 3},
-                    {s_arrays.orientation, mvfx_attributeOrientationX, 4},
-                    {s_arrays.angular, mvfx_attributeAngularX, 3},
-                    {s_arrays.sleep, mvfx_attributeSleep, 4},
-                    {s_arrays.affine, mvfx_attributeAffine, 9}};
+    } adopted[6] = {{s_arrays.position, 3}, {s_arrays.velocity, 3}, {s_arrays.orientation, 4},
+                    {s_arrays.angular, 3},  {s_arrays.sleep, 4},    {s_arrays.affine, 9}};
     float moved = 1.0f + Perturbation();
+    bool taken = true;
     for (int32_t a = 0; a < 6; ++a)
     {
         float scale = a == 0 ? moved : 1.0f;
         for (int32_t k = 0; adopted[a].first >= 0 && k < adopted[a].components; ++k)
         {
-            float* values = mvfxAttributeArray(cpu, e, (mvfxAttribute)(adopted[a].attribute + k));
-            for (int32_t i = 0; i < count; ++i)
-            {
-                values[i] = FloatOf(adopted[a].first + k, i) * scale;
-            }
+            taken = taken && TakeGpu(e, adopted[a].first + k, count, scale);
         }
     }
-    return true;
+    return taken;
 }
 
 // Writes the CPU path's ribbon points and list from the GPU's places:
@@ -1838,21 +1909,27 @@ static double FacingSlack(const mvfxLayoutField* field, const uint8_t* cpu)
     {
         return 0.0;
     }
-    const mvfxInstance* instance = mvfxContextInstance(s_context, s_cpu);
-    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[s_recordEmitter];
+    const mvfxEmitterDef* def = &s_emitters[s_recordEmitter];
     double place[3];
     double tangent[3];
     VectorField(cpu, mvfx_recordPosition, place);
     VectorField(cpu, mvfx_recordTangent, tangent);
     double across[3];
-    if (compiled->ribbonFacing == mvfx_ribbonFaceNormal)
+    if (def->ribbon.facing == mvfx_ribbonFaceNormal)
     {
-        mvfxRecordSource source = mvfxOpenRecordSource(instance, s_recordEmitter, s_view.origin);
-        float normal[3];
-        mvfxUnmapVector(&source.map, compiled->ribbonNormal, normal);
+        // In the instance's space for a local emitter: turned with it.
+        const double q[4] = {(double)s_rotation[0], (double)s_rotation[1], (double)s_rotation[2],
+                             (double)s_rotation[3]};
+        const double n[3] = {(double)def->ribbon.normal[0], (double)def->ribbon.normal[1],
+                             (double)def->ribbon.normal[2]};
+        bool local = def->space != mvfx_spaceWorld;
+        double t[3] = {2.0 * (q[1] * n[2] - q[2] * n[1]), 2.0 * (q[2] * n[0] - q[0] * n[2]),
+                       2.0 * (q[0] * n[1] - q[1] * n[0])};
         for (int32_t k = 0; k < 3; ++k)
         {
-            across[k] = (double)normal[k];
+            int32_t a = (k + 1) % 3;
+            int32_t b = (k + 2) % 3;
+            across[k] = local ? n[k] + q[3] * t[k] + (q[a] * t[b] - q[b] * t[a]) : n[k];
         }
     }
     else
@@ -2153,14 +2230,13 @@ static void SpawnFor(const Run* run, int32_t s)
 {
     double positions[3 * 64];
     mvfxSpawnRequest request = *run->spawn;
-    const mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
     bool world = run->emitters[0].space == mvfx_spaceWorld;
     for (int32_t i = 0; i < request.count; ++i)
     {
         for (int32_t k = 0; k < 3; ++k)
         {
-            positions[3 * i + k] = run->spawn->positions[3 * i + k] +
-                                   (world ? cpu->to.origin[k] : 0.0) + 0.01 * (double)s;
+            positions[3 * i + k] =
+                run->spawn->positions[3 * i + k] + (world ? s_origin[k] : 0.0) + 0.01 * (double)s;
         }
     }
     request.positions = positions;
@@ -2207,6 +2283,8 @@ static void PlaceFar(void)
     CHECK(mvfxInstance_SetTransform(s_context, s_cpu, place, q, 1.0f, true) == mvfx_success &&
               mvfxInstance_SetTransform(s_context, s_planned, place, q, 1.0f, true) == mvfx_success,
           "placed far");
+    memcpy(s_origin, place, sizeof s_origin);
+    memcpy(s_rotation, q, sizeof s_rotation);
 }
 
 static void Move(int32_t s, double pace)
@@ -2219,6 +2297,8 @@ static void Move(int32_t s, double pace)
               mvfxInstance_SetTransform(s_context, s_planned, place, q, scale, false) ==
                   mvfx_success,
           "moved");
+    memcpy(s_origin, place, sizeof s_origin);
+    memcpy(s_rotation, q, sizeof s_rotation);
 }
 
 // Sets both instances' parameters anew at step s: each one's default
@@ -2383,63 +2463,50 @@ static uint32_t s_lastDrops[MVFX_MAX_EMITTERS];
 // back. Links are decided on places, which the paths hold within the
 // tolerance; from the same places the distance test, a sum of squared
 // differences, rounds alike.
+static int32_t s_cpuLinks[2 * MOST_LINKS];
+
 static bool SameLinks(Gpu* gpu, const mvfxGpuSim* sim, int32_t e)
 {
-    mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
-    mvfxEmitterState* state = &cpu->emitters[e];
-    int32_t count = state->count;
     uint32_t written = s_record[MVFX_GPU_LINKS];
     uint32_t drops = s_record[MVFX_GPU_LINKS_DROPPED] - s_lastDrops[e];
     s_lastDrops[e] = s_record[MVFX_GPU_LINKS_DROPPED];
     mvfxGpuParticles held;
-    const uint32_t* serials = mvfxAttributeArray(cpu, e, mvfx_attributeSerial);
-    bool alike = (int32_t)s_record[0] == count && count <= MOST_POINTS && written <= MOST_LINKS &&
+    int32_t count = 0;
+    bool alike = SamePool(e, MOST_POINTS, &count) && written <= MOST_LINKS &&
                  mvfxGpuSim_GetParticles(sim, e, &held) == mvfx_success &&
                  (written == 0 || ReadRange(gpu, held.links, 0, 8u * (uint64_t)written, s_linkWords,
                                             sizeof s_linkWords));
-    for (int32_t i = 0; alike && i < count; ++i)
-    {
-        alike = Word(s_arrays.serial, i) == serials[i];
-    }
     if (!alike)
     {
         printf("links: the pools differ or were not read (%d particles, GPU %u, %u links)\n", count,
                s_record[0], written);
         return false;
     }
-    float* places[3];
+    bool swapped = true;
     for (int32_t k = 0; k < 3; ++k)
     {
-        places[k] = mvfxAttributeArray(cpu, e, (mvfxAttribute)(mvfx_attributePositionX + k));
-        for (int32_t i = 0; i < count; ++i)
-        {
-            s_keptPlaces[k][i] = places[k][i];
-            places[k][i] = FloatOf(s_arrays.position + k, i);
-        }
+        memcpy(s_keptPlaces[k], TwinWords(e, s_arrays.position + k),
+               (size_t)count * sizeof(uint32_t));
+        swapped = swapped && TakeGpu(e, s_arrays.position + k, count, 1.0f);
     }
-    uint64_t kept = state->linksDropped;
-    state->linksDropped = 0;
-    mvfxFindLinks(cpu, e);
-    bool same = state->plexus.linkCount == (int32_t)written && state->linksDropped == drops;
+    uint64_t dropped = 0;
+    int32_t links = mvfxTestFindLinks(s_context, s_cpu, e, s_cpuLinks, MOST_LINKS, &dropped);
+    bool same = swapped && links == (int32_t)written && dropped == drops;
     for (int32_t l = 0; same && l < 2 * (int32_t)written; ++l)
     {
-        same = (uint32_t)state->plexus.links[l] == s_linkWords[l];
+        same = (uint32_t)s_cpuLinks[l] == s_linkWords[l];
     }
     if (!same)
     {
         printf("links: GPU %u, dropped %u; the CPU path's from the GPU's places %d, dropped "
                "%llu\n",
-               written, drops, state->plexus.linkCount, (unsigned long long)state->linksDropped);
+               written, drops, links, (unsigned long long)dropped);
     }
     for (int32_t k = 0; k < 3; ++k)
     {
-        for (int32_t i = 0; i < count; ++i)
-        {
-            places[k][i] = s_keptPlaces[k][i];
-        }
+        same = TwinAdopt(e, s_arrays.position + k, s_keptPlaces[k], count) && same;
     }
-    mvfxFindLinks(cpu, e);
-    state->linksDropped = kept;
+    same = mvfxTestFindLinks(s_context, s_cpu, e, s_cpuLinks, 0, &dropped) >= 0 && same;
     s_mostLinks = written > s_mostLinks ? written : s_mostLinks;
     s_linksDropped += drops;
     return same;
@@ -2447,18 +2514,19 @@ static bool SameLinks(Gpu* gpu, const mvfxGpuSim* sim, int32_t e)
 
 // Whether an emitter's ribbon counter on the GPU (its plan's, the host's
 // breaks, plus the breaks the GPU made) is the CPU path's.
-static bool SameRibbonCounter(const mvfxInstance* cpu, int32_t e)
+static bool SameRibbonCounter(int32_t e)
 {
+    int64_t counter = mvfxTestRibbonCounter(s_context, s_cpu, e);
     mvfxEmitterPlan plan;
     uint32_t breaks = s_record[MVFX_GPU_RIBBON_BREAKS];
     const RibbonState* r = &s_ribbons[e];
     uint32_t shift = r->shifts > 0 ? r->shift[r->shifts - 1] : 0;
     bool same = LastPlan(e, &plan) == mvfx_success &&
-                plan.ribbonCounter + breaks + shift == cpu->emitters[e].ribbonCounter;
+                (int64_t)(uint32_t)(plan.ribbonCounter + breaks + shift) == counter;
     if (!same)
     {
-        printf("ribbon counter %u + %u, the CPU path's %u\n", plan.ribbonCounter, breaks,
-               cpu->emitters[e].ribbonCounter);
+        printf("ribbon counter %u + %u, the CPU path's %lld\n", plan.ribbonCounter, breaks,
+               (long long)counter);
     }
     s_ribbonBreaks = breaks > s_ribbonBreaks ? breaks : s_ribbonBreaks;
     return same;
@@ -2530,7 +2598,6 @@ static void Clear(void)
 static mvfxGridId s_grid;
 static mvfxGridId s_colliderGrids[4];
 static mvfxMeshId s_mesh;
-static mvfxEmitterDef s_emitters[RUN_EMITTERS];
 static mvfxForce s_forces[RUN_EMITTERS][MVFX_MAX_FORCES];
 static mvfxCollider s_colliders[RUN_EMITTERS][MVFX_MAX_COLLIDERS];
 
@@ -2568,6 +2635,7 @@ static const mvfxEmitterDef* WithGrid(const Run* run)
     for (int32_t e = 0; e < run->emitterCount; ++e)
     {
         s_emitters[e] = run->emitters[e];
+        s_emitterCount = run->emitterCount;
         if (run->mesh != NULL && s_emitters[e].shape.kind == mvfx_shapeMesh)
         {
             s_emitters[e].shape.mesh = s_mesh;
@@ -2684,6 +2752,8 @@ mvfxGpuSim* OpenRun(mvfxGpu* kernels, const Run* run, mvfxEffectId* effectOut)
     instanceDef.quality = run->quality != NULL ? 1 : 0;
     instanceDef.scale = run->scale > 0.0f ? run->scale : 1.0f;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_cpu) == mvfx_success, "a CPU instance");
+    memset(s_origin, 0, sizeof s_origin);
+    memcpy(s_rotation, instanceDef.rotation, sizeof s_rotation);
     instanceDef.planned = true;
     CHECK(mvfxCreateInstance(s_context, &instanceDef, &s_planned) == mvfx_success, "planned");
     mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
@@ -2829,6 +2899,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
         }
         PushWaters(run, s);
         CHECK(mvfxContext_StepTicks(s_context, s_stepTicks) == mvfx_success, "stepped");
+        TwinChanged();
         s_waitNs = s_warm && s > 0 ? FRAME_WAIT_NS : WARM_WAIT_NS;
         same = Simulate(gpu, sim) && ReportGases(gpu, sim) && ReportWaters(gpu, sim);
         if (!same)
@@ -2841,7 +2912,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
             mvfxGpuParticles held;
             if (mvfxGpuSim_GetParticles(sim, e, &held) == mvfx_success && held.capacity == 0)
             {
-                same = mvfxContextInstance(s_context, s_cpu)->emitters[e].count == 0;
+                same = TwinStats(e).live == 0;
                 continue;
             }
             if (!ReadBack(gpu, sim, e))
@@ -2850,9 +2921,8 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                 same = false;
                 break;
             }
-            const mvfxInstance* cpu = mvfxContextInstance(s_context, s_cpu);
-            same = SameAsCpu(cpu, e) && (s_leftOut[e] || SameBounds(sim, e)) &&
-                   (run->emitters[e].ribbon.ids == mvfx_ribbonNone || SameRibbonCounter(cpu, e)) &&
+            same = SameAsCpu(e) && (s_leftOut[e] || SameBounds(sim, e)) &&
+                   (run->emitters[e].ribbon.ids == mvfx_ribbonNone || SameRibbonCounter(e)) &&
                    (!run->emitters[e].neighbors.enable || SameCapped(e)) &&
                    (!run->emitters[e].contacts.enable || SameContactsCapped(e)) &&
                    (!(run->emitters[e].unit.tearStrain > 0.0f) || SameTorn(e)) &&
@@ -2957,9 +3027,9 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     }
     if (run->killing)
     {
-        const mvfxEmitterState* state = &mvfxContextInstance(s_context, s_cpu)->emitters[0];
-        printf("  killed: %llu\n", (unsigned long long)state->killCount);
-        CHECK(state->killCount > 0, "kills");
+        uint64_t killed = TwinStats(0).killCount;
+        printf("  killed: %llu\n", (unsigned long long)killed);
+        CHECK(killed > 0, "kills");
     }
     if (s_neighborsCompared > 0)
     {
