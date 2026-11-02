@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // A gas's obstacles: a still sphere's cells solid and empty, about as
-// many as its area holds; flow past a still box kept free of divergence,
+// many as its area holds, and those outside a sphere or a box that keeps
+// the gas inside; flow past a still box kept free of divergence,
 // the box's faces still; a host's sphere moving at a known speed giving
 // the faces beside it that speed from the second step (none at the first
 // or after a teleport), in steps of either length; a plane moving its
@@ -150,6 +151,36 @@ static void TestStill(void)
     }
     CHECK(right && solids >= 71 && solids <= 87, "a still sphere's cells solid and empty");
     mvfxDestroyContext(s_context);
+    // A sphere and a box that keep the gas inside: the cells whose centers
+    // are outside each are solid and empty, the rest hold density.
+    for (int32_t kind = 0; kind < 2; ++kind)
+    {
+        mvfxCollider room =
+            Collider(kind == 0 ? mvfx_colliderSphere : mvfx_colliderBox, 0, 0, mvfx_spaceWorld);
+        room.inside = true;
+        def.obstacles = &room;
+        Open(&def);
+        Steps(4);
+        Read(def.size);
+        CHECK(mvfxInstance_ReadGas(s_context, s_instance, 0, mvfx_gasDensity, density, 1024) ==
+                  mvfx_success,
+              "density");
+        int32_t open = 0;
+        right = true;
+        for (int32_t i = 0; i < 1024; ++i)
+        {
+            float x = ((float)(i % 32) + 0.5f - 16.0f) * 0.1f;
+            float y = ((float)(i / 32) + 0.5f - 16.0f) * 0.1f;
+            bool inside = kind == 0 ? x * x + y * y < 0.25f : fabsf(x) < 0.4f && fabsf(y) < 0.3f;
+            open += s_solid[i] == 0 ? 1 : 0;
+            right = right && (s_solid[i] == 0) == inside &&
+                    (inside ? density[i] > 0.0f : density[i] == 0.0f);
+        }
+        CHECK(right && open >= (kind == 0 ? 71 : 48) && open <= (kind == 0 ? 87 : 48),
+              kind == 0 ? "outside a sphere kept in, solid and empty"
+                        : "outside a box kept in, solid and empty");
+        mvfxDestroyContext(s_context);
+    }
 }
 
 // The largest divergence's size over a 2D gas's open cells, as read.

@@ -6,8 +6,9 @@
 // friction as computed by hand; a rest speed; a particle's radius; a
 // start on the wrong side put back; contacts several a step; kill on
 // collision, life lost, the count and its kill rule; the instance's own
-// colliders; a collider in the emitter's space; and the refusals. The
-// module's own functions are tested in test_collide_internal.c.
+// colliders; a collider in the emitter's space; a particle's contacts the
+// same alone in its run as with one that keeps every collider in reach,
+// within a rounding of a plane or grazing a sphere; and the refusals.
 
 #include "particles.h"
 #include "peek.h"
@@ -16,6 +17,7 @@
 #include "maul-vfx/instance.h"
 
 #include <math.h>
+#include <string.h>
 
 typedef struct Scene
 {
@@ -445,6 +447,13 @@ static void TestShapes(void)
     static const mvfxCollider floor = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
     a = Run(&floor, 0, 0, 1, 0, 0, -1, 0);
     CHECK(Near(a.p[1], 0.0f) && a.v[1] == -1.0f && a.collisions == 0, "ending on the plane");
+    // Behind a plane, moving out: put back onto it first, then on its way.
+    a = Run(&floor, 0, 0, -1, 0, 0, 2, 0);
+    CHECK(a.collisions == 1 && Near(a.p[1], 2.0f) && a.v[1] == 2.0f, "moving out from behind");
+    // A path along a sphere's top touches it: one contact, the velocity
+    // along it kept.
+    a = Run(&ball, 0, -4, 2, 0, 8, 0, 0);
+    CHECK(a.collisions == 1 && a.v[0] == 8.0f && Near(a.p[0], 4.0f), "a path along a sphere's top");
     // A normal of length 2 acts as the unit one: half the speed back at
     // restitution 1 is all of it.
     static const mvfxCollider longNormal = {.kind = mvfx_colliderPlane, .normal = {0, 2, 0}};
@@ -471,6 +480,92 @@ static void TestShapes(void)
                            .rotation = {0, 0, s15, c15}};
     a = Run(&turned, 0, 1.9998 * 0.86602540, 1.9998 * 0.5, 0, 0, 0, 0);
     CHECK(a.collisions == 0, "a near-unit rotation");
+}
+
+// One particle from a place at a velocity for a second against one
+// collider, alone in its run or with a second at rest at with: the first's
+// place, velocity and collisions after.
+static After RunWith(const mvfxCollider* collider, const double place[3], const float velocity[3],
+                     const double* with)
+{
+    mvfxEmitterDef emitter = Held(collider, 1, 4);
+    Scene scene = NewScene(&emitter);
+    Place(&scene, place[0], place[1], place[2], velocity[0], velocity[1], velocity[2]);
+    if (with != NULL)
+    {
+        Place(&scene, with[0], with[1], with[2], 0, 0, 0);
+    }
+    CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND) == mvfx_success, "step");
+    // The first in the pool is the first placed.
+    After after = {.live = s_peeked.count, .collisions = s_peeked.collisions[0]};
+    CHECK(after.live == (with != NULL ? 2 : 1), "both moved");
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        after.p[k] = s_peeked.position[k][0];
+        after.v[k] = s_peeked.velocity[k][0];
+    }
+    mvfxDestroyContext(scene.context);
+    return after;
+}
+
+// Whether two runs left a particle the same, bit for bit.
+static bool SameAfter(const After* a, const After* b)
+{
+    return memcmp(a->p, b->p, sizeof a->p) == 0 && memcmp(a->v, b->v, sizeof a->v) == 0 &&
+           a->collisions == b->collisions;
+}
+
+static void TestAloneInRun(void)
+{
+    // A particle at rest within a few units in the last place of a tilted
+    // plane, either side: alone in its run, its segment's box is a point,
+    // which the plane may be left out of only past the rounding of its
+    // own test. With a second particle behind the plane, the plane is in
+    // reach for both. Its contacts are the same either way, and some
+    // particles exactly in front meet the plane as its test rounds.
+    static const mvfxCollider tilted = {
+        .kind = mvfx_colliderPlane, .center = {0.1f, 0.2f, 0.3f}, .normal = {0.48f, 0.6f, 0.64f}};
+    static const float rest[3] = {0, 0, 0};
+    static const double behind[3] = {0.0, 0.0, -10.0};
+    int32_t same = 0;
+    int32_t met = 0;
+    enum
+    {
+        TRIALS = 300
+    };
+    for (int32_t trial = 0; trial < TRIALS; ++trial)
+    {
+        float x = (Random() - 0.5f) * 200.0f;
+        float y = (Random() - 0.5f) * 200.0f;
+        double z = (double)tilted.center[2] -
+                   ((double)tilted.normal[0] * ((double)x - (double)tilted.center[0]) +
+                    (double)tilted.normal[1] * ((double)y - (double)tilted.center[1])) /
+                       (double)tilted.normal[2];
+        float near = nextafterf((float)z, trial % 2 == 0 ? INFINITY : -INFINITY);
+        const double place[3] = {(double)x, (double)y, (double)near};
+        double distance = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            distance += (double)tilted.normal[k] * (place[k] - (double)tilted.center[k]);
+        }
+        After alone = RunWith(&tilted, place, rest, NULL);
+        After paired = RunWith(&tilted, place, rest, behind);
+        same += SameAfter(&alone, &paired) ? 1 : 0;
+        met += distance > 0.0 && paired.collisions > 0 ? 1 : 0;
+    }
+    CHECK(same == TRIALS && met > 0, "within a rounding of a plane, alone as with others");
+    // A particle passing 10^-4 over a unit sphere's top from 100 away: its
+    // test's discriminant cancels to 0, a touch. Alone, its segment's box
+    // keeps clear of the sphere by 10^-4; with a second at the sphere's
+    // center, the box holds it. Its contact is the same either way.
+    static const mvfxCollider ball = {.kind = mvfx_colliderSphere, .radius = 1.0f};
+    static const double from[3] = {-100.0, 1.0001, 0.0};
+    static const float across[3] = {200, 0, 0};
+    static const double middle[3] = {0.0, 0.0, 0.0};
+    After alone = RunWith(&ball, from, across, NULL);
+    After paired = RunWith(&ball, from, across, middle);
+    CHECK(SameAfter(&alone, &paired) && paired.collisions == 1,
+          "grazing a sphere, alone as with others");
 }
 
 static void TestRefusals(void)
@@ -557,6 +652,7 @@ int main(void)
     TestCountAtBirth();
     TestHostAndSpaces();
     TestShapes();
+    TestAloneInRun();
     TestRefusals();
     return s_failures == 0 ? 0 : 1;
 }
