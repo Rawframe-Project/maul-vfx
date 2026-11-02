@@ -894,8 +894,7 @@ static void TestHeldSpeeds(Gpu* gpu, Checker* checker)
 // 2^63, among them a long hanging sheet's scaled cross product (about
 // 2^-66, whose square is subnormal), either side of 2^-38 and 2^63, and
 // two just above 2^-40 whose subnormal square tipped the sum's rounding
-// before the bound moved to 2^-38 (test_direction_internal holds their
-// bits). A device that flushes subnormals (D3D12 does) measured a vector
+// before the bound moved to 2^-38. A device that flushes subnormals (D3D12 does) measured a vector
 // below about 2^-63 as 0 before such vectors were scaled up. A subnormal
 // component it flushes on reading, so none is drawn.
 static void TestLengths(Gpu* gpu, Checker* checker)
@@ -1294,9 +1293,12 @@ static void TestCrossEdges(Gpu* gpu, Checker* checker)
         {1e20f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f},         {0.5f, -1.1e19f, 0.0f, 0.5f, 0.0f, 0.0f},
         {1e29f, 0.0f, 0.0f, 1e29f, 0.0f, 1e29f},       {0x1p63f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f},
         {0x1.fffffep62f, 1.0f, 0.0f, 0.0f, 1.0f, 2.0f}};
-    // Flushes, each deciding one row (test_aero_internal says how): a
-    // second product, a difference, e1's and e2's scaled component and a
-    // first product; each turned to every row.
+    // Flushes, each deciding one row, each turned to every row: scaled, a
+    // subnormal second product (y 2^-124 0.5 less 0.5 2^-126, 2^-125
+    // flushed), a subnormal difference of normal products (1.5 2^-126
+    // less 2^-126), e1's scaled 2^-70 and e2's (x 2^-71 and -2^-71
+    // unflushed), and a subnormal first product (x -2^-125 flushed,
+    // -1.5 2^-126 unflushed).
     const float flushes[FLUSHES][6] = {{0x1p63f, 0.0f, 0x1p-60f, 0x1p63f, 0.0f, 0x1p-62f},
                                        {0x1p63f, 0.0f, 0x1.8p-61f, 0x1p63f, 0.0f, 0x1p-61f},
                                        {0x1p63f, 0x1p-70f, 0.0f, 0.0f, 0.0f, 0x1p127f},
