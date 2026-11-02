@@ -6,7 +6,8 @@
 // hull's center given, coming to rest on a face at that face's distance;
 // a lopsided hull spun freely keeping its angular momentum and energy,
 // its inertia not along its axes; hulls resting on a box collider and a
-// sphere's top as boxes do; hulls stacked, meeting head on, and piled in
+// sphere's top as boxes do; a hull around a small sphere pushed out
+// through its nearest face; hulls stacked, meeting head on, and piled in
 // a box without deep overlaps; a hull tipped through 45 degrees, where
 // its contacts change from faces to a point, following a box; a box's and
 // a hull's edge across a heightfield's crest held up by it; a mesh's
@@ -416,6 +417,31 @@ static void TestOnColliders(void)
               on == 0 ? "on a table as a box" : "on a ball as a box");
         mvfxDestroyContext(s_scene.context);
     }
+}
+
+static void TestInsideHull(void)
+{
+    // A small sphere at the origin inside a cube's hull of 2 centered 0.7
+    // above it, as test_rigid.c's box: pushed out through the nearest face,
+    // the bottom, to rest just above the sphere.
+    static const mvfxCollider ball = {.kind = mvfx_colliderSphere, .radius = 0.1f};
+    static const float two[3] = {2, 2, 2};
+    static const float square[3] = {0, 0, 0};
+    static const double place[3] = {0, 0.7, 0};
+    static const float still[3] = {0, 0, 0};
+    OpenContext();
+    mvfxMeshId cube = MeshOf(s_cube, 8);
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidHull, cube, two, square, false);
+    emitter.collision.enable = true;
+    emitter.colliders = &ball;
+    emitter.colliderCount = 1;
+    Play(&emitter, 1, place, still);
+    Steps(10);
+    float speed = fabsf(At(0, VelocityX)) + fabsf(At(0, VelocityY)) + fabsf(At(0, VelocityZ));
+    CHECK(fabsf(At(0, PositionY) - 1.1f) <= 0.01f && fabsf(At(0, PositionX)) <= 1e-4f &&
+              speed <= 1e-3f,
+          "a hull out by its nearest face");
+    mvfxDestroyContext(s_scene.context);
 }
 
 static void TestMeeting(void)
@@ -877,6 +903,7 @@ int main(void)
     TestCreatedPositions();
     TestFreeSpin();
     TestOnColliders();
+    TestInsideHull();
     TestMeeting();
     TestPile();
     TestTipping();
