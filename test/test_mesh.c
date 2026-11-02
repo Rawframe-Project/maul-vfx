@@ -440,6 +440,66 @@ static void TestAllocatorFailing(void)
     CHECK(failing.blocks == 0, "everything returned");
 }
 
+// An allocator that counts the bytes it holds.
+static void* CountingAlloc(size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    *(size_t*)context += size;
+    return malloc(size);
+}
+
+static void CountingFree(void* memory, size_t size, size_t alignment, void* context)
+{
+    (void)alignment;
+    *(size_t*)context -= size;
+    free(memory);
+}
+
+static void TestHullKept(void)
+{
+    // A mesh keeps a hull (3.4 KB) only when a rigid particle could take
+    // one: a cube's keeps it, a flat grid's of as many vertices none.
+    static const float cube[] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0,
+                                 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1};
+    static const float flat[] = {0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0,
+                                 0, 1, 0, 1, 1, 0, 2, 1, 0, 3, 1, 0};
+    size_t held = 0;
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    contextDef.allocator = (mvfxAllocator){CountingAlloc, CountingFree, &held};
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxMeshDef def = mvfxDefaultMeshDef();
+    def.positions = cube;
+    def.vertexCount = 8;
+    size_t before = held;
+    mvfxMeshId solid = {0};
+    CHECK(mvfxCreateMesh(context, &def, &solid) == mvfx_success, "the cube's mesh");
+    size_t solidBytes = held - before;
+    def.positions = flat;
+    before = held;
+    mvfxMeshId sheet = {0};
+    CHECK(mvfxCreateMesh(context, &def, &sheet) == mvfx_success, "the grid's mesh");
+    size_t sheetBytes = held - before;
+    bool solidHull = false;
+    bool sheetHull = true;
+    float center[3];
+    int32_t solidCount = 0;
+    int32_t sheetCount = -1;
+    CHECK(mvfxMesh_GetHullCenter(context, solid, &solidHull, center) == mvfx_success && solidHull &&
+              mvfxMesh_GetHullVertexCount(context, solid, &solidCount) == mvfx_success &&
+              solidCount == 8,
+          "a cube's mesh has its hull of 8 vertices");
+    CHECK(mvfxMesh_GetHullCenter(context, sheet, &sheetHull, center) == mvfx_success &&
+              !sheetHull &&
+              mvfxMesh_GetHullVertexCount(context, sheet, &sheetCount) == mvfx_success &&
+              sheetCount == 0,
+          "a flat mesh has none");
+    CHECK(solidBytes >= sheetBytes + 3000 && solidBytes <= sheetBytes + 4096,
+          "only the cube's mesh keeps the hull's 3.4 KB");
+    mvfxDestroyContext(context);
+    CHECK(held == 0, "everything returned");
+}
+
 static void TestRefusals(void)
 {
     mvfxContextDef contextDef = mvfxDefaultContextDef();
@@ -722,6 +782,7 @@ int main(void)
     mvfxDestroyContext(s_context);
     TestRefusals();
     TestAllocatorFailing();
+    TestHullKept();
     TestThroughTheStep();
     return s_failures == 0 ? 0 : 1;
 }
