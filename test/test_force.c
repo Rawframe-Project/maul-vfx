@@ -6,10 +6,8 @@
 // emitter's space or the world's under a turned, scaled instance, a
 // strength from a parameter and its hold, a strength drawn once per
 // instance and force or read from a curve at each step, the order of
-// several forces,
-// and the refusals. A turbulence's field against the noise itself, and
-// the quick paths of an unturned box and map, are tested in
-// test_force_internal.c.
+// several forces, an unturned box under a moved, scaled, unturned instance,
+// and the refusals.
 
 #include "peek.h"
 #include "test_harness.h"
@@ -624,6 +622,40 @@ static void TestVectorField(void)
     AccelerationIn(&scene, near, a);
     CHECK(Is(a, -2.0f, 3.0f, 2.0f), "the emitter's box under a scaled instance");
     mvfxDestroyContext(scene.context);
+
+    // The same box under the instance unturned, placed at (50, 0, 0) and
+    // then put at (100, 0, 0) at scale 2: at its (1, 0, 0), u = (0.75,
+    // 0.5, 0.5), doubled with the instance, times 2. Then the box in the
+    // world at (101, 0, 0) on an emitter in the instance's space: at the
+    // instance's (1, 0, 0), the world's (102, 0, 0), u is again (0.75, 0.5,
+    // 0.5), times 2 in the world, halved into the emitter's space.
+    static const float none[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    static const double first[3] = {50.0, 0.0, 0.0};
+    for (int32_t world = 0; world < 2; ++world)
+    {
+        force = (mvfxForce){.kind = mvfx_forceVectorField,
+                            .space = world != 0 ? mvfx_spaceWorld : mvfx_spaceLocal,
+                            .point = {world != 0 ? 101.0f : 0.0f, 0, 0},
+                            .strength = {.kind = mvfx_sourceRange, .range = {2.0f, 2.0f}},
+                            .boxSize = {4, 4, 4},
+                            .boxRotation = {0, 0, 0, 1}};
+        scene = NewFieldScene(&force, 1, world != 0 ? mvfx_spaceLocal : mvfx_spaceWorld, &grid);
+        CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, first, none, 1.0f, true) ==
+                  mvfx_success,
+              "placed");
+        CHECK(mvfxContext_StepTicks(scene.context, MVFX_TICKS_PER_SECOND / 1024) == mvfx_success,
+              "step");
+        CHECK(mvfxInstance_SetTransform(scene.context, scene.instance, origin, none, 2.0f, true) ==
+                  mvfx_success,
+              "moved");
+        // A local emitter's places are the instance's.
+        const double there[3] = {world != 0 ? 1.0 : 102.0, 0.0, 0.0};
+        AccelerationIn(&scene, there, a);
+        CHECK(world != 0 ? Is(a, 0.75f, 0.5f, 0.5f) : Is(a, 3.0f, 2.0f, 2.0f),
+              world != 0 ? "the world's unturned box under a moved, scaled instance"
+                         : "the emitter's unturned box under a moved, scaled instance");
+        mvfxDestroyContext(scene.context);
+    }
 
     // As a velocity, tightness 4.
     force = (mvfxForce){.kind = mvfx_forceVectorField,
