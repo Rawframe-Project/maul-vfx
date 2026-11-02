@@ -6,6 +6,13 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.8.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.7.0...v0.8.0) (2026-11-02)
+
+
+### Added
+
+* **gpu:** give what a GPU object holds of its device's budgets ([#270](https://github.com/Rawframe-Project/maul-vfx/issues/270)) ([119273b](https://github.com/Rawframe-Project/maul-vfx/commit/119273b05ec2c83d5153a57f09d4fa11433286c6)), closes [#269](https://github.com/Rawframe-Project/maul-vfx/issues/269) [#15](https://github.com/Rawframe-Project/maul-vfx/issues/15)
+
 ## [0.7.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.6.0...v0.7.0) (2026-11-01)
 
 This release changes the simulation's results: rigid bodies turn by a
