@@ -9,7 +9,8 @@
 // leave with the volume kept; once a step through substeps; through water
 // into the floor, not over dry ground; pours adding exactly their
 // particles' volume and killing them, and one past binary32's range held
-// at MVFX_MAX_WATER_DEPTH. Particles are read from their
+// at MVFX_MAX_WATER_DEPTH; room for crossings held, 20 bytes a particle,
+// on the surface met alone. Particles are read from their
 // records, surfaces through the output, and a shallow flow is held
 // through a test hook.
 
@@ -217,8 +218,7 @@ static void TestRoom(void)
 {
     // Room for a crossing a particle: all 16 of an emitter's particles,
     // meeting surface 1 of two, falling at 1 from 0.5 above it, each
-    // crossing it in the same step, are each met. That the surface it
-    // does not meet has no room is in test_water_couple_internal.c.
+    // crossing it in the same step, are each met.
     mvfxWaterCoupling coupling = Coupling();
     coupling.water = 1;
     mvfxEmitterDef emitter = Coupled(&coupling);
