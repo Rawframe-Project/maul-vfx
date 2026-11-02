@@ -5,9 +5,9 @@
 // where without it they pass through; a chain's last point laid on its
 // first parted, and a chain at rest thicker than its spacing left still
 // (its neighbors filtered out at rest);
-// friction slowing the sheets' sliding; a point's candidates capped and
-// counted; the checks. One pass's mean of a point's pairs is tested in
-// test_self_internal.c.
+// friction slowing the sheets' sliding; a chain folded so its first point
+// touches two others moved by their pairs' mean in a step of one pass; a
+// point's candidates capped and counted; the checks.
 
 #include "test_harness.h"
 
@@ -264,6 +264,64 @@ static void TestChain(void)
     }
 }
 
+// Whether the next step folds a chain of six so that its points 4 and 5
+// both touch its first, 0.1 across and 0.1 above and below it, at rest.
+static bool s_fold;
+
+static void Fold(const mvfxModuleCall* call, void* user)
+{
+    (void)user;
+    if (s_fold && call->particles.count == 6)
+    {
+        static const float folded[6][3] = {{0, 0, 0},    {0.5f, 2, 0},    {1, 2, 0},
+                                           {1.5f, 2, 0}, {0.1f, 0.1f, 0}, {0.1f, -0.1f, 0}};
+        for (int32_t i = 0; i < 6; ++i)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                call->particles.position[k][i] = folded[i][k];
+                call->particles.velocity[k][i] = 0.0f;
+            }
+        }
+        s_fold = false;
+    }
+}
+
+static void TestMean(void)
+{
+    // A soft chain of six, a thickness of 0.3, one substep, folded by a
+    // host module: a step's one pass moves its first point by its two
+    // pairs' mean, half of each overlap along each line, -0.0561 along x
+    // (the lines' cross parts cancel), not their sum, nor its first pair's
+    // alone, which would move it off the x axis. The soft constraints
+    // move it 4e-4 more.
+    static Kick none;
+    none = (Kick){.first = 1000};
+    mvfxEmitterDef emitter = Sheets(0.3f, &none);
+    emitter.unit.kind = mvfx_unitChain;
+    emitter.unit.points = 6;
+    emitter.unit.substeps = 1;
+    emitter.unit.stretchCompliance = 1.0f;
+    emitter.unit.bendCompliance = 1.0f;
+    emitter.capacity = 6;
+    emitter.hostSpawnCapacity = 1;
+    static const mvfxHostModule fold = {.stage = mvfx_stageBeforeMotion, .function = Fold};
+    emitter.hostModules = &fold;
+    s_fold = false;
+    static const double root[3] = {0, 0, 0};
+    Open(&emitter, root, 1);
+    Steps(1);
+    s_fold = true;
+    Steps(1);
+    Read();
+    double length = sqrt(0.02);
+    double move = -0.5 * (0.3 - length) / length * 0.1;
+    CHECK(fabs((double)s_scene.records[0].position[0] - move) < 0.005 &&
+              fabs((double)s_scene.records[0].position[1]) < 0.005,
+          "moved by its pairs' mean");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestSheetAtRest(void)
 {
     // A sheet at rest with a thickness of 0.6, more than its spacing:
@@ -370,6 +428,7 @@ int main(void)
 {
     TestSheets();
     TestChain();
+    TestMean();
     TestSheetAtRest();
     TestCapped();
     TestChecks();

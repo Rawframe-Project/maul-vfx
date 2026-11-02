@@ -12,13 +12,12 @@
 // clear in the first step alone; a surface's view; a stopped instance
 // running while its surface moves, as its simulation reports; an
 // emitter's coupling to a surface against the instance's transform; the
-// counts reported once a tick, a clear emptying them, and the steps
+// counts and the reach (twice it the bounds' height) reported once a
+// tick, a clear emptying them, and the steps
 // slowed counted from the plans; the refusals, and reads of a planned
 // surface refused. That the CPU path counts its own substeps from its own
 // speed the same way is left to the GPU part's harness, which compares
-// their results; the reach and the reported speed are compared with the
-// CPU path's in test_plan_water_internal.c, and the terrain with the CPU
-// path's resolver there too.
+// their results.
 
 #include "plan_oracle.h"
 #include "test_harness.h"
@@ -108,6 +107,14 @@ static int64_t PlannedClock(void)
     static mvfxWaterPlan plan;
     CHECK(mvfxInstance_GetWaterPlan(s_context, s_planned, 0, &plan) == mvfx_success, "a plan");
     return plan.start + plan.ticks;
+}
+
+// How tall the planned instance's bounds are: twice its surface's reach.
+static double Height(void)
+{
+    mvfxBounds bounds;
+    CHECK(mvfxInstance_GetBounds(s_context, s_planned, -1, &bounds) == mvfx_success, "bounds");
+    return bounds.max[1] - bounds.min[1];
 }
 
 static mvfxWaterInfo Info(mvfxInstanceId instance)
@@ -600,8 +607,9 @@ static void TestView(void)
 
 static void TestCounts(void)
 {
-    // A planned lake's counts: the reach replaced and the counts added once
-    // a tick, an older or repeated report ignored; a stop that clears
+    // A planned lake's counts: the reach replaced (seen as the bounds'
+    // height) and the counts added once a tick, an older or repeated report
+    // ignored; a stop that clears
     // empties them and ignores the reports before it; the refusals.
     NewContext();
     mvfxWaterDef water = Lake();
@@ -618,13 +626,14 @@ static void TestCounts(void)
                    mvfxInstance_SetWaterCounts(s_context, s_planned, 0, STEP_TICKS, 0.9f, 9, 9.0) ==
                        mvfx_success &&
                    mvfxInstance_GetWaterInfo(s_context, s_planned, 0, &info) == mvfx_success &&
-                   info.heldFaceCount == 7 && info.volumePoured == 0.75;
+                   info.heldFaceCount == 7 && info.volumePoured == 0.75 &&
+                   fabs(Height() - 2.0 * (double)0.2f) <= 1e-6;
     CHECK(counted, "each tick's report counted once");
     CHECK(mvfxInstance_Stop(s_context, s_planned, mvfx_stopAndClear) == mvfx_success &&
               mvfxInstance_SetWaterCounts(s_context, s_planned, 0, 2 * STEP_TICKS, 1.0f, 5, 1.0) ==
                   mvfx_success &&
               mvfxInstance_GetWaterInfo(s_context, s_planned, 0, &info) == mvfx_success &&
-              info.heldFaceCount == 0 && info.volumePoured == 0.0,
+              info.heldFaceCount == 0 && info.volumePoured == 0.0 && Height() == 0.0,
           "a clear empties them, the reports before it ignored");
     uint64_t misuse = mvfxContext_GetMisuse(s_context);
     bool refused =
