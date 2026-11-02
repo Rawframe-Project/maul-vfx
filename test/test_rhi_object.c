@@ -6,10 +6,10 @@
 // hand, its memory failing, a device failing an object, the object not
 // ready before its pipelines' notifications, a pipeline that fails,
 // notifications that are not its own, and its shaders and pipelines all
-// returned, on a device that holds no more than one object's; and a
-// simulation on a device failing its buffers.
+// returned, on a device that holds no more than one object's, as
+// mvfxGetGpuBudgets gives them; and a simulation on a device failing its
+// buffers.
 
-#include "kernels.h"
 #include "test_harness.h"
 
 #include "maul-rhi/instance.h"
@@ -37,6 +37,8 @@ typedef struct Gpu
 // zeroed one), and how many GPU objects' shaders and pipelines it holds.
 static mrhiAllocator s_deviceAllocator;
 static uint32_t s_objectsHeld = 1;
+// What a GPU object holds of a device's budgets, by mvfxGetGpuBudgets.
+static mvfxGpuBudgets s_budgets;
 
 // A device on the test driver, its pipelines answered with an outcome,
 // failing every object after objects (0 for none), holding the shaders
@@ -72,8 +74,8 @@ static bool Open(Gpu* gpu, mrhiResult pipelines, uint32_t objects)
     mrhiDeviceDef deviceDef = mrhiDefaultDeviceDef();
     deviceDef.adapter = adapter;
     deviceDef.allocator = s_deviceAllocator;
-    deviceDef.budgets.shaders = s_objectsHeld * MVFX_CONTAINER_COUNT;
-    deviceDef.budgets.pipelines = s_objectsHeld * MVFX_KERNEL_COUNT;
+    deviceDef.budgets.shaders = s_objectsHeld * s_budgets.shaders;
+    deviceDef.budgets.pipelines = s_objectsHeld * s_budgets.pipelines;
     return mrhiCreateDevice(gpu->instance, &deviceDef, &gpu->device, &request) == mrhi_success &&
            mrhiInstance_TakeNotification(gpu->instance, &record) == mrhi_success &&
            record.kind == mrhi_instanceDeviceReady && record.outcome == mrhi_success;
@@ -249,7 +251,8 @@ static void TestLife(void)
         CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success, "created");
         CHECK(!mvfxGpu_IsReady(kernels), "not ready before its notifications");
         mrhiDeviceNotification mine = {0};
-        CHECK(Pump(&gpu, kernels, &mine) == MVFX_KERNEL_COUNT && mvfxGpu_IsReady(kernels),
+        CHECK(Pump(&gpu, kernels, &mine) == (int32_t)s_budgets.pipelines &&
+                  mvfxGpu_IsReady(kernels),
               "ready on its own notifications");
         if (round == 0)
         {
@@ -301,7 +304,7 @@ static void TestFailures(void)
     mvfxGpu* kernels = NULL;
     CHECK(mvfxCreateGpu(&def, &kernels) == mvfx_success, "created");
     mrhiDeviceNotification mine = {0};
-    CHECK(Pump(&gpu, kernels, &mine) == MVFX_KERNEL_COUNT && !mvfxGpu_IsReady(kernels),
+    CHECK(Pump(&gpu, kernels, &mine) == (int32_t)s_budgets.pipelines && !mvfxGpu_IsReady(kernels),
           "a failed pipeline answered, not ready");
     mvfxDestroyGpu(kernels);
     Close(&gpu);
@@ -313,7 +316,7 @@ static void TestFailures(void)
     int32_t refusedCount = 0;
     int32_t madeCount = 0;
     bool readyAsMade = true;
-    for (uint32_t objects = 1; objects <= MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT + 2; ++objects)
+    for (uint32_t objects = 1; objects <= s_budgets.shaders + s_budgets.pipelines + 2; ++objects)
     {
         CHECK(Open(&gpu, mrhi_success, objects), "a device failing objects");
         def = CountedDef(gpu.device);
@@ -325,7 +328,7 @@ static void TestFailures(void)
         {
             mrhiDeviceNotification last = {0};
             (void)Pump(&gpu, kernels, &last);
-            bool every = objects >= MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT;
+            bool every = objects >= s_budgets.shaders + s_budgets.pipelines;
             readyAsMade = readyAsMade && mvfxGpu_IsReady(kernels) == every;
         }
         mvfxDestroyGpu(result == mvfx_success ? kernels : NULL);
@@ -333,9 +336,9 @@ static void TestFailures(void)
         Close(&gpu);
     }
     CHECK(refusedCount > 0 && madeCount > 0 &&
-              refusedCount + madeCount == MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT + 2,
+              refusedCount + madeCount == (int32_t)(s_budgets.shaders + s_budgets.pipelines + 2),
           "refused while the device fails, made once it does not");
-    CHECK(readyAsMade && refusedCount < MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT,
+    CHECK(readyAsMade && refusedCount < (int32_t)(s_budgets.shaders + s_budgets.pipelines),
           "made with its first requests, ready once every pipeline is");
 }
 
@@ -376,13 +379,14 @@ static void TestSimFailures(void)
     for (uint32_t more = 0; made == 0 && more < 1024; ++more)
     {
         Gpu gpu;
-        CHECK(Open(&gpu, mrhi_success, MVFX_CONTAINER_COUNT + MVFX_KERNEL_COUNT + more),
+        CHECK(Open(&gpu, mrhi_success, s_budgets.shaders + s_budgets.pipelines + more),
               "a device failing buffers");
         mvfxGpuDef def = CountedDef(gpu.device);
         mvfxGpu* kernels = NULL;
         mrhiDeviceNotification mine = {0};
         bool ready = mvfxCreateGpu(&def, &kernels) == mvfx_success &&
-                     Pump(&gpu, kernels, &mine) == MVFX_KERNEL_COUNT && mvfxGpu_IsReady(kernels);
+                     Pump(&gpu, kernels, &mine) == (int32_t)s_budgets.pipelines &&
+                     mvfxGpu_IsReady(kernels);
         CHECK(ready, "its kernels made");
         mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
         simDef.gpu = kernels;
@@ -408,7 +412,8 @@ static void TestSimFailures(void)
     mvfxGpu* kernels = NULL;
     mrhiDeviceNotification mine = {0};
     bool ready = mvfxCreateGpu(&def, &kernels) == mvfx_success &&
-                 Pump(&gpu, kernels, &mine) == MVFX_KERNEL_COUNT && mvfxGpu_IsReady(kernels);
+                 Pump(&gpu, kernels, &mine) == (int32_t)s_budgets.pipelines &&
+                 mvfxGpu_IsReady(kernels);
     CHECK(ready, "its kernels made");
     mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
     simDef.gpu = kernels;
@@ -528,7 +533,8 @@ static void TestBusy(void)
     mvfxGpu* kernels = NULL;
     mrhiDeviceNotification mine = {0};
     bool ready = mvfxCreateGpu(&def, &kernels) == mvfx_success &&
-                 Pump(&gpu, kernels, &mine) == MVFX_KERNEL_COUNT && mvfxGpu_IsReady(kernels);
+                 Pump(&gpu, kernels, &mine) == (int32_t)s_budgets.pipelines &&
+                 mvfxGpu_IsReady(kernels);
     CHECK(ready, "its kernels made");
     s_innerGpu = def;
     s_innerSim = mvfxDefaultGpuSimDef();
@@ -553,6 +559,8 @@ static void TestBusy(void)
 
 int main(void)
 {
+    s_budgets = mvfxGetGpuBudgets();
+    CHECK(s_budgets.shaders > 0 && s_budgets.pipelines > 0, "an object's budgets");
     TestDefChecks();
     TestLife();
     TestFailures();

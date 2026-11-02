@@ -149,6 +149,8 @@ Rigid bodies that meet each other step in one workgroup, as the CPU path solves 
 
 ## Budgets
 
+A GPU object holds shaders and pipelines of its device's budgets (`mrhiDeviceBudgets`' `shaders` and `pipelines`) from its creation to its destruction. `mvfxGetGpuBudgets` gives how many, for the library the program runs with, so a device that holds one beside the program's own objects is given that much more of each.
+
 A simulation keeps its memory on the device from its creation: each emitter's buffers at its capacity, room for the instance's grids (`hostGridBytes`, sized with `mvfxContext_GetGpuHostGridBytes`) and meshes (`hostMeshBytes`, `mvfxMesh_GetGpuBytes`). A mesh or a grid too large for that room is refused when it is set, not every step after.
 
 An emitter's step adds a few passes, more with neighbors, contacts, units and liquids; a liquid of many substeps and iterations can add thousands. `mvfxGpuSim_GetEmitterPasses`, `mvfxGpuSim_GetGasPasses` and `mvfxGpuSim_GetWaterPasses` give the most each adds, and `mvfxGpuSim_GetUploadBytes` the bytes a frame uploads, so a program can size Maul RHI's frame limits (`framePasses`, `frameUploadBytes`) to its effects.
