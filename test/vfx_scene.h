@@ -66,6 +66,90 @@ static inline void SceneMesh(const char* name, mvfxMeshId mesh)
         .kind = mvfx_assetMesh, .name = name, .nameLength = (int32_t)strlen(name), .mesh = mesh});
 }
 
+// What the scene keeps of each instance it makes, so it moves, answers
+// and reads them by their ids alone: its effect's counts, which emitters
+// hang from the host's frames, what it does unseen, and where it was put
+// last.
+typedef struct SceneInstance
+{
+    mvfxInstanceId id;
+    int32_t emitterCount;
+    int32_t gasCount;
+    int32_t waterCount;
+    int32_t parameterCount;
+    uint32_t hostFrames;
+    mvfxOffscreen offscreen;
+    double origin[3];
+} SceneInstance;
+
+#define SCENE_MOST_INSTANCES 16
+
+// A context's scene: its instances in the order they were made. The
+// twins build two at once; a scene built again on a context starts over.
+typedef struct Scene
+{
+    const mvfxContext* context;
+    int32_t count;
+    SceneInstance instances[SCENE_MOST_INSTANCES];
+} Scene;
+
+static Scene s_scenes[2];
+static int32_t s_sceneNext;
+
+// The scene of a context, NULL before one is built on it.
+static inline Scene* SceneOf(const mvfxContext* context)
+{
+    for (int32_t k = 0; k < 2; ++k)
+    {
+        if (s_scenes[k].context == context)
+        {
+            return &s_scenes[k];
+        }
+    }
+    return NULL;
+}
+
+// Starts a context's scene with no instances.
+static inline void SceneStart(const mvfxContext* context)
+{
+    Scene* scene = SceneOf(context);
+    if (scene == NULL)
+    {
+        scene = &s_scenes[s_sceneNext];
+        s_sceneNext = (s_sceneNext + 1) % 2;
+    }
+    *scene = (Scene){.context = context};
+}
+
+// Makes an instance of an effect made from def, and keeps it in the
+// context's scene.
+static inline mvfxResult SceneMakeInstance(mvfxContext* context, const mvfxEffectDef* def,
+                                           const mvfxInstanceDef* instanceDef,
+                                           mvfxInstanceId* instanceOut)
+{
+    Scene* scene = SceneOf(context);
+    CHECK(scene != NULL && scene->count < SCENE_MOST_INSTANCES, "room in the scene");
+    mvfxResult result = mvfxCreateInstance(context, instanceDef, instanceOut);
+    if (result != mvfx_success || scene == NULL || scene->count >= SCENE_MOST_INSTANCES)
+    {
+        return result;
+    }
+    SceneInstance* kept = &scene->instances[scene->count++];
+    *kept = (SceneInstance){
+        .id = *instanceOut,
+        .emitterCount = def->emitterCount,
+        .gasCount = def->gasCount,
+        .waterCount = def->waterCount,
+        .parameterCount = def->parameterCount,
+        .offscreen = instanceDef->offscreen,
+        .origin = {instanceDef->origin[0], instanceDef->origin[1], instanceDef->origin[2]}};
+    for (int32_t e = 0; e < def->emitterCount; ++e)
+    {
+        kept->hostFrames |= def->emitters[e].unit.attach == mvfx_attachHost ? 1u << e : 0u;
+    }
+    return result;
+}
+
 // A host module of the scene: before motion, a kick of up to 0.5 a second
 // along each axis to every particle, drawn from the module's stream by
 // serial, so it is the same however the work is split.
@@ -279,7 +363,8 @@ static inline void BuildRigidScene(mvfxContext* context)
     instanceDef.origin[0] = 1745.0;
     instanceDef.seed = 0x816Du;
     mvfxInstanceId instance = {0};
-    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "rigid instance");
+    CHECK(SceneMakeInstance(context, &def, &instanceDef, &instance) == mvfx_success,
+          "rigid instance");
     CHECK(mvfxInstance_SetColliders(context, instance, &room, 1) == mvfx_success, "rigid room");
 }
 
@@ -409,7 +494,8 @@ static inline void BuildGasScene(mvfxContext* context)
     instanceDef.effect = effect;
     instanceDef.origin[2] = -310.0;
     mvfxInstanceId instance = {0};
-    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "gas instance");
+    CHECK(SceneMakeInstance(context, &def, &instanceDef, &instance) == mvfx_success,
+          "gas instance");
 }
 
 // Liquids: a planar liquid in the world poured from a box above a box it
@@ -521,7 +607,8 @@ static inline void BuildLiquidScene(mvfxContext* context)
     instanceDef.effect = effect;
     instanceDef.origin[2] = -360.0;
     mvfxInstanceId instance = {0};
-    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "liquid instance");
+    CHECK(SceneMakeInstance(context, &def, &instanceDef, &instance) == mvfx_success,
+          "liquid instance");
 }
 
 // Particles of the instance's frame falling at 2 a second from a box 0.6
@@ -617,12 +704,14 @@ static inline void BuildWaterScene(mvfxContext* context)
     instanceDef.effect = effect;
     instanceDef.origin[2] = 360.0;
     mvfxInstanceId instance = {0};
-    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "water instance");
+    CHECK(SceneMakeInstance(context, &def, &instanceDef, &instance) == mvfx_success,
+          "water instance");
 }
 
 static inline void BuildScene(mvfxContext* context)
 {
     s_sceneAssetCount = 0;
+    SceneStart(context);
     // A 3x2x2 field of binary16 vectors, made of exact small values.
     static float fieldValues[36];
     for (int32_t i = 0; i < 12; ++i)
@@ -1093,7 +1182,7 @@ static inline void BuildScene(mvfxContext* context)
         instanceDef.effect = livesEffect;
         instanceDef.seed = 0x5EEDu + (uint32_t)i;
         mvfxInstanceId instance = {0};
-        CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success,
+        CHECK(SceneMakeInstance(context, &livesDef, &instanceDef, &instance) == mvfx_success,
               "lives instance");
     }
     // An effect spawning from a mesh: an octahedron's surface, edges and
@@ -1227,7 +1316,8 @@ static inline void BuildScene(mvfxContext* context)
     meshInstanceDef.effect = meshEffect;
     meshInstanceDef.seed = 0x3E5Bu;
     mvfxInstanceId meshInstance = {0};
-    CHECK(mvfxCreateInstance(context, &meshInstanceDef, &meshInstance) == mvfx_success,
+    CHECK(SceneMakeInstance(context, &meshEffectDef, &meshInstanceDef, &meshInstance) ==
+              mvfx_success,
           "mesh instance");
     // Chains and sheets: pinned ropes in the world, two every 0.4 seconds,
     // loose local tails falling with drag toward an attractor, which pulls
@@ -1380,7 +1470,8 @@ static inline void BuildScene(mvfxContext* context)
     chainInstanceDef.origin[0] = 1495.0;
     chainInstanceDef.seed = 0xC4A1u;
     mvfxInstanceId chainInstance = {0};
-    CHECK(mvfxCreateInstance(context, &chainInstanceDef, &chainInstance) == mvfx_success,
+    CHECK(SceneMakeInstance(context, &chainEffectDef, &chainInstanceDef, &chainInstance) ==
+              mvfx_success,
           "chain instance");
     for (int32_t i = 0; i < 4; ++i)
     {
@@ -1397,7 +1488,7 @@ static inline void BuildScene(mvfxContext* context)
                                          : mvfx_offscreenSimulate;
         instanceDef.offscreenInterval = 3;
         mvfxInstanceId instance = {0};
-        CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success,
+        CHECK(SceneMakeInstance(context, &def, &instanceDef, &instance) == mvfx_success,
               "scene instance");
         // The second sets a wall at its x = 1, and a box it keeps inside.
         static const mvfxCollider walls[2] = {

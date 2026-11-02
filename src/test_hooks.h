@@ -95,4 +95,13 @@ bool mvfxTestWriteWaterDepth(mvfxContext* context, mvfxInstanceId instance, int3
 bool mvfxTestWriteWaterFaces(mvfxContext* context, mvfxInstanceId instance, int32_t water,
                              int32_t axis, const float* values, int64_t count);
 
+// Folds everything a live instance holds into hash, as the determinism
+// tests hash it: its clock; each emitter's particles' attributes, its
+// counters, events, links and bounds; its gases' and waters' fields.
+// Returns false, leaving hash as it was, for an id that names no live
+// instance. The outputs show such a state only once it reaches them,
+// steps later or never (a gas's pressure, an attribute no record field
+// reads), so a difference would surface late or not at all.
+bool mvfxTestHashInstance(const mvfxContext* context, mvfxInstanceId instance, uint64_t* hash);
+
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H

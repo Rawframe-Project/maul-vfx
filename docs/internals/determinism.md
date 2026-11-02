@@ -32,7 +32,7 @@ Instance origins are `double`. A world-space emitter stores its particles as `fl
 
 ## What proves it
 
-- `test/test_golden.c` steps a scene (`test/vfx_scene.h`: endless, looping and mesh emitters over seven instances, full and churning pools, rigid particles, gases and liquids) and hashes the whole state after every step against committed values. Every CI platform runs it; a hash that differs anywhere fails. A change meant to change results updates the values and says so in the changelog. The scene runs a second time through effect files, to the same hashes.
+- `test/test_golden.c` steps a scene (`test/vfx_scene.h`: endless, looping and mesh emitters over seven instances, full and churning pools, rigid particles, gases and liquids) and hashes the whole state (through `mvfxTestHashInstance` in `src/test_hooks.h`) and every output after every step against committed values. Every CI platform runs it; a hash that differs anywhere fails. A change meant to change results updates the values and says so in the changelog. The scene runs a second time through effect files, to the same hashes.
 - `test/test_twins.c` steps the same scene serially and through a task system that cuts every step into random ranges run in a shuffled order on four threads, and compares the states after every step, under ThreadSanitizer in CI.
 - Each module's tests compare a step split into pieces with the step whole.
 
