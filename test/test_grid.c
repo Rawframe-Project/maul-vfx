@@ -5,9 +5,9 @@
 // new values for a box of points, an effect keeping its grid busy, and
 // the view of a grid as stored; trilinear sampling, read as a vector
 // field's acceleration on a particle at rest, that reproduces a linear
-// field, each border, a constant axis and binary16 storage. The sampler
-// at places no particle can be put and the points changed since a step
-// are tested in test_grid_internal.c.
+// field, each border, a constant axis and binary16 storage; places far
+// out of a small box under the repeat border, a whole number of periods
+// out, and one too far for binary32, all read at the first point.
 
 #include "particles.h"
 #include "test_harness.h"
@@ -78,18 +78,17 @@ static float Stored(const mvfxContext* context, mvfxGridId grid, int64_t i)
                                            : ((const float*)view.values)[i];
 }
 
-// A vector field's vector at u, a place in its box's unit coordinates
-// (the box of size 1 centered on the origin, so u is the place plus 0.5):
-// a particle at rest put there, stepped 2^-10 s with no gravity, its
-// velocity over the step, exactly so, an acceleration held over a power of
-// two. The grid is free again after.
-static void Field(mvfxContext* context, mvfxGridId grid, mvfxGridBorder border, const float u[3],
-                  float out[3])
+// A vector field's vector at place, its box of size along each axis
+// centered on the origin: a particle at rest put there, stepped 2^-10 s
+// with no gravity, its velocity over the step, exactly so, an acceleration
+// held over a power of two. The grid is free again after.
+static void FieldAt(mvfxContext* context, mvfxGridId grid, mvfxGridBorder border, float size,
+                    const double place[3], float out[3])
 {
     mvfxForce force = {.kind = mvfx_forceVectorField,
                        .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
                        .grid = grid,
-                       .boxSize = {1, 1, 1},
+                       .boxSize = {size, size, size},
                        .boxRotation = {0, 0, 0, 1},
                        .border = border};
     mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
@@ -111,7 +110,6 @@ static void Field(mvfxContext* context, mvfxGridId grid, mvfxGridBorder border, 
     instanceDef.effect = effect;
     mvfxInstanceId instance = {0};
     CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
-    const double place[3] = {(double)u[0] - 0.5, (double)u[1] - 0.5, (double)u[2] - 0.5};
     static const float rest[3] = {0, 0, 0};
     mvfxSpawnRequest request = {.count = 1, .positions = place, .velocities = rest};
     CHECK(mvfxInstance_Spawn(context, instance, 0, &request) == mvfx_success, "put");
@@ -125,6 +123,15 @@ static void Field(mvfxContext* context, mvfxGridId grid, mvfxGridBorder border, 
     CHECK(mvfxDestroyInstance(context, instance) == mvfx_success &&
               mvfxDestroyEffect(context, effect) == mvfx_success,
           "done");
+}
+
+// A vector field's vector at u, a place in its box's unit coordinates
+// (the box of size 1 centered on the origin, so u is the place plus 0.5).
+static void Field(mvfxContext* context, mvfxGridId grid, mvfxGridBorder border, const float u[3],
+                  float out[3])
+{
+    const double place[3] = {(double)u[0] - 0.5, (double)u[1] - 0.5, (double)u[2] - 0.5};
+    FieldAt(context, grid, border, 1.0f, place, out);
 }
 
 // A grid of three components, the first of them values (one a point),
@@ -437,6 +444,33 @@ static void TestSampling(void)
     mvfxDestroyContext(context);
 }
 
+static void TestFarRepeat(void)
+{
+    // Five points along X of 10 to 14, repeated, in a box of 2^-10: places
+    // out to 2^52 put u past 2^52 points. A binary32 that large is whole,
+    // so each place is a whole number of periods out and reads the first
+    // point. A place 2^40 out in a box of 10^-30 puts u past binary32's
+    // largest, and it reads the first point too.
+    mvfxContext* context = NewContext(1);
+    static const float row[5] = {10, 11, 12, 13, 14};
+    static const int32_t line[3] = {5, 1, 1};
+    mvfxGridId id = FirstOfThree(context, line, row, mvfx_gridFloat32);
+    static const double far[6] = {0x1p52, -0x1p52, 0x1.fffffcp51, -0x1.234567p50, 3e15, -4.4e15};
+    bool cells = true;
+    float out[3];
+    for (int32_t i = 0; i < 6; ++i)
+    {
+        const double place[3] = {far[i], 0.0, 0.0};
+        FieldAt(context, id, mvfx_borderRepeat, 0x1p-10f, place, out);
+        cells = cells && out[0] == 10.0f;
+    }
+    CHECK(cells, "far places a whole number of periods out");
+    const double past[3] = {0x1p40, 0.0, 0.0};
+    FieldAt(context, id, mvfx_borderRepeat, 1e-30f, past, out);
+    CHECK(out[0] == 10.0f, "a place past binary32 read at the first point");
+    mvfxDestroyContext(context);
+}
+
 static void TestBusy(void)
 {
     mvfxContext* context = NewContext(4);
@@ -520,6 +554,7 @@ int main(void)
     TestLife();
     TestSampling();
     TestSetValuesIn();
+    TestFarRepeat();
     TestBusy();
     TestView();
     return s_failures == 0 ? 0 : 1;

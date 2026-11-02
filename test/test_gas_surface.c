@@ -4,8 +4,7 @@
 // Surface gases (a distance grid from particles): the refusals; a lone
 // particle's sphere, and circle, exact; a jittered block's flat face
 // where it belongs; two drops kept apart by the correction and joined
-// without it; the distance read out and sampled. The largest eigenvalue
-// is tested in test_gas_surface_internal.c.
+// without it; the distance read out and sampled.
 
 #include "test_harness.h"
 
