@@ -123,6 +123,27 @@ extern "C"
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_RHI_API bool mvfxGpu_IsReady(const mvfxGpu* gpu);
 
+    // What a GPU object holds of its device's budgets (mrhiDeviceBudgets)
+    // from its creation to its destruction. A later release may add fields
+    // at the end.
+    typedef struct mvfxGpuBudgets
+    {
+        // Shaders, of mrhiDeviceBudgets' shaders.
+        uint32_t shaders;
+        // Compute pipelines, of mrhiDeviceBudgets' pipelines.
+        uint32_t pipelines;
+    } mvfxGpuBudgets;
+
+    /// Returns what a GPU object of this library holds of its device's
+    /// budgets: a device that holds n objects needs n times each, beside
+    /// what the host makes on it. A call rather than constants, so a host
+    /// sizes its budgets for the library it runs with.
+    ///
+    /// @return The object's shaders and pipelines.
+    /// @par Thread safety
+    /// Safe from any thread.
+    MVFX_RHI_API mvfxGpuBudgets mvfxGetGpuBudgets(void);
+
 #ifdef __cplusplus
 }
 #endif

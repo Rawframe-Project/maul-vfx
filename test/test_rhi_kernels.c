@@ -16,7 +16,9 @@
 // factors (rhi/kernels/shared/gas_lift.wgsl) against the core's bit for
 // bit. Skips (77)
 // without an adapter, unless MVFX_RHI_REQUIRED is set, whose driver the
-// adapter must be; the refusals of mvfxCreateGpu need no device. On the
+// adapter must be; the refusals of mvfxCreateGpu, and the budgets
+// mvfxGetGpuBudgets gives as a shader a container and a pipeline a kernel,
+// need no device. On the
 // windows-rhi-d3d12 preset it runs under D3D12's debug layer and fails on
 // any error it reports.
 
@@ -203,6 +205,9 @@ static void TestRefusals(void)
     CHECK(refused && !mvfxGpu_IsReady(NULL) && !mvfxGpu_Notify(NULL, NULL),
           "refusals without a device");
     mvfxDestroyGpu(NULL);
+    mvfxGpuBudgets budgets = mvfxGetGpuBudgets();
+    CHECK(budgets.shaders == MVFX_CONTAINER_COUNT && budgets.pipelines == MVFX_KERNEL_COUNT,
+          "an object's budgets: a shader a container, a pipeline a kernel");
 }
 
 // The bytes a counting allocator holds: the part's own leaks show here,

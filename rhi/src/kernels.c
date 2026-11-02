@@ -335,6 +335,11 @@ bool mvfxGpu_Notify(mvfxGpu* gpu, const mrhiDeviceNotification* notification)
     return false;
 }
 
+mvfxGpuBudgets mvfxGetGpuBudgets(void)
+{
+    return (mvfxGpuBudgets){.shaders = MVFX_CONTAINER_COUNT, .pipelines = MVFX_KERNEL_COUNT};
+}
+
 bool mvfxGpu_IsReady(const mvfxGpu* gpu)
 {
     bool ready = gpu != nullptr && !gpu->refused;
