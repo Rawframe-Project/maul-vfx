@@ -12,8 +12,7 @@
 // of their meaning in plan.h; a beam's strikes; and the refusals. The
 // CPU twin is read as a host reads it: its births and deaths as events,
 // its particles' birth ticks, serials and inverse lives by a host module
-// after motion (peek.h), its live count from its statistics. A beam's
-// strike counter is compared in test_plan_internal.c.
+// after motion (peek.h), its live count from its statistics.
 
 #define PEEK_MOST 4096
 
