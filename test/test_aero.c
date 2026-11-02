@@ -5,11 +5,13 @@
 // mean velocity's v -= (k A h / N) v^2 a substep, and falling to near
 // its terminal speed sqrt(N g / (k A)) by normal drag; an edge-on one slowed by tangent drag
 // alone; a sheet at 45 degrees in a wind pushed along its normal, lift
-// equal to drag; at the largest spacing and scale, and with an area past
-// binary32's largest, a tangent drag alone keeping the speed along the
-// normal; a triangle with an edge past 2^63 and one a spacing long taking
-// its whole share; a torn sheet falling free; a drag too strong for a
-// substep never reversing a point; the checks.
+// equal to drag; at the largest spacing and scale, with an area past
+// binary32's largest, and with edges below 2^64 whose cross product
+// would pass it, a tangent drag alone keeping the speed along the normal;
+// a triangle with an edge past 2^63 and one a spacing long taking its
+// whole share, and a small drag's share of it; a torn sheet falling
+// free; a drag too strong for a substep never reversing a point; the
+// checks.
 
 #include "test_harness.h"
 
@@ -226,6 +228,45 @@ static void TestFar(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Moves two points of the sheet's first triangle 1.5 10^19 out once, the
+// second along x and z and the first of the second row back along x and
+// along z: its edges below 2^64, its cross product's y a difference of
+// two products of -2.25 10^38, past binary32's largest unscaled.
+static void MoveNear(const mvfxModuleCall* call, void* user)
+{
+    bool* done = user;
+    if (!*done && call->particles.count > 4)
+    {
+        call->particles.position[0][1] = 1.5e19f;
+        call->particles.position[2][1] = 1.5e19f;
+        call->particles.position[0][4] = -1.5e19f;
+        call->particles.position[2][4] = 1.5e19f;
+        *done = true;
+    }
+}
+
+static void TestNear(void)
+{
+    // Edges from 2^63 up are crossed scaled, so no product overflows:
+    // thrown along y with a tangent drag alone, the sheet keeps its speed
+    // over the step after the move, as when moved far.
+    mvfxEmitterDef emitter = Sheet(0.0f, 1.0f);
+    emitter.motion.gravity[1] = 0.0f;
+    static bool moved;
+    moved = false;
+    static const mvfxHostModule mover = {
+        .stage = mvfx_stageBeforeMotion, .function = MoveNear, .user = &moved};
+    emitter.hostModules = &mover;
+    emitter.hostModuleCount = 1;
+    static const float thrown[3] = {0, -5, 0};
+    Open(&emitter, thrown);
+    Steps(2);
+    double mean[3];
+    Mean(mean);
+    CHECK(moved && fabs(mean[1] + 5.0) <= 1e-3, "edges below 2^64, a tangent drag alone");
+    mvfxDestroyContext(s_scene.context);
+}
+
 // Moves the sheet's second point to 10^20 along x once, within
 // MVFX_MAX_PLACE.
 static void MoveSecond(const mvfxModuleCall* call, void* user)
@@ -238,17 +279,12 @@ static void MoveSecond(const mvfxModuleCall* call, void* user)
     }
 }
 
-static void TestLongEdge(void)
+// The first point's velocity along y after a step of a sheet thrown along
+// its normal at 5 whose second point is moved 10^20 along x, at a normal
+// drag of k, one substep a step.
+static float LongEdge(float k)
 {
-    // The sheet's second point moved 10^20 along x, one substep a step:
-    // the first point's one triangle, with the second and the first of the
-    // second row, has an edge past 2^63 and one a spacing long, so it is
-    // crossed scaled and its area, about 2.5e19, scaled back. Thrown along
-    // its normal at 5 with a normal drag of 1, the triangle takes its whole
-    // sixth: the first point leaves the step at -5 + 5/6. (The
-    // constraints, as soft as they go, move the points only in the
-    // sheet's plane.)
-    mvfxEmitterDef emitter = Sheet(1.0f, 0.0f);
+    mvfxEmitterDef emitter = Sheet(k, 0.0f);
     emitter.motion.gravity[1] = 0.0f;
     emitter.unit.substeps = 1;
     emitter.unit.stretchCompliance = MVFX_MAX_EXTENT;
@@ -266,8 +302,27 @@ static void TestLongEdge(void)
     double mean[3];
     Mean(mean);
     float first = s_scene.records[0].velocity[1];
-    CHECK(moved && fabsf(first + 5.0f * 5.0f / 6.0f) <= 1e-4f, "a long edge and a short one");
     mvfxDestroyContext(s_scene.context);
+    return moved ? first : 0.0f;
+}
+
+static void TestLongEdge(void)
+{
+    // The first point's one triangle, with the second and the first of
+    // the second row, has an edge past 2^63 and one a spacing long, so it
+    // is crossed scaled and its area, 2.5 10^19, scaled back. At a normal
+    // drag of 1 it takes its whole sixth: the first point leaves the step
+    // at -5 + 5/6. At 7.2 10^-20 its share, k A 5 h / 3, is about a
+    // twentieth: the area's 2^128 taken from its exponent, the product
+    // never formed past binary32's largest. (The constraints, as soft as
+    // they go, move the points only in the sheet's plane.)
+    float whole = LongEdge(1.0f);
+    double h = (double)(MVFX_TICKS_PER_SECOND / 60) / (double)MVFX_TICKS_PER_SECOND;
+    double share = (double)7.2e-20f * 2.5e19 * 5.0 * h / 3.0;
+    float small = LongEdge(7.2e-20f);
+    CHECK(fabsf(whole + 5.0f * 5.0f / 6.0f) <= 1e-4f && share > 0.04 && share < 0.06 &&
+              fabs((double)small + 5.0 - 5.0 * share) <= 1e-4,
+          "a long edge and a short one");
 }
 
 static void TestLift(void)
@@ -423,6 +478,7 @@ int main(void)
     TestLift();
     TestLarge();
     TestFar();
+    TestNear();
     TestLongEdge();
     TestTorn();
     TestHeld();
