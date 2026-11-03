@@ -6,6 +6,22 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.8.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.7.0...v0.8.0) (2026-11-02)
+
+This release adds one call to the GPU part. The simulation's results,
+the effect file format and the GPU part's tolerances are unchanged.
+
+### Added
+
+- `mvfxGetGpuBudgets` gives how many shaders and pipelines of its
+  device's budgets (`mrhiDeviceBudgets`' `shaders` and `pipelines`) a
+  GPU object holds from its creation to its destruction: 20 and 120 in
+  this release. A device that holds n GPU objects beside the program's
+  own needs n times each more. It is a call rather than constants, so a
+  host sizes its budgets for the library it links, and a later release
+  may add fields at the end of its `mvfxGpuBudgets`
+  ([#270](https://github.com/Rawframe-Project/maul-vfx/pull/270)).
+
 ## [0.7.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.6.0...v0.7.0) (2026-11-01)
 
 This release changes the simulation's results: rigid bodies turn by a
