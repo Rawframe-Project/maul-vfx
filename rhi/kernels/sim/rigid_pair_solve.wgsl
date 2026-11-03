@@ -142,6 +142,12 @@ fn pairPatchOf(a: Solid, b: Solid, first: u32, end: u32, h: f32,
     return true;
 }
 
+// Lever for the body's point on, in its frame, along unit n of the world:
+// the lever in the body's frame, as the core's LeverOf.
+fn leverOf(b: Solid, on: vec3<f32>, n: vec3<f32>, balance: f32, impulse: f32) -> vec3<f32> {
+    return lever(on, rotate(conjugate(b.q), n), balance, impulse);
+}
+
 // How far a body's spread reaches along unit u times sign, 0 at least.
 fn spreadReach(spread: array<vec3<f32>, 8>, count: u32, u: vec3<f32>, sign: f32) -> f32 {
     var reach = 0.0;

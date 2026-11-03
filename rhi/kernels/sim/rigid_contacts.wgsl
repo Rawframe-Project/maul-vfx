@@ -655,8 +655,6 @@ fn bodyAcross(b: Solid, d: vec3<f32>, n: vec3<f32>) -> f32 {
     return ldexp(sqrt(max(dot3(l, l) - along * along, 0.0)), b.lengthUnit);
 }
 
-// The generalized inverse mass at the body's point on (placed by pose q)
-// along unit n, taken in the frame of q, as the core's mvfxBodyWeight.
 fn bodyWeight(b: Solid, q: vec4<f32>, on: vec3<f32>, n: vec3<f32>) -> f32 {
     let c = cross(inLength(b, on), rotate(conjugate(q), n));
     return b.inverseMass + dot3(c, symmetricTimes(b.inverse, c));
@@ -678,12 +676,10 @@ fn turnFirst(q: vec4<f32>, turn: vec3<f32>) -> vec4<f32> {
 // The most exponent of a turn's component, as the core's MOST_TURN.
 const MOST_TURN: i32 = 60;
 
-// The turn an impulse u at the body's point on (placed by pose q) gives
-// the body, taken in the frame of q, in its units, held at 2^MOST_TURN a
-// component, as the core's TurnOf.
+// The turn an impulse u at the body's point on (pose q) gives it, in its
+// frame, in its units, held at 2^MOST_TURN a component, as the core's TurnOf.
 fn turnOf(b: Solid, q: vec4<f32>, on: vec3<f32>, u: vec3<f32>) -> vec3<f32> {
-    let local = symmetricTimes(b.inverse, cross(inLength(b, on), rotate(conjugate(q), u)));
-    let turned = rotate(q, local);
+    let turned = rotate(q, symmetricTimes(b.inverse, cross(inLength(b, on), rotate(conjugate(q), u))));
     let exponent = frexp(max(abs(turned.x), max(abs(turned.y), abs(turned.z)))).exp;
     let shift = select(-b.lengthUnit, MOST_TURN - exponent, exponent - b.lengthUnit > MOST_TURN);
     return ldexp(turned, vec3<i32>(shift));
@@ -721,12 +717,6 @@ fn lever(r: vec3<f32>, n: vec3<f32>, balance: f32, impulse: f32) -> vec3<f32> {
     return r - level * along * n;
 }
 
-// Lever for the body's point on, in its frame, along unit n of the world:
-// the lever in the body's frame, as the core's LeverOf.
-fn leverOf(b: Solid, on: vec3<f32>, n: vec3<f32>, balance: f32, impulse: f32) -> vec3<f32> {
-    return lever(on, rotate(conjugate(b.q), n), balance, impulse);
-}
-
 // How far a patch reaches from its center along unit u, 0 at least.
 fn patchReach(p: Patch, u: vec3<f32>) -> f32 {
     var reach = 0.0;
@@ -753,7 +743,7 @@ fn rubPatch(b: ptr<function, Solid>, on: vec3<f32>, r: vec3<f32>, r0: vec3<f32>,
         return;
     }
     *rubbed += holding;
-    let l = leverOf(*b, on, p.n, p.load * patchReach(p, u), *rubbed);
+    let l = lever(on, rotate(conjugate((*b).q), p.n), p.load * patchReach(p, u), *rubbed);
     let lambda = slid / bodyWeight(*b, (*b).q, l, u);
     bodyPush(b, (*b).q, l, -lambda * u, false);
 }
@@ -769,7 +759,7 @@ fn slowPatch(b: ptr<function, Solid>, on: vec3<f32>, r: vec3<f32>, p: Patch,
     }
     let u = v / speed;
     let limit = params.rigidContact.z * p.pressed;
-    let l = leverOf(*b, on, p.n, p.pressed * patchReach(p, u), limit);
+    let l = lever(on, rotate(conjugate((*b).q), p.n), p.pressed * patchReach(p, u), limit);
     let stop = speed / bodyWeight(*b, (*b).q, l, u);
     let j = min(stop, max(limit - *slowed, 0.0));
     *slowed += j;
@@ -933,10 +923,9 @@ fn solvePositions(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f32
         let depth = depthOf(*b, (*list).items[at]);
         if (depth < 0.0) {
             let n = (*list).items[at].normal;
-            let on = (*list).items[at].body;
-            let lambda = -depth / bodyWeight(*b, (*b).q, on, n);
+            let lambda = -depth / bodyWeight(*b, (*b).q, (*list).items[at].body, n);
             (*list).items[at].lambda += lambda;
-            bodyPush(b, (*b).q, on, lambda * n, false);
+            bodyPush(b, (*b).q, (*list).items[at].body, lambda * n, false);
         }
     }
     if (friction) {
