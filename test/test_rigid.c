@@ -1427,13 +1427,18 @@ static void TestNeedles(void)
     // and 1e-20 of their length across keep turning: their orientations
     // change in each of the last 20 of 60 steps. Stepped explicitly, the
     // gyroscopic term's rounding carried their spin onto their long axis
-    // until a first-order turn mapped each orientation onto itself.
+    // until a first-order turn mapped each orientation onto itself. Their
+    // least moments held at MVFX_MIN_INERTIA_SHARE of their trace, they
+    // turn as a box 2^-9 less 2^-28 of its length across does, whose
+    // moment about its length over the others' is theirs: after 6 steps
+    // within 0.0018 radians of it, and 0.75 with the share at 2^-24.
     bool turning = true;
-    for (int32_t c = 0; c < 4; ++c)
+    float sixth[5][4] = {{0}};
+    for (int32_t c = 0; c < 5; ++c)
     {
-        float across = c < 2 ? 1e-6f : 1e-20f;
+        float across = c < 2 ? 1e-6f : c < 4 ? 1e-20f : 0x1.ffffcp-10f;
         mvfxEmitterDef emitter =
-            Rigid(c % 2 == 0 ? mvfx_rigidCapsule : mvfx_rigidBox, across, 1.0f, across);
+            Rigid(c % 2 == 0 && c < 4 ? mvfx_rigidCapsule : mvfx_rigidBox, across, 1.0f, across);
         emitter.motion.gravity[1] = 0.0f;
         emitter.collision.enable = false;
         emitter.colliderCount = 0;
@@ -1465,10 +1470,25 @@ static void TestNeedles(void)
             turning =
                 turning && read && (i < 40 || memcmp(last, body.orientation, sizeof last) != 0);
             memcpy(last, body.orientation, sizeof last);
+            if (i == 5)
+            {
+                memcpy(sixth[c], last, sizeof last);
+            }
         }
         mvfxDestroyContext(s_scene.context);
     }
     CHECK(turning, "needles spun at the most keep turning");
+    bool alike = true;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        double dot = 0.0;
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            dot += (double)sixth[c][k] * (double)sixth[4][k];
+        }
+        alike = alike && fabs(dot) >= cos(0.01);
+    }
+    CHECK(alike, "needles spun at the most turn as one at the share");
 }
 
 // The sizes of the first particles as the host modules see them after
