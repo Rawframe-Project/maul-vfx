@@ -655,8 +655,18 @@ extern "C"
     // and come to rest on an edge or a face. Each particle is a body of a
     // shape and a density; its orientation and angular velocity (stored for
     // it) turn by its free flow, keeping its angular momentum, after the
-    // angular drag slows its spin. Each substep a
-    // body is moved as a particle is, then meets its contacts at its
+    // angular drag slows its spin. Its two largest principal moments are
+    // held equal within 2^-21 of the larger, and their gap ramped back to
+    // its own from there to 2^-20, so the flow's middle moment is within
+    // about 2^-21 of the largest from its own (the ramp's last rounding
+    // adds under half a unit in the last place): a body symmetric about its
+    // least axis, whose two equal moments binary32 rounds a few units in the
+    // last place apart, turns as a symmetric one, and Euler's equations,
+    // which divide that gap by the least moment, do not grow its rounding.
+    // The GPU part takes the same middle moment to the bit while the
+    // largest is at least 2^-101; below it a step of the ramp that moves
+    // the result can be subnormal, which a GPU may flush to 0. Each substep
+    // a body is moved as a particle is, then meets its contacts at its
     // predicted pose: the colliders of its emitter and, with
     // hostColliders, the instance's, outside or inside, at the shape's
     // surface (a box on a box face to face, edge to edge or on an edge;

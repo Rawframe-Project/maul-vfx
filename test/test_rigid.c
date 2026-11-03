@@ -910,6 +910,57 @@ static void TestThinBoxSpin(void)
     CHECK(apart <= 0.05, "a box thicker than the share keeps its moment about its length");
 }
 
+// A free box 1 long and x by z across, spun at w with its axes the
+// world's: its angular velocity in its frame after a step (into first)
+// and after 30 more (into last).
+static void SpinNeedleBox(float x, float z, const float w[3], double first[3], double last[3])
+{
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, x, 1.0f, z);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.collision.enable = false;
+    emitter.colliders = NULL;
+    emitter.colliderCount = 0;
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {w[0], w[1], w[2]}, .max = {w[0], w[1], w[2]}};
+    static const double place[3] = {0, 0, 0};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, place, still);
+    for (int32_t i = 0; i < 31; ++i)
+    {
+        Steps(1);
+        double* out = i == 0 ? first : last;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float axis[3];
+            Axis(k, axis);
+            out[k] = (double)axis[0] * (double)W(0) + (double)axis[1] * (double)W(1) +
+                     (double)axis[2] * (double)W(2);
+        }
+    }
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestNearSquareNeedles(void)
+{
+    // A box 1 long and 0.002 by about 0.00209 across, its two largest
+    // moments 1.5 times 2^-22 of them apart, turns as one 0.002 square:
+    // the flow holds them equal within 2^-21. Its spin about its length
+    // is the gap over its least moment, 8.4e-6 of the others, times the
+    // spins across: within 2.6e-6 rad/s of the square one's after 30
+    // steps; with the gap kept, 2.3, and with the band at 2^-22, 1.1.
+    static const float w[3] = {8.0f, 2.0f, 6.0f};
+    double first[2][3];
+    double last[2][3];
+    SpinNeedleBox(0.002f, 0x1.119caap-9f, w, first[0], last[0]);
+    SpinNeedleBox(0.002f, 0.002f, w, first[1], last[1]);
+    double apart = 0.0;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        apart = fmax(apart, fabs(last[0][k] - last[1][k]));
+    }
+    CHECK(apart <= 0.05, "a needle box nearly square across turns as a square one");
+}
+
 static bool s_bump;
 
 // A grid of heights over x and z from -2 to 2, three points a side:
@@ -2112,6 +2163,7 @@ int main(void)
     TestGyroscopic();
     TestFreeFlow();
     TestThinBoxSpin();
+    TestNearSquareNeedles();
     TestTwist();
     TestTipping();
     TestTippingAngle();

@@ -893,12 +893,13 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
 
 // Needle hulls 1 long along (1, 1, 1) of their mesh, a ring of six
 // points about their middle, from 1e-5 to 0.04 of their length across
-// (below about 3e-6 their hulls are too thin to resolve and refused): not
-// 2e-3 and 3.2e-3, which part in their first step with or without the
-// least inertia share.
-#define NEEDLE_WIDTHS 10
-static const double s_needleWidths[NEEDLE_WIDTHS] = {9.6e-6, 3e-5, 1e-4,   1.7e-4, 3e-4,
-                                                     5.2e-4, 1e-3, 5.2e-3, 1e-2,   3.8e-2};
+// (below about 3e-6 their hulls are too thin to resolve and refused).
+// Their two largest moments are equal: at 2e-3 and 3.2e-3 binary32
+// rounded them apart on one path, and before the flow held them equal
+// their bodies parted in their first step by 1.4e-3.
+#define NEEDLE_WIDTHS 12
+static const double s_needleWidths[NEEDLE_WIDTHS] = {9.6e-6, 3e-5, 1e-4,   1.7e-4, 3e-4, 5.2e-4,
+                                                     1e-3,   2e-3, 3.2e-3, 5.2e-3, 1e-2, 3.8e-2};
 static float s_needles[NEEDLE_WIDTHS][24];
 
 static void MakeNeedle(double width, float out[24])
