@@ -820,7 +820,8 @@ mvfxResult mvfxMeasureHull(const float* points, int32_t count, const mvfxAllocat
         // mvfx_errorLimit of MVFX_MAX_HULL_VERTICES.
         measure->built = made == mvfx_success ? Finish(b, out) : made;
         measure->counted = made == mvfx_errorLimit ? made : mvfx_success;
-        measure->count = made == mvfx_success ? CountVertices(b) : 0;
+        measure->count =
+            made == mvfx_success && measure->built != mvfx_errorUnsupported ? CountVertices(b) : 0;
         result = mvfx_success;
     }
     mvfxRelease(allocator, owner, (size_t)count * sizeof(int32_t), _Alignof(int32_t));

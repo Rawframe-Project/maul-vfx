@@ -38,9 +38,10 @@ typedef struct mvfxHull
 // whether a rigid particle takes it.
 typedef struct mvfxHullMeasure
 {
-    // mvfx_success with the count of the hull's vertices (0 for points
-    // that span no volume or a hull too thin), or mvfx_errorLimit, the count then 0, for a
-    // hull past a build's room (at least MVFX_MAX_HULL_COUNT vertices).
+    // mvfx_success with the count of the hull's vertices (0 for no hull:
+    // whenever built is mvfx_errorUnsupported), or mvfx_errorLimit, the
+    // count then 0, for a hull past a build's room (at least
+    // MVFX_MAX_HULL_COUNT vertices).
     mvfxResult counted;
     int32_t count;
     // mvfx_success when the hull was built, mvfx_errorUnsupported when the

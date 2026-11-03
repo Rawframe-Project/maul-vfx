@@ -897,8 +897,8 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
 // 2e-3 and 3.2e-3, which part in their first step with or without the
 // least inertia share.
 #define NEEDLE_WIDTHS 10
-static const double s_needleWidths[NEEDLE_WIDTHS] = {9.6e-6, 3e-5, 1e-4, 1.7e-4, 3e-4,
-                                                     5.2e-4, 1e-3, 5.2e-3, 1e-2, 3.8e-2};
+static const double s_needleWidths[NEEDLE_WIDTHS] = {9.6e-6, 3e-5, 1e-4,   1.7e-4, 3e-4,
+                                                     5.2e-4, 1e-3, 5.2e-3, 1e-2,   3.8e-2};
 static float s_needles[NEEDLE_WIDTHS][24];
 
 static void MakeNeedle(double width, float out[24])

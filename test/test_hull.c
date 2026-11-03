@@ -13,7 +13,8 @@
 // refused, or built with their volume and centroid to the build's
 // tolerance; hulls of 200 and 500 points counted
 // past the most; points spanning no volume or less than the build's
-// tolerance, a cube too small for binary32's moments, and a hull of more than the most vertices, refused.
+// tolerance, a cube too small for binary32's moments, and a hull of more than the most vertices,
+// refused.
 
 #include "test_harness.h"
 
@@ -453,7 +454,7 @@ static void TestNeedles(void)
         {
             for (double width = 3e-7; width <= 1e-3; width *= 1.02)
             {
-                const double(*a)[3] = axes[at % 2];
+                const double (*a)[3] = axes[at % 2];
                 Needle n = NeedleOf(a[0], a[1], a[2], rings[r], width, at < 2 ? 0.0 : 10.0);
                 mvfxResult made = HullOf(n.points, rings[r] + 2);
                 if (made != mvfx_success)
@@ -470,7 +471,8 @@ static void TestNeedles(void)
                 volume = fmax(volume, off * width / n.tolerance);
                 for (int32_t k = 0; k < 3; ++k)
                 {
-                    centroid = fmax(centroid, fabs((double)s_center[k] - n.centroid[k]) / n.tolerance);
+                    centroid =
+                        fmax(centroid, fabs((double)s_center[k] - n.centroid[k]) / n.tolerance);
                 }
                 sound = sound && s_view.hullMoments[0] >= FLT_MIN &&
                         s_view.hullMoments[1] >= FLT_MIN && s_view.hullMoments[2] >= FLT_MIN;
@@ -517,16 +519,19 @@ static void TestRefused(void)
         ball[3 * i + 2] = z;
     }
     // No hull: the effect refused as unsupported, the mesh without a
-    // center; past the most vertices, refused as past a limit.
+    // center or vertices; past the most vertices, refused as past a limit.
     bool refused = true;
     const float* none[6] = {flat, line, same, same, lifted, tiny};
     const int32_t counts[6] = {5, 4, 4, 3, 4, 8};
     for (int32_t i = 0; i < 6; ++i)
     {
         bool hull = true;
+        int32_t vertices = -1;
         refused = refused && HullOf(none[i], counts[i]) == mvfx_errorUnsupported &&
                   mvfxMesh_GetHullCenter(s_context, s_mesh, &hull, s_center) == mvfx_success &&
-                  !hull;
+                  !hull &&
+                  mvfxMesh_GetHullVertexCount(s_context, s_mesh, &vertices) == mvfx_success &&
+                  vertices == 0;
         Close();
     }
     refused = refused && HullOf(ball, 200) == mvfx_errorLimit;
