@@ -6,6 +6,17 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.10.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.9.0...v0.10.0) (2026-11-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **collide:** a rigid hull's volume, centroid and moments are now integrated over its hull's triangles, so a hull with faces of more than three corners can have its mass properties changed in their last bits, and a thin one's by far more than its tolerance. Meshes whose hull is no more than 8 build tolerances deep, or whose hull's volume or a second moment is below FLT_MIN, now have no hull, so a rigid hull emitter over one is refused with mvfx_errorUnsupported.
+
+### Fixed
+
+* **collide:** take a hull's mass from its triangles, refuse thin ones ([#278](https://github.com/Rawframe-Project/maul-vfx/issues/278)) ([c335046](https://github.com/Rawframe-Project/maul-vfx/commit/c3350464642145300650d8ed4bb98eb793fdbbd8)), closes [#272](https://github.com/Rawframe-Project/maul-vfx/issues/272)
+
 ## [0.9.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.8.0...v0.9.0) (2026-11-03)
 
 This release changes the simulation's results for thin and nearly
