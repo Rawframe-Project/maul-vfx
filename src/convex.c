@@ -616,7 +616,12 @@ static bool Expand(Epa* e, const Point* p)
 // face nearest it, grown until its distance holds; how far a must move
 // against its normal to part them, the normal and the witnesses. At most
 // most steps, counted in steps; stopped there, the nearest face found
-// (its depth at most the true one).
+// (its depth at most the true one). It stops once a step gains no more
+// than a millionth of the face's distance from the origin, whichever side
+// the origin is on: in an overlap shallow to rounding the origin can lie
+// just outside the faces GJK left, and a floor taken from the signed
+// distance was 1e-18, which a support point already on the face passed
+// by its own rounding, so the same step repeated to the limit.
 static void Penetration(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s,
                         mvfxConvexMeet* out, int32_t most, int32_t* steps)
 {
@@ -632,7 +637,7 @@ static void Penetration(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s
     {
         Point p = Support(a, b, e.normals[f]);
         double gain = Dot(e.normals[f], p.w) - e.distances[f];
-        if (gain <= 1e-6 * fmax(e.distances[f], 1e-12) || !Expand(&e, &p) || e.faceCount == 0)
+        if (gain <= 1e-6 * fmax(fabs(e.distances[f]), 1e-12) || !Expand(&e, &p) || e.faceCount == 0)
         {
             break;
         }

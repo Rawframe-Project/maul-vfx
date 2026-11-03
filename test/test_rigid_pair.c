@@ -808,6 +808,55 @@ static void TestUnits(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestShallowOverlaps(void)
+{
+    // Three pairs of a pile's lopsided hulls, from runs of its scene with
+    // each contact's lever an ulp or a few longer or shorter, overlapping
+    // by rounding alone: the origin lay just outside the faces GJK left, a
+    // step's gain was 1e-18, and EPA repeated that step to its limit, a
+    // search stopped, in 7 of 81 such runs. It now stops at once, with the
+    // same face.
+    static const float a[3][18] = {
+        {0x1.980bc6p-2f, -0x1.214p-15f, -0x1.14625ap-4f, -0x1.63038ep-4f, 0x1.4a785ep-2f,
+         -0x1.7aea6cp-5f, 0x1.940d3cp-2f, 0x1.3b5e32p-5f, -0x1.25b374p-5f, -0x1.032682p-4f,
+         0x1.76ede6p-4f, -0x1.e35474p-3f, 0x1.6b7d74p-6f, -0x1.03p-15f, 0x1.097c7p-1f,
+         -0x1.e9e72ep-4f, -0x1.9aap-16f, -0x1.0d1744p-3f},
+        {0x1.a161dep-2f, -0x1.7e4ap-12f, -0x1.9fac4p-4f, -0x1.2d003cp-4f, 0x1.4a854ap-2f,
+         -0x1.306cb6p-5f, 0x1.a05244p-2f, 0x1.38bb8ap-5f, -0x1.1d44a8p-4f, -0x1.1389b8p-4f,
+         0x1.76ecc6p-4f, -0x1.d351f4p-3f, 0x1.5c633ep-4f, 0x1.fd6p-16f, 0x1.080f36p-1f,
+         -0x1.d372b8p-4f, 0x1.2dap-15f, -0x1.e7342p-4f},
+        {0x1.93be82p-2f, -0x1.4e2cp-13f, -0x1.e8c1d4p-4f, -0x1.5c1bdap-4f, 0x1.4a7b2ap-2f,
+         -0x1.54d6dep-5f, 0x1.9392p-2f, 0x1.3a5daap-5f, -0x1.66419cp-4f, -0x1.57efb2p-4f,
+         0x1.76e92p-4f, -0x1.dcb662p-3f, 0x1.6c92bp-4f, -0x1.98cp-16f, 0x1.0363aep-1f,
+         -0x1.0594ecp-3f, -0x1.1f4p-17f, -0x1.f4e5d8p-4f},
+    };
+    static const float b[3][18] = {
+        {0x1.333258p-1f, 0x1.526878p-2f, 0x1.7d307p-2f, 0x1.4b3706p-3f, 0x1.fd591ap-3f,
+         -0x1.d24a8p-9f, 0x1.1c636cp-1f, 0x1.6866c8p-2f, 0x1.84badp-2f, 0x1.b74e94p-2f,
+         0x1.eadae8p-4f, -0x1.8716b8p-5f, 0x1.ca954p-6f, -0x1.aecp-13f, 0x1.2f4e44p-1f,
+         0x1.896a0ap-2f, 0x1.a18p-16f, 0x1.f5422p-6f},
+        {0x1.333b3ap-1f, 0x1.1b94b4p-1f, -0x1.46f06cp-4f, 0x1.06d7d4p-2f, 0x1.aa6222p-4f,
+         -0x1.c3a04p-3f, 0x1.1c7754p-1f, 0x1.185d1ap-1f, -0x1.d9bdf2p-5f, 0x1.0c034cp-1f,
+         0x1.22677ep-3f, -0x1.68ea4ep-2f, 0x1.d56926p-2f, 0x1.383ebcp-4f, 0x1.a08ffcp-2f,
+         0x1.2d1c86p-1f, 0x1.e2fd68p-5f, -0x1.f69aaap-3f},
+        {0x1.33384p-1f, 0x1.19303ep-1f, -0x1.3ec952p-5f, 0x1.160d26p-2f, 0x1.8eb3b6p-4f,
+         -0x1.a5d84p-3f, 0x1.1e2876p-1f, 0x1.12b09cp-1f, -0x1.b9d4e8p-7f, 0x1.09655p-1f,
+         0x1.635116p-3f, -0x1.6f2b32p-2f, 0x1.177fdp-1f, -0x1.366p-15f, 0x1.8b1836p-2f,
+         0x1.3335d8p-1f, 0x1.506d74p-4f, -0x1.169586p-2f},
+    };
+    bool once = true;
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        bool stopped = true;
+        int32_t steps = -1;
+        float distance = 0.0f;
+        once = once &&
+               mvfxTestConvexMeet(a[i], 6, b[i], 6, 0x1.3f2648p-7f, &stopped, &steps, &distance) &&
+               !stopped && steps <= 1;
+    }
+    CHECK(once, "hulls overlapping by rounding alone, met without a stopped search");
+}
+
 int main(void)
 {
     TestHeadOn();
@@ -823,6 +872,7 @@ int main(void)
     TestDropped();
     TestSliding();
     TestPile();
+    TestShallowOverlaps();
     TestPoolAndStrikes();
     TestUnits();
     return s_failures == 0 ? 0 : 1;

@@ -5,6 +5,7 @@
 
 #include "test_hooks.h"
 
+#include "convex.h"
 #include "effect.h"
 #include "gas.h"
 #include "gas_liquid.h"
@@ -12,6 +13,8 @@
 #include "instance_api.h"
 #include "plexus.h"
 #include "water.h"
+
+#include <string.h>
 
 bool mvfxTestSetOwed(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, uint64_t owed)
 {
@@ -293,4 +296,31 @@ int32_t mvfxTestLiquidSubsteps(const mvfxContext* context, mvfxInstanceId instan
 {
     const mvfxInstance* live = mvfxContextInstance(context, instance);
     return live != nullptr ? mvfxLiquidSubsteps(live, ticks) : -1;
+}
+
+bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b, int32_t countB,
+                        float margin, bool* stopped, int32_t* epaSteps, float* distance)
+{
+    *stopped = false;
+    *epaSteps = 0;
+    *distance = 0.0f;
+    if (countA < 1 || countA > MVFX_MAX_HULL_VERTICES || countB < 1 ||
+        countB > MVFX_MAX_HULL_VERTICES)
+    {
+        return false;
+    }
+    mvfxPolytope pa = {.vertexCount = countA};
+    mvfxPolytope pb = {.vertexCount = countB};
+    memcpy(pa.vertices, a, (size_t)countA * 3 * sizeof(float));
+    memcpy(pb.vertices, b, (size_t)countB * 3 * sizeof(float));
+    mvfxConvexMeet meet;
+    mvfxConvexSteps steps;
+    if (!mvfxConvexMeetsWithin(&pa, &pb, margin, MVFX_CONVEX_STEPS, &meet, &steps))
+    {
+        return false;
+    }
+    *stopped = meet.capped;
+    *epaSteps = steps.epa;
+    *distance = meet.distance;
+    return true;
 }
