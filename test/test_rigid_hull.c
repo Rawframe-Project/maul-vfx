@@ -779,6 +779,146 @@ static void TestCrest(void)
     CHECK(worst <= 0.02f, "an edge across a crest held up");
 }
 
+// A needle hull of length 1 and a width, along the first of three
+// orthonormal axes: its two ends and a ring of six points.
+static void NeedleOf(const double axes[3][3], double width, float out[24])
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = (float)(0.5 * axes[0][k]);
+        out[3 + k] = (float)(-0.5 * axes[0][k]);
+    }
+    for (int32_t i = 0; i < 6; ++i)
+    {
+        double angle = 3.14159265358979323846 * (double)i / 3.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[6 + 3 * i + k] =
+                (float)(0.5 * width * (cos(angle) * axes[1][k] + sin(angle) * axes[2][k]));
+        }
+    }
+}
+
+// v turned by the axes: its x along the first, y the second, z the third.
+static void Along(const double axes[3][3], const double v[3], double out[3])
+{
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = v[0] * axes[0][k] + v[1] * axes[1][k] + v[2] * axes[2][k];
+    }
+}
+
+// The most a body of emitter 0 and its twin of emitter 1, turned by the
+// axes, were apart over 90 steps (their places, in lengths of 1).
+static double Twins(const double axes[3][3], double width)
+{
+    OpenContext();
+    static const double x[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    float along[24];
+    float across[24];
+    NeedleOf(axes, width, along);
+    NeedleOf(x, width, across);
+    mvfxMeshId meshes[2] = {MeshOf(along, 8), MeshOf(across, 8)};
+    static const float unit[3] = {1, 1, 1};
+    static const float turn[3] = {0, 0, 0};
+    // Emitter 1's world is emitter 0's turned back by the axes: its
+    // gravity, its ground's normal, its body's place and velocity.
+    static const double gravity[3] = {0, -9.81, 0};
+    static const double up[3] = {0, 1, 0};
+    static const double place[3] = {0, 1, 0};
+    static const double velocity[3] = {1.5, 0, 0.5};
+    double back[2][4][3];
+    const double* world[4] = {gravity, up, place, velocity};
+    for (int32_t v = 0; v < 4; ++v)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            back[0][v][k] = world[v][k];
+        }
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            back[1][v][k] =
+                axes[k][0] * world[v][0] + axes[k][1] * world[v][1] + axes[k][2] * world[v][2];
+        }
+    }
+    mvfxCollider grounds[2];
+    mvfxEmitterDef emitters[2];
+    for (int32_t e = 0; e < 2; ++e)
+    {
+        grounds[e] = (mvfxCollider){
+            .kind = mvfx_colliderPlane,
+            .normal = {(float)back[e][1][0], (float)back[e][1][1], (float)back[e][1][2]}};
+        emitters[e] = Rigid(mvfx_rigidHull, meshes[e], unit, turn, true);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            emitters[e].motion.gravity[k] = (float)back[e][0][k];
+        }
+        emitters[e].colliders = &grounds[e];
+    }
+    mvfxEffectId effect = {0};
+    CHECK(EffectOf(emitters, 2, &effect) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(s_scene.context, &instanceDef, &s_scene.instance) == mvfx_success,
+          "instance");
+    for (int32_t e = 0; e < 2; ++e)
+    {
+        const float speed[3] = {(float)back[e][3][0], (float)back[e][3][1], (float)back[e][3][2]};
+        mvfxSpawnRequest request = {.count = 1, .positions = back[e][2], .velocities = speed};
+        CHECK(mvfxInstance_Spawn(s_scene.context, s_scene.instance, e, &request) == mvfx_success,
+              "spawned");
+    }
+    double apart = 0.0;
+    for (int32_t i = 0; i < 90; ++i)
+    {
+        Steps(1);
+        TestParticle bodies[2][8];
+        int32_t count = Bodies(0, bodies[0]);
+        int32_t twins = Bodies(1, bodies[1]);
+        CHECK(count == 1 && twins == 1, "both needles live");
+        if (count < 1 || twins < 1)
+        {
+            break;
+        }
+        const double twin[3] = {(double)bodies[1][0].position[0], (double)bodies[1][0].position[1],
+                                (double)bodies[1][0].position[2]};
+        double turned[3];
+        Along(axes, twin, turned);
+        double gap = 0.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            double d = (double)bodies[0][0].position[k] - turned[k];
+            gap += d * d;
+        }
+        apart = fmax(apart, sqrt(gap));
+    }
+    mvfxDestroyContext(s_scene.context);
+    return apart;
+}
+
+static void TestThinNeedles(void)
+{
+    // A needle hull along (1, 1, 1) of its mesh, dropped sliding onto the
+    // ground, and the same needle along its mesh's X in a world turned so
+    // it meets the same ground the same way: both turn alike at every
+    // width from 3e-6 of their length, where the hull's build still keeps
+    // their 12 faces (#272). Its moments in binary32 lose the needle's
+    // inertia about its length along a diagonal below 1e-3 of it (#115),
+    // and it did not turn at all from 1e-6 to 1e-4; the least inertia
+    // MVFX_MIN_INERTIA_SHARE gives both the same. Apart at most 0.0045 of
+    // their length to 1e-3 and 0.021 at 1e-2, where contact alone parts
+    // them; without the share 0.31 from 3e-6 to 1e-4.
+    const double r2 = sqrt(0.5);
+    const double r3 = sqrt(1.0 / 3.0);
+    const double r6 = sqrt(1.0 / 6.0);
+    const double diagonal[3][3] = {{r3, r3, r3}, {r2, -r2, 0}, {r6, r6, -2 * r6}};
+    static const double widths[6] = {3e-6, 1e-5, 1e-4, 3e-4, 1e-3, 1e-2};
+    for (int32_t w = 0; w < 6; ++w)
+    {
+        CHECK(Twins(diagonal, widths[w]) <= 0.07, "a needle along a diagonal turns as along X");
+    }
+}
+
 static void TestVertexCount(void)
 {
     // A mesh of 100 points on a ball, refused as a hull, counted: 100 for
@@ -908,6 +1048,7 @@ int main(void)
     TestPile();
     TestTipping();
     TestCrest();
+    TestThinNeedles();
     TestVertexCount();
     TestChecks();
     return s_failures == 0 ? 0 : 1;

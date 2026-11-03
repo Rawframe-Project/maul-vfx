@@ -133,6 +133,8 @@ A hull is that of the positions its mesh was created with. `mvfxCreateMesh` buil
 
 A body's size is its extent along each of its axes, so a mesh scaled by it fits the body. A sphere's diameter is its size X, and its Y and Z must equal X; a capsule's diameter is X and its length Y, and its Z must equal X. An effect whose size source's ends or per-axis size over life differ from X's on those axes is refused, and so is a spawn request with such a size; a host module that writes one kills the particle. A birth takes X's draw for those axes, and a size the effect cannot fix in advance, an instance parameter's or one inherited from an event, keeps X (and a capsule's Y) and takes X for the rest.
 
+A thin body turns about its length as one of a least thickness does. Its least moment of inertia is held at `MVFX_MIN_INERTIA_SHARE` (2^-18) of its inertia's trace or more, so a needle thinner than a square box 1/512 of its length across, or a round rod about 1/440, spins about its length as that thick one would, whatever its shape and however its hull lies in its mesh. Its spin about its length is not seen at that width, and every thicker body keeps its inertia. A hull's moments are binary32, which keep a needle's inertia about its length, along a diagonal of its mesh, to 1% only down to about 1/1000 of its length; held at the share, such a needle turns as it does along an axis, alike on the CPU path and the GPU part.
+
 Bodies at rest go to sleep: once a group of bodies joined by contacts has been still for `sleepTime`, it holds its pose and costs nothing until something wakes it (an awake body coming near, a changed force or collider, or `mvfxInstance_WakeBodies`). `mvfxEmitterStats.asleep` counts them.
 
 ## Limits worth knowing

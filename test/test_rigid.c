@@ -1370,7 +1370,8 @@ static void TestUnits(void)
 static void TestNeedles(void)
 {
     // A needle's inverse inertia about its long axis goes as its length
-    // over its diameter squared, held at 2^40 in its units: capsules and
+    // over its diameter squared, its least moment held at
+    // MVFX_MIN_INERTIA_SHARE of its inertia's trace or more: capsules and
     // boxes 1e-20 across and 1 long, and 1e-14 across and MVFX_MAX_EXTENT
     // long, at the densities' ends, dropped upright on the plane turning
     // slowly or spun about each axis, stay finite (unheld, the first went
