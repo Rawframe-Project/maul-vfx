@@ -622,7 +622,17 @@ extern "C"
         // The convex hull of the positions a mesh was created with
         // (mvfxRigidDef.hull) scaled by size along the mesh's axes, at most
         // MVFX_MAX_HULL_VERTICES vertices. Its place is its centroid: a host draws its mesh moved
-        // by the scaled mvfxMesh_GetHullCenter from the particle.
+        // by the scaled mvfxMesh_GetHullCenter from the particle. The hull is
+        // built to a tolerance of three float epsilons of the sum of the
+        // positions' largest magnitudes along each axis (1.1e-6 for
+        // positions within 1 of the origin): a point within it of a face is
+        // on it. A hull no more than 8 tolerances deep behind one of its
+        // faces is too thin to resolve and has none, as if flat, and so is
+        // one whose volume or a second moment about its centroid is below
+        // FLT_MIN (a cube under about 4e-8 across). Measured
+        // on needles of rings of 3 to 32 points, its volume is within 2.6
+        // tolerances over its width of the points' own, relative, and its
+        // centroid within 0.4 tolerances of theirs.
         mvfx_rigidHull = 3,
     };
 
@@ -1312,7 +1322,8 @@ extern "C"
     ///         rigid hull past MVFX_MAX_HULL_VERTICES, which counts none; the
     ///         first check the def fails decides between the two;
     ///         `mvfx_errorUnsupported` for a rigid hull whose mesh has no
-    ///         hull, its vertices spanning no volume, which counts none (a
+    ///         hull, its vertices spanning no volume or too thin a one
+    ///         (mvfx_rigidHull), which counts none (a
     ///         model file's vertices may well be flat);
     ///         `mvfx_errorStale` for a mesh shape's mesh that names no live
     ///         mesh, `mvfx_errorInvalid` too for a mesh without the elements

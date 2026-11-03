@@ -182,7 +182,8 @@ extern "C"
     /// scaled by its size and moved by minus this centroid scaled likewise.
     ///
     /// A mesh from a model file may have no hull a rigid particle takes:
-    /// vertices that span no volume, or a hull of more than
+    /// vertices that span no volume or a hull too thin to resolve
+    /// (mvfx_rigidHull), or a hull of more than
     /// MVFX_MAX_HULL_VERTICES vertices (mvfxMesh_GetHullVertexCount tells by
     /// how much). That is a result, not an error.
     ///

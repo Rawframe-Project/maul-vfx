@@ -431,9 +431,44 @@ static bool AddPoint(Build* b, int32_t first, int32_t eye)
     return true;
 }
 
+// How many tolerances deep a hull is behind each of its triangles at
+// least: twice the four a face's corners may be off its plane, so no face
+// gathers triangles from opposite sides of a body.
+#define LEAST_DEPTH 8.0
+
+// Whether the hull is more than LEAST_DEPTH tolerances deep behind each
+// triangle: its farthest vertex that far below the triangle's plane.
+static bool Thick(Build* b)
+{
+    for (int32_t i = 0; i < b->count; ++i)
+    {
+        b->owner[i] = 0;
+    }
+    for (int32_t f = 0; f < b->faceCount; ++f)
+    {
+        for (int32_t k = 0; b->faces[f].alive && k < 3; ++k)
+        {
+            b->owner[b->faces[f].v[k]] = 1;
+        }
+    }
+    for (int32_t f = 0; f < b->faceCount; ++f)
+    {
+        double deepest = 0.0;
+        for (int32_t i = 0; b->faces[f].alive && i < b->count; ++i)
+        {
+            deepest = b->owner[i] != 0 ? fmax(deepest, -Above(b, f, i)) : deepest;
+        }
+        if (b->faces[f].alive && !(deepest > LEAST_DEPTH * b->tolerance))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Builds the triangles of the hull of the points; mvfx_errorUnsupported
-// when they span no volume, mvfx_errorLimit when they need more faces than a
-// build keeps.
+// when they span no volume or the hull is within LEAST_DEPTH tolerances
+// thick, mvfx_errorLimit when they need more faces than a build keeps.
 static mvfxResult Triangles(Build* b)
 {
     if (!Start(b))
@@ -447,7 +482,7 @@ static mvfxResult Triangles(Build* b)
             return mvfx_errorLimit;
         }
     }
-    return mvfx_success;
+    return Thick(b) ? mvfx_success : mvfx_errorUnsupported;
 }
 
 // Ascending pseudo-angle of (x, y), from 0 to 4 counterclockwise.
@@ -640,23 +675,25 @@ static void Integrate(const double p0[3], const double p1[3], const double p2[3]
 }
 
 // The hull's volume, centroid and second moments about it (Eberly,
-// "Polyhedral Mass Properties (Revisited)", 2009), each face a fan, the
-// points taken from ref for precision; false for no volume.
-static bool MassOf(const Build* b, const Gather* g, const double ref[3], mvfxHull* out)
+// "Polyhedral Mass Properties (Revisited)", 2009), over the built
+// triangles, the points taken from ref for precision; false when the
+// volume or a second moment is below binary32's least normal number, which
+// a body's inertia cannot be made of (a cube 1e-9 across had moments of 0).
+// Not over the faces: a face's corners may be four tolerances off its
+// plane, and a fan over them missed a needle's volume by half.
+static bool MassOf(const Build* b, const double ref[3], mvfxHull* out)
 {
     double integral[10] = {0.0};
-    for (int32_t f = 0; f < g->faceCount; ++f)
+    for (int32_t f = 0; f < b->faceCount; ++f)
     {
         double p[3][3];
-        int32_t start = g->faceStart[f];
-        PointOf(b, g->pointOf[g->loop[start]], p[0]);
-        Sub(p[0], ref, p[0]);
-        for (int32_t j = start + 1; j + 1 < g->faceStart[f + 1]; ++j)
+        for (int32_t k = 0; b->faces[f].alive && k < 3; ++k)
         {
-            PointOf(b, g->pointOf[g->loop[j]], p[1]);
-            PointOf(b, g->pointOf[g->loop[j + 1]], p[2]);
-            Sub(p[1], ref, p[1]);
-            Sub(p[2], ref, p[2]);
+            PointOf(b, b->faces[f].v[k], p[k]);
+            Sub(p[k], ref, p[k]);
+        }
+        if (b->faces[f].alive)
+        {
             Integrate(p[0], p[1], p[2], integral);
         }
     }
@@ -682,7 +719,8 @@ static bool MassOf(const Build* b, const Gather* g, const double ref[3], mvfxHul
     out->moments[3] = (float)(integral[7] - volume * c[0] * c[1]);
     out->moments[4] = (float)(integral[9] - volume * c[0] * c[2]);
     out->moments[5] = (float)(integral[8] - volume * c[1] * c[2]);
-    return true;
+    return out->volume >= FLT_MIN && out->moments[0] >= FLT_MIN && out->moments[1] >= FLT_MIN &&
+           out->moments[2] >= FLT_MIN;
 }
 
 // Gathers the built triangles into the hull about its centroid.
@@ -710,7 +748,7 @@ static mvfxResult Finish(const Build* b, mvfxHull* out)
         }
     }
     *out = (mvfxHull){.vertexCount = g.vertexCount, .faceCount = g.faceCount};
-    if (!MassOf(b, &g, ref, out))
+    if (!MassOf(b, ref, out))
     {
         return mvfx_errorUnsupported;
     }
@@ -782,7 +820,8 @@ mvfxResult mvfxMeasureHull(const float* points, int32_t count, const mvfxAllocat
         // mvfx_errorLimit of MVFX_MAX_HULL_VERTICES.
         measure->built = made == mvfx_success ? Finish(b, out) : made;
         measure->counted = made == mvfx_errorLimit ? made : mvfx_success;
-        measure->count = made == mvfx_success ? CountVertices(b) : 0;
+        measure->count =
+            made == mvfx_success && measure->built != mvfx_errorUnsupported ? CountVertices(b) : 0;
         result = mvfx_success;
     }
     mvfxRelease(allocator, owner, (size_t)count * sizeof(int32_t), _Alignof(int32_t));
