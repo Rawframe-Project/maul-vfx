@@ -90,9 +90,10 @@ float mvfxBodyLength(const mvfxBody* b, const float v[3]);
 // mvfxBodyLength.
 float mvfxBodyAcross(const mvfxBody* b, const float d[3], const float n[3]);
 
-// The generalized inverse mass at offset r along unit n, in the body's
-// mass unit.
-float mvfxBodyWeight(const mvfxBody* b, const float r[3], const float n[3]);
+// The generalized inverse mass at the body's point on (in its frame,
+// placed by pose q: its pose or its start pose) along unit n, in the
+// body's mass unit, taken in the frame of q.
+float mvfxBodyWeight(const mvfxBody* b, const float q[4], const float on[3], const float n[3]);
 
 // The most a patch's friction against turning takes, in the unit its
 // weight for turning (mvfxTwistPatch) is in: its load (in the bodies'
@@ -100,14 +101,16 @@ float mvfxBodyWeight(const mvfxBody* b, const float r[3], const float n[3]);
 // b in the same mass unit (NULL for the world).
 float mvfxTurnLimit(const mvfxBody* a, const mvfxBody* b, float load, float radius);
 
-// Moves the body by a positional impulse p at offset r: its place by p
-// over its mass, its orientation by the turn it gives. With both, its
-// start pose by the very same step too, so the change between them (its
-// velocity to be) is left as it was.
-void mvfxBodyPush(mvfxBody* b, const float r[3], const float p[3], bool both);
+// Moves the body by a positional impulse p at its point on (in its frame,
+// placed by pose q): its place by p over its mass, its orientation by the
+// turn it gives, taken in the frame of q. With both, its start pose by the
+// very same step too, so the change between them (its velocity to be) is
+// left as it was.
+void mvfxBodyPush(mvfxBody* b, const float q[4], const float on[3], const float p[3], bool both);
 
-// Changes the body's velocities by an impulse j at offset r.
-void mvfxBodyKick(mvfxBody* b, const float r[3], const float j[3]);
+// Changes the body's velocities by an impulse j at its point on (in its
+// frame, placed by its pose).
+void mvfxBodyKick(mvfxBody* b, const float on[3], const float j[3]);
 
 // The velocity of the body's point at offset r.
 void mvfxBodyPointVelocity(const mvfxBody* b, const float r[3], float out[3]);
@@ -125,8 +128,8 @@ typedef struct mvfxPatchSpread
 // at their center on each weighted by their normal multipliers, along
 // their weighted normal. Its static part by position, as Muller's: the
 // patch's slide over the substep, of body a at offset ra (ra0 at its
-// start pose) from body b at rb (rb0), NULL for the world, along unit
-// normal n from b toward a, is cancelled while holding it (by the bodies'
+// start pose; onA in its frame) from body b at rb (rb0; onB), NULL for
+// the world, along unit normal n from b toward a, is cancelled while holding it (by the bodies'
 // masses), summed over the passes (rubbed), takes at most the static
 // coefficient times its normal multipliers' sum, load. Run in each pass with the normal contacts
 // (Gauss-Seidel), so the tilt friction below a body's center gives it is
@@ -153,9 +156,10 @@ typedef struct mvfxPatchSpread
 // a cube landing on a face slid 4 cm farther than its mirror image. The
 // passes' friction and loads are noisy, so within a tenth of the limit a
 // box creeps a few millimeters a second, until it sleeps.
-void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const float ra0[3],
-                  mvfxBody* b, const float rb[3], const float rb0[3], const float n[3], float load,
-                  const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB, float* rubbed);
+void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float onA[3], const float ra[3],
+                  const float ra0[3], mvfxBody* b, const float onB[3], const float rb[3],
+                  const float rb0[3], const float n[3], float load, const mvfxPatchSpread* spreadA,
+                  const mvfxPatchSpread* spreadB, float* rubbed);
 
 // Its dynamic part by velocity, as Muller's, in the restitution's passes:
 // the patch's sliding speed cut by impulses summing (slowed) to at most
@@ -164,8 +168,9 @@ void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const
 // the restitution's. Taken from the pushes alone, it was the larger for a
 // body rocking as it slid, the restitution taking back what the pushes
 // gave too much.
-void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3], const float n[3],
-                   float pressed, const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB,
+void mvfxSlowPatch(mvfxBody* a, const float onA[3], const float ra[3], mvfxBody* b,
+                   const float onB[3], const float rb[3], const float n[3], float pressed,
+                   const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB,
                    float coefficient, float* slowed);
 
 // The patch's friction against turning about its normal, which friction

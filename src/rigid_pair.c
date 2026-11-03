@@ -368,11 +368,14 @@ bool mvfxWakeTouching(const mvfxRigidSolve* s, int32_t count)
 }
 
 // A pair's patch of contacts from first to end: their centers on each
-// body (as offsets from them at their poses and start poses) and normal
+// body (in its frame, and as offsets from them at their poses and start
+// poses) and normal
 // weighted by their normal multipliers, the multipliers' sum and their
 // normal impulses' over the substep; false when none pushed.
 typedef struct PairPatch
 {
+    float onA[3];
+    float onB[3];
     float ra[3];
     float rb[3];
     float ra0[3];
@@ -411,6 +414,8 @@ static bool PatchOf(const mvfxRigidSolve* s, const mvfxBody* a, const mvfxBody* 
     {
         patch.onA[k] /= out->load;
         patch.onB[k] /= out->load;
+        out->onA[k] = patch.onA[k];
+        out->onB[k] = patch.onB[k];
         out->n[k] = patch.normal[k];
     }
     (void)PairDepth(&patch, a, b, true, out->ra0, out->rb0);
@@ -488,15 +493,11 @@ static void HoldStabilized(mvfxBody* a, mvfxBody* b, const mvfxPairContact* pair
         return;
     }
     const float u[3] = {slide[0] / slid, slide[1] / slid, slide[2] / slid};
-    float ra[3];
-    float rb[3];
-    mvfxRotate(a->q0, onA, ra);
-    mvfxRotate(b->q0, onB, rb);
-    float lambda = slid / (mvfxBodyWeight(a, ra, u) + mvfxBodyWeight(b, rb, u));
+    float lambda = slid / (mvfxBodyWeight(a, a->q0, onA, u) + mvfxBodyWeight(b, b->q0, onB, u));
     const float p[3] = {-lambda * u[0], -lambda * u[1], -lambda * u[2]};
     const float back[3] = {-p[0], -p[1], -p[2]};
-    mvfxBodyPush(a, ra, p, true);
-    mvfxBodyPush(b, rb, back, true);
+    mvfxBodyPush(a, a->q0, onA, p, true);
+    mvfxBodyPush(b, b->q0, onB, back, true);
 }
 
 // A pass over a pair's contacts from first to end: their start poses
@@ -532,13 +533,15 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
         {
             continue;
         }
-        float lambda =
-            -depth / (mvfxBodyWeight(&a, ra, c->normal) + mvfxBodyWeight(&b, rb, c->normal));
+        const float* qa = start ? a.q0 : a.q;
+        const float* qb = start ? b.q0 : b.q;
+        float lambda = -depth / (mvfxBodyWeight(&a, qa, c->onA, c->normal) +
+                                 mvfxBodyWeight(&b, qb, c->onB, c->normal));
         c->lambda += start ? 0.0f : lambda;
         const float p[3] = {lambda * c->normal[0], lambda * c->normal[1], lambda * c->normal[2]};
         const float back[3] = {-p[0], -p[1], -p[2]};
-        mvfxBodyPush(&a, ra, p, start);
-        mvfxBodyPush(&b, rb, back, start);
+        mvfxBodyPush(&a, qa, c->onA, p, start);
+        mvfxBodyPush(&b, qb, c->onB, back, start);
     }
     if (start)
     {
@@ -547,8 +550,8 @@ static void SolvePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool 
     PairPatch patch;
     if (friction && PatchOf(s, &a, &b, first, end, &patch))
     {
-        mvfxRubPatch(s, &a, patch.ra, patch.ra0, &b, patch.rb, patch.rb0, patch.n, patch.load,
-                     &patch.spreadA, &patch.spreadB, &pairs[first].rubbed);
+        mvfxRubPatch(s, &a, patch.onA, patch.ra, patch.ra0, &b, patch.onB, patch.rb, patch.rb0,
+                     patch.n, patch.load, &patch.spreadA, &patch.spreadB, &pairs[first].rubbed);
         mvfxTwistPatch(s, &a, &b, patch.n, mvfxTurnLimit(&a, &b, patch.load, patch.radius),
                        &pairs[first].twisted);
     }
@@ -575,21 +578,23 @@ static void BouncePair(const mvfxRigidSolve* s, int32_t first, int32_t end, bool
         float rb[3];
         (void)PairDepth(c, &a, &b, false, ra, rb);
         float normal = PairSpeed(c, &a, &b, ra, rb);
-        float weight = mvfxBodyWeight(&a, ra, c->normal) + mvfxBodyWeight(&b, rb, c->normal);
+        float weight =
+            mvfxBodyWeight(&a, a.q, c->onA, c->normal) + mvfxBodyWeight(&b, b.q, c->onB, c->normal);
         float total = fmaxf(c->applied + (mvfxBounceTarget(s, c->speed) - normal) / weight,
                             -c->lambda / s->h);
         float j = total - c->applied;
         c->applied = total;
         const float impulse[3] = {j * c->normal[0], j * c->normal[1], j * c->normal[2]};
         const float back[3] = {-impulse[0], -impulse[1], -impulse[2]};
-        mvfxBodyKick(&a, ra, impulse);
-        mvfxBodyKick(&b, rb, back);
+        mvfxBodyKick(&a, c->onA, impulse);
+        mvfxBodyKick(&b, c->onB, back);
     }
     PairPatch patch;
     if (PatchOf(s, &a, &b, first, end, &patch))
     {
-        mvfxSlowPatch(&a, patch.ra, &b, patch.rb, patch.n, patch.pressed, &patch.spreadA,
-                      &patch.spreadB, s->rigid->dynamicFriction, &pairs[first].slowed);
+        mvfxSlowPatch(&a, patch.onA, patch.ra, &b, patch.onB, patch.rb, patch.n, patch.pressed,
+                      &patch.spreadA, &patch.spreadB, s->rigid->dynamicFriction,
+                      &pairs[first].slowed);
         mvfxUnspinPatch(
             &a, &b, patch.n,
             mvfxTurnLimit(&a, &b, s->rigid->dynamicFriction * patch.pressed, patch.radius),

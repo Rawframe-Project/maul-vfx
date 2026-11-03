@@ -39,10 +39,10 @@ static float StartDepthOf(const mvfxBody* b, const mvfxBodyContact* c)
     return Dot(gap, c->normal);
 }
 
-// A contact's offset from the body's center in the world, and its depth
-// at the body's pose.
-static float DepthOf(const mvfxBody* b, const mvfxBodyContact* c, float r[3])
+// A contact's depth at the body's pose.
+static float DepthOf(const mvfxBody* b, const mvfxBodyContact* c)
 {
+    float r[3];
     mvfxRotate(b->q, c->body, r);
     float gap[3] = {b->x[0] + r[0] - c->surface[0], b->x[1] + r[1] - c->surface[1],
                     b->x[2] + r[2] - c->surface[2]};
@@ -156,8 +156,8 @@ static void Rub(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, in
             float r0[3];
             mvfxRotate(b->q, patch.point, r);
             mvfxRotate(b->q0, patch.point, r0);
-            mvfxRubPatch(s, b, r, r0, nullptr, nullptr, nullptr, patch.n, patch.load, &patch.spread,
-                         nullptr, &items[i].rubbed);
+            mvfxRubPatch(s, b, patch.point, r, r0, nullptr, nullptr, nullptr, nullptr, patch.n,
+                         patch.load, &patch.spread, nullptr, &items[i].rubbed);
             mvfxTwistPatch(s, b, nullptr, patch.n,
                            mvfxTurnLimit(b, nullptr, patch.load, patch.radius), &items[i].twisted);
         }
@@ -174,8 +174,8 @@ static void Slow(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact* items, i
         {
             float r[3];
             mvfxRotate(b->q, patch.point, r);
-            mvfxSlowPatch(b, r, nullptr, nullptr, patch.n, patch.pressed, &patch.spread, nullptr,
-                          s->rigid->dynamicFriction, &items[i].slowed);
+            mvfxSlowPatch(b, patch.point, r, nullptr, nullptr, nullptr, patch.n, patch.pressed,
+                          &patch.spread, nullptr, s->rigid->dynamicFriction, &items[i].slowed);
             mvfxUnspinPatch(
                 b, nullptr, patch.n,
                 mvfxTurnLimit(b, nullptr, s->rigid->dynamicFriction * patch.pressed, patch.radius),
@@ -198,12 +198,10 @@ static void Stabilize(mvfxBody* b, const mvfxBodyContact* items, int32_t count, 
         float depth = StartDepthOf(b, c);
         if (depth < 0.0f)
         {
-            float r[3];
-            mvfxRotate(b->q0, c->body, r);
-            float lambda = -depth / mvfxBodyWeight(b, r, c->normal);
+            float lambda = -depth / mvfxBodyWeight(b, b->q0, c->body, c->normal);
             const float p[3] = {lambda * c->normal[0], lambda * c->normal[1],
                                 lambda * c->normal[2]};
-            mvfxBodyPush(b, r, p, true);
+            mvfxBodyPush(b, b->q0, c->body, p, true);
         }
     }
 }
@@ -216,15 +214,14 @@ static void SolvePositions(const mvfxRigidSolve* s, mvfxBody* b, mvfxBodyContact
     for (int32_t step = 0; step < count; ++step)
     {
         mvfxBodyContact* c = &items[mvfxPassIndex(0, count, step, backward)];
-        float r[3];
-        float depth = DepthOf(b, c, r);
+        float depth = DepthOf(b, c);
         if (depth < 0.0f)
         {
-            float lambda = -depth / mvfxBodyWeight(b, r, c->normal);
+            float lambda = -depth / mvfxBodyWeight(b, b->q, c->body, c->normal);
             c->lambda += lambda;
             const float p[3] = {lambda * c->normal[0], lambda * c->normal[1],
                                 lambda * c->normal[2]};
-            mvfxBodyPush(b, r, p, false);
+            mvfxBodyPush(b, b->q, c->body, p, false);
         }
     }
     if (friction)
@@ -269,12 +266,13 @@ static void SolveVelocities(mvfxBody* b, mvfxBodyContact* items, int32_t count,
         mvfxBodyPointVelocity(b, r, v);
         float normal = Dot(v, c->normal);
         float target = mvfxBounceTarget(s, c->speed);
-        float total = fmaxf(c->applied + (target - normal) / mvfxBodyWeight(b, r, c->normal),
-                            -c->lambda / s->h);
+        float total =
+            fmaxf(c->applied + (target - normal) / mvfxBodyWeight(b, b->q, c->body, c->normal),
+                  -c->lambda / s->h);
         float j = total - c->applied;
         c->applied = total;
         const float impulse[3] = {j * c->normal[0], j * c->normal[1], j * c->normal[2]};
-        mvfxBodyKick(b, r, impulse);
+        mvfxBodyKick(b, c->body, impulse);
     }
     Slow(s, b, items, count);
 }
