@@ -61,16 +61,29 @@ void mvfxStoreBody(const mvfxRigidSolve* s, int32_t i, const mvfxBody* b)
     }
 }
 
+// v, a vector of the world, in the frame of pose q.
+static void IntoFrame(const float q[4], const float v[3], float out[3])
+{
+    const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
+    mvfxRotate(inverse, v, out);
+}
+
+// The inverse inertia times v, both in the body's frame.
+static void InverseInertiaLocal(const mvfxBody* b, const float v[3], float out[3])
+{
+    const float* m = b->inverseInertia;
+    out[0] = m[0] * v[0] + m[3] * v[1] + m[4] * v[2];
+    out[1] = m[3] * v[0] + m[1] * v[1] + m[5] * v[2];
+    out[2] = m[4] * v[0] + m[5] * v[1] + m[2] * v[2];
+}
+
 // The inverse inertia times v, in the world.
 static void InverseInertiaTimes(const mvfxBody* b, const float v[3], float out[3])
 {
-    const float inverse[4] = {-b->q[0], -b->q[1], -b->q[2], b->q[3]};
     float local[3];
-    mvfxRotate(inverse, v, local);
-    const float* m = b->inverseInertia;
-    const float turned[3] = {m[0] * local[0] + m[3] * local[1] + m[4] * local[2],
-                             m[3] * local[0] + m[1] * local[1] + m[5] * local[2],
-                             m[4] * local[0] + m[5] * local[1] + m[2] * local[2]};
+    float turned[3];
+    IntoFrame(b->q, v, local);
+    InverseInertiaLocal(b, local, turned);
     mvfxRotate(b->q, turned, out);
 }
 
@@ -117,14 +130,16 @@ float mvfxBodyAcross(const mvfxBody* b, const float d[3], const float n[3])
     return Scale(sqrtf(fmaxf(Dot(l, l) - along * along, 0.0f)), b->lengthUnit);
 }
 
-float mvfxBodyWeight(const mvfxBody* b, const float r[3], const float n[3])
+float mvfxBodyWeight(const mvfxBody* b, const float q[4], const float on[3], const float n[3])
 {
     float lever[3];
+    float local[3];
     float c[3];
     float turned[3];
-    InLength(b, r, lever);
-    Cross(lever, n, c);
-    InverseInertiaTimes(b, c, turned);
+    InLength(b, on, lever);
+    IntoFrame(q, n, local);
+    Cross(lever, local, c);
+    InverseInertiaLocal(b, c, turned);
     return b->inverseMass + Dot(c, turned);
 }
 
@@ -174,18 +189,31 @@ static void TurnBy(float q[4], const float turn[3])
 // would leave binary32's range.
 #define MOST_TURN 60
 
-// The turn I^-1 (r x u) an impulse u at offset r gives the body, in its
-// units: r in its length unit, the product moved out of it last, so a
-// body far smaller than the impulse's way (its turn past binary32's
-// range) keeps a finite turn, held at 2^MOST_TURN a component.
-static void TurnOf(const mvfxBody* b, const float r[3], const float u[3], float out[3])
+// The turn I^-1 (r x u) an impulse u at the body's point on (placed by
+// pose q) gives the body, in its units: taken in the frame of q, where the
+// lever is the point itself and the inverse inertia is the body's own, and
+// only the turn rotated into the world. Taken in the world, each rotation
+// leaked about 2^-24 of the turn into the axis of the least moment, which
+// a needle's inverse inertia there magnified by the square of its length
+// over its width: one ulp of a lever parted 114 of 419 capsules 1/40 of
+// their length across landing on a floor. A capsule's push along a normal
+// through its axis now gives it no turn about that axis. r in the body's
+// length unit, the product moved out of it last, so a body far smaller
+// than the impulse's way (its turn past binary32's range) keeps a finite
+// turn, held at 2^MOST_TURN a component.
+static void TurnOf(const mvfxBody* b, const float q[4], const float on[3], const float u[3],
+                   float out[3])
 {
     float lever[3];
+    float local[3];
     float c[3];
+    float t[3];
     float turned[3];
-    InLength(b, r, lever);
-    Cross(lever, u, c);
-    InverseInertiaTimes(b, c, turned);
+    InLength(b, on, lever);
+    IntoFrame(q, u, local);
+    Cross(lever, local, c);
+    InverseInertiaLocal(b, c, t);
+    mvfxRotate(q, t, turned);
     double most =
         fmax(fabs((double)turned[0]), fmax(fabs((double)turned[1]), fabs((double)turned[2])));
     int32_t exponent = 0;
@@ -197,10 +225,10 @@ static void TurnOf(const mvfxBody* b, const float r[3], const float u[3], float 
     }
 }
 
-void mvfxBodyPush(mvfxBody* b, const float r[3], const float p[3], bool both)
+void mvfxBodyPush(mvfxBody* b, const float q[4], const float on[3], const float p[3], bool both)
 {
     float turn[3];
-    TurnOf(b, r, p, turn);
+    TurnOf(b, q, on, p, turn);
     TurnBy(b->q, turn);
     if (both)
     {
@@ -213,10 +241,10 @@ void mvfxBodyPush(mvfxBody* b, const float r[3], const float p[3], bool both)
     }
 }
 
-void mvfxBodyKick(mvfxBody* b, const float r[3], const float j[3])
+void mvfxBodyKick(mvfxBody* b, const float on[3], const float j[3])
 {
     float turn[3];
-    TurnOf(b, r, j, turn);
+    TurnOf(b, b->q, on, j, turn);
     for (int32_t k = 0; k < 3; ++k)
     {
         b->v[k] += j[k] * b->inverseMass;
@@ -246,14 +274,14 @@ static void PatchSlide(const mvfxBody* a, const float ra[3], const float ra0[3],
 }
 
 // The generalized inverse mass of the patch along u.
-static float PatchWeight(const mvfxBody* a, const float ra[3], const mvfxBody* b, const float rb[3],
+static float PatchWeight(const mvfxBody* a, const float la[3], const mvfxBody* b, const float lb[3],
                          const float u[3])
 {
-    return mvfxBodyWeight(a, ra, u) + (b != nullptr ? mvfxBodyWeight(b, rb, u) : 0.0f);
+    return mvfxBodyWeight(a, a->q, la, u) + (b != nullptr ? mvfxBodyWeight(b, b->q, lb, u) : 0.0f);
 }
 
 // Where a friction impulse along the patch acts on a body at offset r
-// from its center to the patch's: level with the center while the
+// from its center to the patch's, along unit n, both in one frame: level with the center while the
 // patch's normal loads can balance its tipping (it times the center's
 // height over the patch) with balance, their load times the patch's
 // reach toward the side the body tips to; at the patch past that, the
@@ -272,6 +300,16 @@ static void Lever(const float r[3], const float n[3], float balance, float impul
     }
 }
 
+// Lever for body b's point on, in its frame, along unit n of the world:
+// the lever in the body's frame.
+static void LeverOf(const mvfxBody* b, const float on[3], const float n[3], float balance,
+                    float impulse, float out[3])
+{
+    float local[3];
+    IntoFrame(b->q, n, local);
+    Lever(on, local, balance, impulse, out);
+}
+
 // How far a patch reaches from its center along unit u times sign, 0 at
 // least.
 static float Reach(const mvfxPatchSpread* spread, const float u[3], float sign)
@@ -284,9 +322,10 @@ static float Reach(const mvfxPatchSpread* spread, const float u[3], float sign)
     return reach;
 }
 
-void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const float ra0[3],
-                  mvfxBody* b, const float rb[3], const float rb0[3], const float n[3], float load,
-                  const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB, float* rubbed)
+void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float onA[3], const float ra[3],
+                  const float ra0[3], mvfxBody* b, const float onB[3], const float rb[3],
+                  const float rb0[3], const float n[3], float load, const mvfxPatchSpread* spreadA,
+                  const mvfxPatchSpread* spreadB, float* rubbed)
 {
     float slide[3];
     PatchSlide(a, ra, ra0, b, rb, rb0, slide);
@@ -318,23 +357,24 @@ void mvfxRubPatch(const mvfxRigidSolve* s, mvfxBody* a, const float ra[3], const
     float la[3];
     float lb[3] = {0.0f, 0.0f, 0.0f};
     // Each tips the way it is pushed: a along its slide, b against it.
-    Lever(ra, n, load * Reach(spreadA, u, 1.0f), *rubbed, la);
+    LeverOf(a, onA, n, load * Reach(spreadA, u, 1.0f), *rubbed, la);
     if (b != nullptr)
     {
-        Lever(rb, n, load * Reach(spreadB, u, -1.0f), *rubbed, lb);
+        LeverOf(b, onB, n, load * Reach(spreadB, u, -1.0f), *rubbed, lb);
     }
     float lambda = slid / PatchWeight(a, la, b, lb, u);
     const float p[3] = {-lambda * u[0], -lambda * u[1], -lambda * u[2]};
-    mvfxBodyPush(a, la, p, false);
+    mvfxBodyPush(a, a->q, la, p, false);
     if (b != nullptr)
     {
         const float back[3] = {-p[0], -p[1], -p[2]};
-        mvfxBodyPush(b, lb, back, false);
+        mvfxBodyPush(b, b->q, lb, back, false);
     }
 }
 
-void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3], const float n[3],
-                   float pressed, const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB,
+void mvfxSlowPatch(mvfxBody* a, const float onA[3], const float ra[3], mvfxBody* b,
+                   const float onB[3], const float rb[3], const float n[3], float pressed,
+                   const mvfxPatchSpread* spreadA, const mvfxPatchSpread* spreadB,
                    float coefficient, float* slowed)
 {
     float v[3];
@@ -362,10 +402,10 @@ void mvfxSlowPatch(mvfxBody* a, const float ra[3], mvfxBody* b, const float rb[3
     float limit = coefficient * pressed;
     float la[3];
     float lb[3] = {0.0f, 0.0f, 0.0f};
-    Lever(ra, n, pressed * Reach(spreadA, u, 1.0f), limit, la);
+    LeverOf(a, onA, n, pressed * Reach(spreadA, u, 1.0f), limit, la);
     if (b != nullptr)
     {
-        Lever(rb, n, pressed * Reach(spreadB, u, -1.0f), limit, lb);
+        LeverOf(b, onB, n, pressed * Reach(spreadB, u, -1.0f), limit, lb);
     }
     float stop = speed / PatchWeight(a, la, b, lb, u);
     float j = fminf(stop, fmaxf(limit - *slowed, 0.0f));

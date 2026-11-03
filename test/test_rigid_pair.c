@@ -504,8 +504,11 @@ static void TestNarrowOnWide(void)
     // and the wide one, held by the ground, stays put. At 30 degrees it
     // stands, still within 3 mm of where it was set (it crept 13 mm in 3 s
     // before post-stabilization held the pair's contacts in place); at 38
-    // it has tipped (between bodies the passes' noise lets it stand to
-    // 37); the wide box moves at most 1 mm.
+    // it tips (between bodies the passes' noise lets it stand to 37), its
+    // up below 0.5 at some step: set down the slope, it tips off the wide
+    // box and tumbles on down the slope, where it lies at the end hanging
+    // on rounding (its up above 0.5 in 14 of 25 runs with each contact's
+    // lever an ulp or a few longer or shorter). The wide box moves at most 1 mm.
     static const float still[6] = {0};
     bool right = true;
     for (int32_t tips = 0; tips < 2; ++tips)
@@ -523,13 +526,19 @@ static void TestNarrowOnWide(void)
             const double places[6] = {0, 0.5, 0, aside, 1.3005, 0};
             static const float sizes[6] = {2, 1, 2, 0.4f, 0.6f, 0.4f};
             Open(&emitter, places, still, sizes, 2);
-            Steps(180);
+            float lowest = 1.0f;
+            for (int32_t i = 0; i < 180; ++i)
+            {
+                Steps(1);
+                float tilt = Body(1)->orientation[2];
+                lowest = fminf(lowest, 1.0f - 2.0f * tilt * tilt);
+            }
             float z = Body(1)->orientation[2];
             float up = 1.0f - 2.0f * z * z;
             float moved = fabsf(X(1, 0) - (float)aside);
             float wide = fabsf(X(0, 0)) + fabsf(X(0, 1) - 0.5f);
-            right =
-                right && wide <= 0.001f && (tips != 0 ? up < 0.5f : up > 0.999f && moved <= 0.003f);
+            right = right && wide <= 0.001f &&
+                    (tips != 0 ? lowest < 0.5f : up > 0.999f && moved <= 0.003f);
             mvfxDestroyContext(s_scene.context);
         }
     }
