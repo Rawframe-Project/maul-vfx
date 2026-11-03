@@ -262,8 +262,8 @@ fn rigidLengthUnit(a: vec3<f32>) -> i32 {
     return frexp(largest).exp;
 }
 
-// The least share of its inertia's trace a body's inertia has about any
-// axis, as the core's MVFX_MIN_INERTIA_SHARE (2^-18).
+// The least moment a body's inertia keeps about any axis, as a share of
+// its trace before the hold, as the core's MVFX_MIN_INERTIA_SHARE (2^-18).
 const MIN_INERTIA_SHARE: f32 = 0.000003814697265625;
 
 // The inverse of a symmetric matrix (xx, yy, zz, xy, xz, yz), as the

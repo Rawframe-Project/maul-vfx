@@ -62,9 +62,9 @@ enum
 // MVFX_MAX_EXTENT, and its inertia goes as the density times the fifth
 // power of its size), while in its units they are near 1 for any shape
 // not much longer one way than another. Its least moment of inertia is
-// at least MVFX_MIN_INERTIA_SHARE of its inertia's trace (a needle's about
-// its long axis is raised there), so its inverse inertia about any axis is
-// at most 2^18 over that trace.
+// at least MVFX_MIN_INERTIA_SHARE of its shape's inertia's trace before
+// that hold (a needle's about its long axis is raised there), so its
+// inverse inertia about any axis is at most 2^18 over that trace.
 // Every scaling is by a power of two, exact within binary32's normal
 // range: an XPBD step's correction from its multiplier is the same bits in
 // any mass unit.

@@ -866,6 +866,50 @@ static void TestFreeFlow(void)
     CHECK(energy <= 5e-3, "fast boxes' energy kept");
 }
 
+static void TestThinBoxSpin(void)
+{
+    // A box 2^-8.5 of its length across, its moment about its length 2^-17
+    // of its trace, above MVFX_MIN_INERTIA_SHARE, keeps it: spun at 6e5
+    // rad/s about its length, its spin across turns about its length in
+    // its frame at (J - K) / J of that spin, J its moment across and K
+    // along, as Euler's equations of a free symmetric body give it.
+    // After 6 steps within 0.0033 radians of it; with the share at 2^-16,
+    // its moment about its length raised to twice its own, 0.93 radians.
+    const float across = 0x1.6a09e6p-9f;
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, across, 1.0f, across);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.collision.enable = false;
+    emitter.colliders = NULL;
+    emitter.colliderCount = 0;
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {1000.0f, 6e5f, 0}, .max = {1000.0f, 6e5f, 0}};
+    static const double place[3] = {0, 0, 0};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, place, still);
+    double first[3];
+    double last[3];
+    for (int32_t i = 0; i < 7; ++i)
+    {
+        Steps(1);
+        double* w = i == 0 ? first : last;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float axis[3];
+            Axis(k, axis);
+            w[k] = (double)axis[0] * (double)W(0) + (double)axis[1] * (double)W(1) +
+                   (double)axis[2] * (double)W(2);
+        }
+    }
+    mvfxDestroyContext(s_scene.context);
+    double a = (double)across * (double)across;
+    double rate = (1.0 - a) / (1.0 + a) * first[1];
+    double angle = rate * 6.0 * (double)(MVFX_TICKS_PER_SECOND / 60) / MVFX_TICKS_PER_SECOND;
+    double x = first[0] * cos(angle) - first[2] * sin(angle);
+    double z = first[0] * sin(angle) + first[2] * cos(angle);
+    double apart = atan2(fabs(x * last[2] - z * last[0]), x * last[0] + z * last[2]);
+    CHECK(apart <= 0.05, "a box thicker than the share keeps its moment about its length");
+}
+
 static bool s_bump;
 
 // A grid of heights over x and z from -2 to 2, three points a side:
@@ -2067,6 +2111,7 @@ int main(void)
     TestDepth();
     TestGyroscopic();
     TestFreeFlow();
+    TestThinBoxSpin();
     TestTwist();
     TestTipping();
     TestTippingAngle();

@@ -43,8 +43,8 @@ static void Invert(const double m[6], double out[6])
     }
 }
 
-// Holds an inertia's least moment at MVFX_MIN_INERTIA_SHARE of its trace or
-// more, and gives its inverse. The inverse's trace is from one to three
+// Holds an inertia's least moment at MVFX_MIN_INERTIA_SHARE of its trace as
+// given, before the hold, or more, and gives its inverse. The inverse's trace is from one to three
 // times the least moment's reciprocal, so the shortfall below the share,
 // the share of the trace less the trace's reciprocal (all of the share
 // when the inertia has no inverse), added about each axis lifts the least
