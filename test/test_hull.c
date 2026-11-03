@@ -9,7 +9,9 @@
 // ball's hull all inside every face, each face's corners on its plane and
 // in order; a fan of nearly coplanar triangles merged by one plane, its
 // faces sound and its volume exact; a hull of near-degenerate points
-// hashed the same on every platform; hulls of 200 and 500 points counted
+// hashed the same on every platform; needles of rings of 3 to 32 points
+// refused, or built with their volume and centroid to the build's
+// tolerance; hulls of 200 and 500 points counted
 // past the most; points spanning no volume or less than the build's
 // tolerance, and a hull of more than the most vertices, refused.
 
@@ -20,6 +22,7 @@
 #include "maul-vfx/mesh.h"
 #include "maul-vfx/plan.h"
 
+#include <float.h>
 #include <math.h>
 #include <string.h>
 
@@ -346,6 +349,139 @@ static void TestNearDegenerate(void)
     Close();
 }
 
+// The needle of a ring of count points width across about the middle of
+// two tips 1 apart along axis (unit, its ring across e1 and e2), moved
+// by offset on every axis: its points, the volume and centroid of the
+// bipyramid of them (by tetrahedra from their mean) and the build's
+// tolerance, three float epsilons of their largest magnitudes' sum.
+typedef struct Needle
+{
+    float points[3 * 34];
+    double volume;
+    double centroid[3];
+    double tolerance;
+} Needle;
+
+static Needle NeedleOf(const double axis[3], const double e1[3], const double e2[3], int32_t count,
+                       double width, double offset)
+{
+    Needle n = {0};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        n.points[k] = (float)(offset + 0.5 * axis[k]);
+        n.points[3 + k] = (float)(offset - 0.5 * axis[k]);
+    }
+    for (int32_t i = 0; i < count; ++i)
+    {
+        double angle = 2.0 * 3.14159265358979323846 * (double)i / (double)count;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            n.points[6 + 3 * i + k] =
+                (float)(offset + 0.5 * width * (cos(angle) * e1[k] + sin(angle) * e2[k]));
+        }
+    }
+    double mean[3] = {0.0, 0.0, 0.0};
+    double largest[3] = {0.0, 0.0, 0.0};
+    for (int32_t i = 0; i < count + 2; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            mean[k] += (double)n.points[3 * i + k] / (double)(count + 2);
+            largest[k] = fmax(largest[k], fabs((double)n.points[3 * i + k]));
+        }
+    }
+    n.tolerance = 3.0 * (double)FLT_EPSILON * (largest[0] + largest[1] + largest[2]);
+    double sum[3] = {0.0, 0.0, 0.0};
+    for (int32_t t = 0; t < 2 * count; ++t)
+    {
+        // A tip, then two ring points in turn (the other way at the far tip).
+        int32_t a = 2 + t % count;
+        int32_t z = 2 + (t + 1) % count;
+        int32_t corners[3] = {t < count ? 0 : 1, t < count ? a : z, t < count ? z : a};
+        double p[3][3];
+        for (int32_t j = 0; j < 3; ++j)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                p[j][k] = (double)n.points[3 * corners[j] + k] - mean[k];
+            }
+        }
+        double v = (p[0][0] * (p[1][1] * p[2][2] - p[1][2] * p[2][1]) -
+                    p[0][1] * (p[1][0] * p[2][2] - p[1][2] * p[2][0]) +
+                    p[0][2] * (p[1][0] * p[2][1] - p[1][1] * p[2][0])) /
+                   6.0;
+        n.volume += v;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            sum[k] += v * (p[0][k] + p[1][k] + p[2][k]) / 4.0;
+        }
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        n.centroid[k] = mean[k] + sum[k] / n.volume;
+    }
+    n.volume = fabs(n.volume);
+    return n;
+}
+
+static void TestNeedles(void)
+{
+    // Needles 1 long, rings of 3 to 32 points from 3e-7 to 1e-3 across,
+    // along X and along the diagonal, about the origin and 10 from it on
+    // every axis. Each is refused as spanning no volume, or built with
+    // positive moments, its volume within 3 tolerances over its width of
+    // its points' own, relative, and its centroid within half of one; and
+    // each wider than 12 tolerances is built. Measured: 2.5, 0.23 and
+    // 11.3 tolerances.
+    const double r2 = 1.0 / sqrt(2.0);
+    const double r3 = 1.0 / sqrt(3.0);
+    const double r6 = 1.0 / sqrt(6.0);
+    const double axes[2][3][3] = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}},
+                                  {{r3, r3, r3}, {r2, -r2, 0}, {r6, r6, -2.0 * r6}}};
+    const int32_t rings[8] = {3, 4, 5, 6, 8, 12, 16, 32};
+    int32_t built = 0;
+    int32_t refused = 0;
+    double volume = 0.0;
+    double centroid = 0.0;
+    double widest = 0.0;
+    bool sound = true;
+    for (int32_t r = 0; r < 8; ++r)
+    {
+        for (int32_t at = 0; at < 4; ++at)
+        {
+            for (double width = 3e-7; width <= 1e-3; width *= 1.02)
+            {
+                const double(*a)[3] = axes[at % 2];
+                Needle n = NeedleOf(a[0], a[1], a[2], rings[r], width, at < 2 ? 0.0 : 10.0);
+                mvfxResult made = HullOf(n.points, rings[r] + 2);
+                if (made != mvfx_success)
+                {
+                    sound = sound && made == mvfx_errorUnsupported;
+                    widest = fmax(widest, width / n.tolerance);
+                    refused += 1;
+                    Close();
+                    continue;
+                }
+                built += 1;
+                double off = fabs((double)s_view.hullVolume / n.volume - 1.0);
+                volume = fmax(volume, off * width / n.tolerance);
+                for (int32_t k = 0; k < 3; ++k)
+                {
+                    centroid = fmax(centroid, fabs((double)s_center[k] - n.centroid[k]) / n.tolerance);
+                }
+                sound = sound && s_view.hullMoments[0] > 0.0f && s_view.hullMoments[1] > 0.0f &&
+                        s_view.hullMoments[2] > 0.0f;
+                Close();
+            }
+        }
+    }
+    printf("needles: %d built, %d refused, volume off up to %g tolerances over the width, "
+           "centroid %g tolerances, widest refused %g tolerances\n",
+           built, refused, volume, centroid, widest);
+    CHECK(sound && volume <= 3.0 && centroid <= 0.5 && widest <= 12.0 && built > refused,
+          "needle hulls refused or built to their tolerance");
+}
+
 static void TestRefused(void)
 {
     // A square's corners and its center, a line, one point repeated, a
@@ -430,6 +566,7 @@ int main(void)
     TestConvex();
     TestFan();
     TestNearDegenerate();
+    TestNeedles();
     TestCount();
     TestRefused();
     return s_failures == 0 ? 0 : 1;
