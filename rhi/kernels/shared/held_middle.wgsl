@@ -8,7 +8,9 @@
 // largest held equal within 2^-21 of the largest, their gap ramped from 0
 // there to its own at 2^-20, as the core's mvfxHeldMiddle: its operations
 // in its order, every one exact but the last, so both paths take the same
-// middle moment from the same moments, to the bit.
+// middle moment from the same moments, to the bit, while the largest is
+// at least 2^-101: below it the gap less the band can be subnormal and
+// still move the result, and a GPU may flush it to 0.
 fn heldMiddle(m: vec3<f32>) -> f32 {
     let gap = m.x - m.y;
     let band = 4.76837158203125e-7 * m.x;

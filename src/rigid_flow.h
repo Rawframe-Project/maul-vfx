@@ -34,7 +34,9 @@ mvfxPrincipal mvfxPrincipalOf(const float inertia[6]);
 // last, which IEEE binary32 rounds alike everywhere: the GPU part's
 // heldMiddle (rhi/kernels/shared/held_middle.wgsl) takes the same
 // operations in the same order, so both paths take the same middle moment
-// from the same moments, to the bit.
+// from the same moments, to the bit, while the largest is at least
+// 2^-101: below it the gap less the band can be subnormal and still move
+// the result, and a GPU may flush it to 0.
 float mvfxHeldMiddle(const float moments[3]);
 
 // Turns a body's orientation q and its angular velocity w, both in the
