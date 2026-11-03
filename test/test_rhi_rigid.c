@@ -892,9 +892,10 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
 }
 
 // Needle hulls 1 long along (1, 1, 1) of their mesh, a ring of six
-// points about their middle, at the widths #115 measured but 1.7e-6 and
-// 3e-6, whose hulls are built wrong (#272), and 2e-3, which parts in its
-// first step on main as well (#274).
+// points about their middle, from 1e-6 to 0.04 of their length across:
+// not 1.7e-6 and 3e-6, whose hulls are built with faces merged, nor 2e-3
+// and 3.2e-3, which part in their first step with or without the least
+// inertia share.
 #define NEEDLE_WIDTHS 11
 static const double s_needleWidths[NEEDLE_WIDTHS] = {9.7e-7, 9.6e-6, 3e-5,   1e-4, 1.7e-4, 3e-4,
                                                      5.2e-4, 1e-3,   5.2e-3, 1e-2, 3.8e-2};
@@ -928,7 +929,7 @@ static void TestNeedleHulls(Gpu* gpu, mvfxGpu* kernels)
     // 1e-6 to 0.04 of their length across, tumbling a step at a time within
     // 1e-3, which they meet by 1.6e-5. Their binary32 moments lost their
     // inertia about their length below 1e-3 of it, where the paths gave it
-    // differently, or none: at 1e-4 they parted by 0.43 (#115). Held at
+    // differently, or none: at 1e-4 they parted by 0.43. Held at
     // MVFX_MIN_INERTIA_SHARE of its trace or more, it is alike.
     for (int32_t w = 0; w < NEEDLE_WIDTHS; ++w)
     {

@@ -902,9 +902,9 @@ static void TestThinNeedles(void)
     // ground, and the same needle along its mesh's X in a world turned so
     // it meets the same ground the same way: both turn alike at every
     // width from 3e-6 of their length, where the hull's build still keeps
-    // their 12 faces (#272). Its moments in binary32 lose the needle's
-    // inertia about its length along a diagonal below 1e-3 of it (#115),
-    // and it did not turn at all from 1e-6 to 1e-4; the least inertia
+    // their 12 faces. Its moments in binary32 lose the needle's inertia
+    // about its length along a diagonal below 1e-3 of it, and it did not
+    // turn at all from 1e-6 to 1e-4; the least inertia
     // MVFX_MIN_INERTIA_SHARE gives both the same. Apart at most 0.0045 of
     // their length to 1e-3 and 0.021 at 1e-2, where contact alone parts
     // them; without the share 0.31 from 3e-6 to 1e-4.
