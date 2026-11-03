@@ -891,15 +891,52 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
     }
 }
 
+static void TestFloorNeedles(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Capsules and boxes 0.3 to 0.5 long and 4e-9 across on a level floor:
+    // lying along X and rolling about it as they fall, or dropped upright
+    // turning slowly.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0}};
+    static const float across[5] = {0.1f, 1e-2f, 1e-4f, 1e-6f, 4e-9f};
+    for (int32_t shape = 1; shape < 3; ++shape)
+    {
+        for (int32_t at = 0; at < 10; ++at)
+        {
+            int32_t upright = at % 2;
+            float w = across[at / 2];
+            mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, &floor, 1);
+            emitter.size = (mvfxVectorSource){
+                .kind = mvfx_sourceRange, .min = {w, 0.3f, w}, .max = {w, 0.5f, w}};
+            emitter.orientationMode = mvfx_orientationEuler;
+            float turn = upright != 0 ? 0.0f : 1.5707964f;
+            emitter.orientation = (mvfxVectorSource){
+                .kind = mvfx_sourceRange, .min = {0, 0, turn}, .max = {0, 0, turn}};
+            emitter.angularVelocity =
+                upright != 0 ? (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                                  .min = {-0.3f, -0.3f, -0.3f},
+                                                  .max = {0.3f, 0.3f, 0.3f}}
+                             : (mvfxVectorSource){
+                                   .kind = mvfx_sourceRange, .min = {-3, 0, 0}, .max = {3, 0, 0}};
+            char what[96];
+            (void)snprintf(what, sizeof what, "%s %g across %s on a level floor",
+                           shape == 1 ? "capsules" : "boxes", (double)w,
+                           upright != 0 ? "dropped upright, turning slowly"
+                                        : "rolling about X onto");
+            Met(gpu, kernels, &(Run){.mostApart = 1000, .emitters = &emitter}, what);
+        }
+    }
+}
+
 // Needle hulls 1 long along (1, 1, 1) of their mesh, a ring of six
-// points about their middle, from 1e-5 to 0.04 of their length across
-// (below about 3e-6 their hulls are too thin to resolve and refused).
-// Their two largest moments are equal: at 2e-3 and 3.2e-3 binary32
-// rounded them apart on one path, and before the flow held them equal
-// their bodies parted in their first step by 1.4e-3.
-#define NEEDLE_WIDTHS 12
-static const double s_needleWidths[NEEDLE_WIDTHS] = {9.6e-6, 3e-5, 1e-4,   1.7e-4, 3e-4, 5.2e-4,
-                                                     1e-3,   2e-3, 3.2e-3, 5.2e-3, 1e-2, 3.8e-2};
+// points about their middle, from 1e-6 to 0.04 of their length across,
+// not 1.7e-6 and 3e-6, whose hulls are built with faces merged. Their two
+// largest moments are equal: at 2e-3 and 3.2e-3 binary32 rounded them
+// apart on one path, and before the flow held them equal their bodies
+// parted in their first step by 1.4e-3.
+#define NEEDLE_WIDTHS 13
+static const double s_needleWidths[NEEDLE_WIDTHS] = {
+    9.7e-7, 9.6e-6, 3e-5, 1e-4, 1.7e-4, 3e-4, 5.2e-4, 1e-3, 2e-3, 3.2e-3, 5.2e-3, 1e-2, 3.8e-2};
 static float s_needles[NEEDLE_WIDTHS][24];
 
 static void MakeNeedle(double width, float out[24])
@@ -927,7 +964,7 @@ static void MakeNeedle(double width, float out[24])
 static void TestNeedleHulls(Gpu* gpu, mvfxGpu* kernels)
 {
     // Needle hulls along a diagonal of their mesh at a size of 0.4, from
-    // 1e-5 to 0.04 of their length across, tumbling a step at a time within
+    // 1e-6 to 0.04 of their length across, tumbling a step at a time within
     // 1e-3, which they meet by 1.6e-5. Their binary32 moments lost their
     // inertia about their length below 1e-3 of it, where the paths gave it
     // differently, or none: at 1e-4 they parted by 0.43. Held at
@@ -1018,6 +1055,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestFreeBoxes(gpu, kernels);
     TestRods(gpu, kernels);
     TestNeedleHulls(gpu, kernels);
+    TestFloorNeedles(gpu, kernels);
     TestTiedSizes(gpu, kernels);
     TestHeldSpeed(gpu, kernels);
 }
