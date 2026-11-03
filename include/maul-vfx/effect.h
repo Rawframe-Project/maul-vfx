@@ -627,7 +627,9 @@ extern "C"
         // positions' largest magnitudes along each axis (1.1e-6 for
         // positions within 1 of the origin): a point within it of a face is
         // on it. A hull no more than 8 tolerances deep behind one of its
-        // faces is too thin to resolve and has none, as if flat. Measured
+        // faces is too thin to resolve and has none, as if flat, and so is
+        // one whose volume or a second moment about its centroid is below
+        // FLT_MIN (a cube under about 4e-8 across). Measured
         // on needles of rings of 3 to 32 points, its volume is within 2.6
         // tolerances over its width of the points' own, relative, and its
         // centroid within 0.4 tolerances of theirs.

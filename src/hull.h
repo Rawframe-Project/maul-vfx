@@ -44,8 +44,9 @@ typedef struct mvfxHullMeasure
     mvfxResult counted;
     int32_t count;
     // mvfx_success when the hull was built, mvfx_errorUnsupported when the
-    // points span no volume or their hull is no more than 8 tolerances
-    // deep behind a face, mvfx_errorLimit when the hull has more than
+    // points span no volume, their hull is no more than 8 tolerances deep
+    // behind a face or its volume or a second moment is below FLT_MIN,
+    // mvfx_errorLimit when the hull has more than
     // MVFX_MAX_HULL_VERTICES vertices.
     mvfxResult built;
 } mvfxHullMeasure;

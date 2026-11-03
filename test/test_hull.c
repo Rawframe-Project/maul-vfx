@@ -13,7 +13,7 @@
 // refused, or built with their volume and centroid to the build's
 // tolerance; hulls of 200 and 500 points counted
 // past the most; points spanning no volume or less than the build's
-// tolerance, and a hull of more than the most vertices, refused.
+// tolerance, a cube too small for binary32's moments, and a hull of more than the most vertices, refused.
 
 #include "test_harness.h"
 
@@ -344,7 +344,7 @@ static void TestNearDegenerate(void)
     }
     CHECK(HullOf(points, n) == mvfx_success, "a near-degenerate hull");
     CHECK(s_view.hullVertexCount == 12 && s_view.hullFaceCount == 8 &&
-              HashHull() == 0xA4B089E4BC1A4BABu,
+              HashHull() == 0x0D5DBC42176C09C4u,
           "a near-degenerate hull, the same everywhere");
     Close();
 }
@@ -430,9 +430,10 @@ static void TestNeedles(void)
     // along X and along the diagonal, about the origin and 10 from it on
     // every axis. Each is refused as spanning no volume, or built with
     // positive moments, its volume within 3 tolerances over its width of
-    // its points' own, relative, and its centroid within half of one; and
-    // each wider than 12 tolerances is built. Measured: 2.5, 0.23 and
-    // 11.3 tolerances.
+    // its points' own, relative, and its centroid within half of one; each
+    // at most 7 tolerances across (8 deep or less) is refused, and each
+    // wider than 12 is built. Measured: 2.49, 0.23, 9.2 and 11.3
+    // tolerances.
     const double r2 = 1.0 / sqrt(2.0);
     const double r3 = 1.0 / sqrt(3.0);
     const double r6 = 1.0 / sqrt(6.0);
@@ -444,6 +445,7 @@ static void TestNeedles(void)
     double volume = 0.0;
     double centroid = 0.0;
     double widest = 0.0;
+    double narrowest = 1e30;
     bool sound = true;
     for (int32_t r = 0; r < 8; ++r)
     {
@@ -463,22 +465,24 @@ static void TestNeedles(void)
                     continue;
                 }
                 built += 1;
+                narrowest = fmin(narrowest, width / n.tolerance);
                 double off = fabs((double)s_view.hullVolume / n.volume - 1.0);
                 volume = fmax(volume, off * width / n.tolerance);
                 for (int32_t k = 0; k < 3; ++k)
                 {
                     centroid = fmax(centroid, fabs((double)s_center[k] - n.centroid[k]) / n.tolerance);
                 }
-                sound = sound && s_view.hullMoments[0] > 0.0f && s_view.hullMoments[1] > 0.0f &&
-                        s_view.hullMoments[2] > 0.0f;
+                sound = sound && s_view.hullMoments[0] >= FLT_MIN &&
+                        s_view.hullMoments[1] >= FLT_MIN && s_view.hullMoments[2] >= FLT_MIN;
                 Close();
             }
         }
     }
     printf("needles: %d built, %d refused, volume off up to %g tolerances over the width, "
-           "centroid %g tolerances, widest refused %g tolerances\n",
-           built, refused, volume, centroid, widest);
-    CHECK(sound && volume <= 3.0 && centroid <= 0.5 && widest <= 12.0 && built > refused,
+           "centroid %g tolerances, narrowest built %g and widest refused %g tolerances\n",
+           built, refused, volume, centroid, narrowest, widest);
+    CHECK(sound && volume <= 3.0 && centroid <= 0.5 && narrowest > 7.0 && widest <= 12.0 &&
+              built > refused,
           "needle hulls refused or built to their tolerance");
 }
 
@@ -486,12 +490,21 @@ static void TestRefused(void)
 {
     // A square's corners and its center, a line, one point repeated, a
     // square with a corner lifted by less than the build's tolerance
-    // (three float epsilons of the coordinates' sum); 200 points on a
-    // ball, a hull of more than 64 vertices.
+    // (three float epsilons of the coordinates' sum), a cube 1e-8 across
+    // whose second moments are below FLT_MIN; 200 points on a ball, a hull
+    // of more than 64 vertices.
     const float flat[15] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0.5f, 0.5f, 0};
     const float line[12] = {0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3};
     const float same[12] = {1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3};
     const float lifted[12] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1e-7f};
+    float tiny[24];
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            tiny[3 * i + k] = (i >> k & 1) != 0 ? 1e-8f : 0.0f;
+        }
+    }
     float ball[3 * 200];
     for (int32_t i = 0; i < 200; ++i)
     {
@@ -506,9 +519,9 @@ static void TestRefused(void)
     // No hull: the effect refused as unsupported, the mesh without a
     // center; past the most vertices, refused as past a limit.
     bool refused = true;
-    const float* none[5] = {flat, line, same, same, lifted};
-    const int32_t counts[5] = {5, 4, 4, 3, 4};
-    for (int32_t i = 0; i < 5; ++i)
+    const float* none[6] = {flat, line, same, same, lifted, tiny};
+    const int32_t counts[6] = {5, 4, 4, 3, 4, 8};
+    for (int32_t i = 0; i < 6; ++i)
     {
         bool hull = true;
         refused = refused && HullOf(none[i], counts[i]) == mvfx_errorUnsupported &&

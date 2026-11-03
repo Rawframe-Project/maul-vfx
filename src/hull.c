@@ -676,10 +676,11 @@ static void Integrate(const double p0[3], const double p1[3], const double p2[3]
 
 // The hull's volume, centroid and second moments about it (Eberly,
 // "Polyhedral Mass Properties (Revisited)", 2009), over the built
-// triangles, the points taken from ref for precision; false for no volume
-// or a second moment not above 0. Not over the faces: a face's corners may
-// be four tolerances off its plane, and a fan over them missed a needle's
-// volume by half.
+// triangles, the points taken from ref for precision; false when the
+// volume or a second moment is below binary32's least normal number, which
+// a body's inertia cannot be made of (a cube 1e-9 across had moments of 0).
+// Not over the faces: a face's corners may be four tolerances off its
+// plane, and a fan over them missed a needle's volume by half.
 static bool MassOf(const Build* b, const double ref[3], mvfxHull* out)
 {
     double integral[10] = {0.0};
@@ -718,7 +719,8 @@ static bool MassOf(const Build* b, const double ref[3], mvfxHull* out)
     out->moments[3] = (float)(integral[7] - volume * c[0] * c[1]);
     out->moments[4] = (float)(integral[9] - volume * c[0] * c[2]);
     out->moments[5] = (float)(integral[8] - volume * c[1] * c[2]);
-    return out->moments[0] > 0.0f && out->moments[1] > 0.0f && out->moments[2] > 0.0f;
+    return out->volume >= FLT_MIN && out->moments[0] >= FLT_MIN && out->moments[1] >= FLT_MIN &&
+           out->moments[2] >= FLT_MIN;
 }
 
 // Gathers the built triangles into the hull about its centroid.
