@@ -866,6 +866,50 @@ static void TestFreeFlow(void)
     CHECK(energy <= 5e-3, "fast boxes' energy kept");
 }
 
+static void TestThinBoxSpin(void)
+{
+    // A box 2^-8.5 of its length across, its moment about its length 2^-17
+    // of its trace, above MVFX_MIN_INERTIA_SHARE, keeps it: spun at 6e5
+    // rad/s about its length, its spin across turns about its length in
+    // its frame at (J - K) / J of that spin, J its moment across and K
+    // along, as Euler's equations of a free symmetric body give it.
+    // After 6 steps within 0.0033 radians of it; with the share at 2^-16,
+    // its moment about its length raised to twice its own, 0.93 radians.
+    const float across = 0x1.6a09e6p-9f;
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidBox, across, 1.0f, across);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.collision.enable = false;
+    emitter.colliders = NULL;
+    emitter.colliderCount = 0;
+    emitter.angularVelocity = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {1000.0f, 6e5f, 0}, .max = {1000.0f, 6e5f, 0}};
+    static const double place[3] = {0, 0, 0};
+    static const float still[3] = {0, 0, 0};
+    Open(&emitter, place, still);
+    double first[3];
+    double last[3];
+    for (int32_t i = 0; i < 7; ++i)
+    {
+        Steps(1);
+        double* w = i == 0 ? first : last;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            float axis[3];
+            Axis(k, axis);
+            w[k] = (double)axis[0] * (double)W(0) + (double)axis[1] * (double)W(1) +
+                   (double)axis[2] * (double)W(2);
+        }
+    }
+    mvfxDestroyContext(s_scene.context);
+    double a = (double)across * (double)across;
+    double rate = (1.0 - a) / (1.0 + a) * first[1];
+    double angle = rate * 6.0 * (double)(MVFX_TICKS_PER_SECOND / 60) / MVFX_TICKS_PER_SECOND;
+    double x = first[0] * cos(angle) - first[2] * sin(angle);
+    double z = first[0] * sin(angle) + first[2] * cos(angle);
+    double apart = atan2(fabs(x * last[2] - z * last[0]), x * last[0] + z * last[2]);
+    CHECK(apart <= 0.05, "a box thicker than the share keeps its moment about its length");
+}
+
 static bool s_bump;
 
 // A grid of heights over x and z from -2 to 2, three points a side:
@@ -1370,7 +1414,8 @@ static void TestUnits(void)
 static void TestNeedles(void)
 {
     // A needle's inverse inertia about its long axis goes as its length
-    // over its diameter squared, held at 2^40 in its units: capsules and
+    // over its diameter squared, its least moment held at
+    // MVFX_MIN_INERTIA_SHARE of its inertia's trace or more: capsules and
     // boxes 1e-20 across and 1 long, and 1e-14 across and MVFX_MAX_EXTENT
     // long, at the densities' ends, dropped upright on the plane turning
     // slowly or spun about each axis, stay finite (unheld, the first went
@@ -1426,13 +1471,18 @@ static void TestNeedles(void)
     // and 1e-20 of their length across keep turning: their orientations
     // change in each of the last 20 of 60 steps. Stepped explicitly, the
     // gyroscopic term's rounding carried their spin onto their long axis
-    // until a first-order turn mapped each orientation onto itself.
+    // until a first-order turn mapped each orientation onto itself. Their
+    // least moments held at MVFX_MIN_INERTIA_SHARE of their trace, they
+    // turn as a box 2^-9 less 2^-28 of its length across does, whose
+    // moment about its length over the others' is theirs: after 6 steps
+    // within 0.0018 radians of it, and 0.75 with the share at 2^-24.
     bool turning = true;
-    for (int32_t c = 0; c < 4; ++c)
+    float sixth[5][4] = {{0}};
+    for (int32_t c = 0; c < 5; ++c)
     {
-        float across = c < 2 ? 1e-6f : 1e-20f;
+        float across = c < 2 ? 1e-6f : c < 4 ? 1e-20f : 0x1.ffffcp-10f;
         mvfxEmitterDef emitter =
-            Rigid(c % 2 == 0 ? mvfx_rigidCapsule : mvfx_rigidBox, across, 1.0f, across);
+            Rigid(c % 2 == 0 && c < 4 ? mvfx_rigidCapsule : mvfx_rigidBox, across, 1.0f, across);
         emitter.motion.gravity[1] = 0.0f;
         emitter.collision.enable = false;
         emitter.colliderCount = 0;
@@ -1464,10 +1514,25 @@ static void TestNeedles(void)
             turning =
                 turning && read && (i < 40 || memcmp(last, body.orientation, sizeof last) != 0);
             memcpy(last, body.orientation, sizeof last);
+            if (i == 5)
+            {
+                memcpy(sixth[c], last, sizeof last);
+            }
         }
         mvfxDestroyContext(s_scene.context);
     }
     CHECK(turning, "needles spun at the most keep turning");
+    bool alike = true;
+    for (int32_t c = 0; c < 4; ++c)
+    {
+        double dot = 0.0;
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            dot += (double)sixth[c][k] * (double)sixth[4][k];
+        }
+        alike = alike && fabs(dot) >= cos(0.01);
+    }
+    CHECK(alike, "needles spun at the most turn as one at the share");
 }
 
 // The sizes of the first particles as the host modules see them after
@@ -2046,6 +2111,7 @@ int main(void)
     TestDepth();
     TestGyroscopic();
     TestFreeFlow();
+    TestThinBoxSpin();
     TestTwist();
     TestTipping();
     TestTippingAngle();

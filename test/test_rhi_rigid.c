@@ -835,13 +835,13 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
 {
     // Rods 0.4 long and 1e-2, 1e-4, 1e-6 and 1e-23 of that across, capsules
     // and boxes, their moments about their length 1e-4 to 1e-46 of the
-    // others' (the last two held at 2^-40 in their units), free: spun at up
-    // to 3 rad/s about their length, then tumbling about every axis, a step
-    // at a time within 1e-3 of the CPU path's binary64 flow, which they
-    // part from by 2e-6. Read back by its momentum's size, a rod's spin
-    // about its length drained in binary32: the rounding across it, at its
-    // large moments, outweighed its momentum about its length, and the rods
-    // 4e-5 and 4e-7 across spun about it parted by 1.3 or more. The
+    // others' (the last three held at MVFX_MIN_INERTIA_SHARE of their trace),
+    // free: spun at up to 3 rad/s about their length, then tumbling about
+    // every axis, a step at a time within 1e-3 of the CPU path's binary64
+    // flow, which they part from by 2e-6. Read back by its momentum's size, a
+    // rod's spin about its length drained in binary32: the rounding across
+    // it, at its large moments, outweighed its momentum about its length, and
+    // the rods 4e-5 and 4e-7 across spun about it parted by 1.3 or more. The
     // thinnest's mass in its units, its volume, is past binary32's range,
     // which the part keeps apart from its power of two: taken whole, it
     // flushed to 0 and the rod was a point that did not turn.
@@ -888,6 +888,68 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
                 &(Run){.emitters = &emitter, .emitterCount = 1, .steps = 600, .tolerance = 2e-3f},
                 shape == 1 ? "capsules 4e-07 across spun about their length for 10 s"
                            : "boxes 4e-07 across spun about their length for 10 s");
+    }
+}
+
+// Needle hulls 1 long along (1, 1, 1) of their mesh, a ring of six
+// points about their middle, from 1e-6 to 0.04 of their length across:
+// not 1.7e-6 and 3e-6, whose hulls are built with faces merged, nor 2e-3
+// and 3.2e-3, which part in their first step with or without the least
+// inertia share.
+#define NEEDLE_WIDTHS 11
+static const double s_needleWidths[NEEDLE_WIDTHS] = {9.7e-7, 9.6e-6, 3e-5,   1e-4, 1.7e-4, 3e-4,
+                                                     5.2e-4, 1e-3,   5.2e-3, 1e-2, 3.8e-2};
+static float s_needles[NEEDLE_WIDTHS][24];
+
+static void MakeNeedle(double width, float out[24])
+{
+    const double r2 = sqrt(0.5);
+    const double r3 = sqrt(1.0 / 3.0);
+    const double r6 = sqrt(1.0 / 6.0);
+    const double axes[3][3] = {{r3, r3, r3}, {r2, -r2, 0}, {r6, r6, -2 * r6}};
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[k] = (float)(0.5 * axes[0][k]);
+        out[3 + k] = (float)(-0.5 * axes[0][k]);
+    }
+    for (int32_t i = 0; i < 6; ++i)
+    {
+        double angle = 3.14159265358979323846 * (double)i / 3.0;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[6 + 3 * i + k] =
+                (float)(0.5 * width * (cos(angle) * axes[1][k] + sin(angle) * axes[2][k]));
+        }
+    }
+}
+
+static void TestNeedleHulls(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Needle hulls along a diagonal of their mesh at a size of 0.4, from
+    // 1e-6 to 0.04 of their length across, tumbling a step at a time within
+    // 1e-3, which they meet by 1.6e-5. Their binary32 moments lost their
+    // inertia about their length below 1e-3 of it, where the paths gave it
+    // differently, or none: at 1e-4 they parted by 0.43. Held at
+    // MVFX_MIN_INERTIA_SHARE of its trace or more, it is alike.
+    for (int32_t w = 0; w < NEEDLE_WIDTHS; ++w)
+    {
+        MakeNeedle(s_needleWidths[w], s_needles[w]);
+        const mvfxMeshDef mesh = {
+            .cookie = MVFX_MESH_DEF_COOKIE, .positions = s_needles[w], .vertexCount = 8};
+        mvfxEmitterDef emitter = Bodies(mvfx_rigidHull);
+        emitter.size = (mvfxVectorSource){
+            .kind = mvfx_sourceRange, .min = {0.4f, 0.4f, 0.4f}, .max = {0.4f, 0.4f, 0.4f}};
+        char what[96];
+        (void)snprintf(what, sizeof what, "diagonal needle hulls %g across tumbling",
+                       s_needleWidths[w]);
+        Compare(gpu, kernels,
+                &(Run){.emitters = &emitter,
+                       .emitterCount = 1,
+                       .pace = 0.001,
+                       .adopting = true,
+                       .tolerance = 1e-3f,
+                       .mesh = &mesh},
+                what);
     }
 }
 
@@ -954,6 +1016,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestUnits(gpu, kernels);
     TestFreeBoxes(gpu, kernels);
     TestRods(gpu, kernels);
+    TestNeedleHulls(gpu, kernels);
     TestTiedSizes(gpu, kernels);
     TestHeldSpeed(gpu, kernels);
 }

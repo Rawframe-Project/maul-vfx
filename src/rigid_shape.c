@@ -30,18 +30,6 @@ void mvfxShapePoint(const mvfxBodyShape* s, int32_t i, float out[3])
     }
 }
 
-// The most a body's inverse inertia is about any axis in its units. A
-// needle's about its long axis goes as its length over its diameter
-// squared, and passed binary32's range at a diameter 1e-20 of its length.
-// A body whose inverse's trace passes it (a needle thinner than about a
-// millionth of its length) has its inverse's reciprocal, 2^-40, added to
-// its inertia about each axis, which holds the inverse within it about
-// any axis; every other body keeps its bits, its inverse within it about
-// any axis since the trace bounds the largest eigenvalue. The diagonal
-// alone does not: a needle along (1, 1, 1) has each a third of its
-// inverse about its length.
-#define MOST_INVERSE_INERTIA 0x1p40
-
 // The inverse of a symmetric matrix (xx, yy, zz, xy, xz, yz); zero when it
 // has none.
 static void Invert(const double m[6], double out[6])
@@ -52,6 +40,34 @@ static void Invert(const double m[6], double out[6])
     for (int32_t k = 0; k < 6; ++k)
     {
         out[k] = det > 0.0 ? c[k] / det : 0.0;
+    }
+}
+
+// Holds an inertia's least moment at MVFX_MIN_INERTIA_SHARE of its trace as
+// given, before the hold, or more, and gives its inverse. The inverse's trace is from one to three
+// times the least moment's reciprocal, so the shortfall below the share,
+// the share of the trace less the trace's reciprocal (all of the share
+// when the inertia has no inverse), added about each axis lifts the least
+// moment to the share. A body that is not thin falls short by nothing and
+// keeps its bits, and the lift grows from 0 as a needle thins, so binary32
+// and binary64 cannot take different sides of a threshold. A needle along
+// a diagonal of its frame keeps its moments only to their rounding, near
+// 2^-24 of its trace: the share is 64 times that, so it turns about its
+// length as the same needle along an axis does, within a few percent.
+static void HoldInertia(double m[6], double inverse[6])
+{
+    Invert(m, inverse);
+    double trace = m[0] + m[1] + m[2];
+    double inverseTrace = inverse[0] + inverse[1] + inverse[2];
+    double least = inverseTrace > 0.0 ? 1.0 / inverseTrace : 0.0;
+    double lift = (double)MVFX_MIN_INERTIA_SHARE * trace - least;
+    if (lift > 0.0)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            m[k] += lift;
+        }
+        Invert(m, inverse);
     }
 }
 
@@ -194,15 +210,7 @@ mvfxBodyShape mvfxBodyShapeOf(const mvfxRigidDef* rigid, const mvfxHull* hull, c
     {
         scaled[k] = ldexp(inertia[k], -massUnit - 2 * lengthUnit);
     }
-    Invert(scaled, inverse);
-    if (inverse[0] + inverse[1] + inverse[2] > MOST_INVERSE_INERTIA)
-    {
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            scaled[k] += 1.0 / MOST_INVERSE_INERTIA;
-        }
-        Invert(scaled, inverse);
-    }
+    HoldInertia(scaled, inverse);
     mass->inverseMass = (float)ldexp(1.0 / m, massUnit);
     for (int32_t k = 0; k < 6; ++k)
     {

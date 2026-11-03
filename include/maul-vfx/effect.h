@@ -629,6 +629,16 @@ extern "C"
 // The most vertices a rigid particle's hull has.
 #define MVFX_MAX_HULL_VERTICES 64
 
+// The least moment of inertia a rigid particle keeps about any axis, as a
+// share of the trace of the inertia its shape and size give it, before
+// this hold. A body whose least moment falls short is raised to that
+// share of that trace, so a needle thinner than a square box 1/512 of its
+// length across (a round rod about 1/440) turns about its length as one
+// that thick does, whatever its shape and however it lies in its mesh. Its
+// spin about its length is not seen at that width. Every other body keeps
+// its inertia.
+#define MVFX_MIN_INERTIA_SHARE 0x1p-18f
+
     // Rigid particles, by XPBD rigid bodies (Muller, Macklin, Chentanez,
     // Jeschke and Kim, "Detailed Rigid Body Simulation with Extended
     // Position Based Dynamics", SCA 2020) in substeps, so they tumble, roll
