@@ -76,6 +76,8 @@ fn pairSpeed(c: PairContact, a: Solid, b: Solid, ra: vec3<f32>, rb: vec3<f32>) -
 // offsets on each at the pose and the start pose, its normal, its load
 // and impulses, its radius and each body's spread of contacts.
 struct PairPatch {
+    onA: vec3<f32>,
+    onB: vec3<f32>,
     ra: vec3<f32>,
     rb: vec3<f32>,
     ra0: vec3<f32>,
@@ -114,6 +116,8 @@ fn pairPatchOf(a: Solid, b: Solid, first: u32, end: u32, h: f32,
     area.normal = n;
     area.onA /= (*out).load;
     area.onB /= (*out).load;
+    (*out).onA = area.onA;
+    (*out).onB = area.onB;
     (*out).n = n;
     var ra = vec3<f32>(0.0);
     var rb = vec3<f32>(0.0);
@@ -163,11 +167,11 @@ fn rubPair(a: ptr<function, Solid>, b: ptr<function, Solid>, p: PairPatch,
         return;
     }
     *rubbed += holding;
-    let la = lever(p.ra, p.n, p.load * spreadReach(p.spreadA, p.count, u, 1.0), *rubbed);
-    let lb = lever(p.rb, p.n, p.load * spreadReach(p.spreadB, p.count, u, -1.0), *rubbed);
-    let lambda = slid / (bodyWeight(*a, la, u) + bodyWeight(*b, lb, u));
-    bodyPush(a, la, -lambda * u, false);
-    bodyPush(b, lb, lambda * u, false);
+    let la = leverOf(*a, p.onA, p.n, p.load * spreadReach(p.spreadA, p.count, u, 1.0), *rubbed);
+    let lb = leverOf(*b, p.onB, p.n, p.load * spreadReach(p.spreadB, p.count, u, -1.0), *rubbed);
+    let lambda = slid / (bodyWeight(*a, (*a).q, la, u) + bodyWeight(*b, (*b).q, lb, u));
+    bodyPush(a, (*a).q, la, -lambda * u, false);
+    bodyPush(b, (*b).q, lb, lambda * u, false);
 }
 
 // A pair patch's dynamic friction, as the core's mvfxSlowPatch with b.
@@ -181,9 +185,9 @@ fn slowPair(a: ptr<function, Solid>, b: ptr<function, Solid>, p: PairPatch,
     }
     let u = v / speed;
     let limit = params.rigidContact.z * p.pressed;
-    let la = lever(p.ra, p.n, p.pressed * spreadReach(p.spreadA, p.count, u, 1.0), limit);
-    let lb = lever(p.rb, p.n, p.pressed * spreadReach(p.spreadB, p.count, u, -1.0), limit);
-    let stop = speed / (bodyWeight(*a, la, u) + bodyWeight(*b, lb, u));
+    let la = leverOf(*a, p.onA, p.n, p.pressed * spreadReach(p.spreadA, p.count, u, 1.0), limit);
+    let lb = leverOf(*b, p.onB, p.n, p.pressed * spreadReach(p.spreadB, p.count, u, -1.0), limit);
+    let stop = speed / (bodyWeight(*a, (*a).q, la, u) + bodyWeight(*b, (*b).q, lb, u));
     let j = min(stop, max(limit - *slowed, 0.0));
     *slowed += j;
     bodyKick(a, la, -j * u);
@@ -278,11 +282,11 @@ fn holdPair(a: ptr<function, Solid>, b: ptr<function, Solid>, first: u32, end: u
         return;
     }
     let u = slide / slid;
-    let ra = rotate((*a).q0, onA);
-    let rb = rotate((*b).q0, onB);
-    let lambda = slid / (bodyWeight(*a, ra, u) + bodyWeight(*b, rb, u));
-    bodyPush(a, ra, -lambda * u, true);
-    bodyPush(b, rb, lambda * u, true);
+    let qa = (*a).q0;
+    let qb = (*b).q0;
+    let lambda = slid / (bodyWeight(*a, qa, onA, u) + bodyWeight(*b, qb, onB, u));
+    bodyPush(a, qa, onA, -lambda * u, true);
+    bodyPush(b, qb, onB, lambda * u, true);
 }
 
 // Bodies i and j as a pair's solve takes them, as the core's PairBodies:
@@ -319,12 +323,15 @@ fn solvePair(first: u32, end: u32, start: bool, friction: bool, backward: bool, 
         if (!(depth < 0.0)) {
             continue;
         }
-        let lambda = -depth / (bodyWeight(a, ra, c.normal) + bodyWeight(b, rb, c.normal));
+        let qa = select(a.q, a.q0, start);
+        let qb = select(b.q, b.q0, start);
+        let lambda =
+            -depth / (bodyWeight(a, qa, c.onA, c.normal) + bodyWeight(b, qb, c.onB, c.normal));
         if (!start) {
             blocks[at + 11u] = bitcast<u32>(c.lambda + lambda);
         }
-        bodyPush(&a, ra, lambda * c.normal, start);
-        bodyPush(&b, rb, -lambda * c.normal, start);
+        bodyPush(&a, qa, c.onA, lambda * c.normal, start);
+        bodyPush(&b, qb, c.onB, -lambda * c.normal, start);
     }
     if (start) {
         holdPair(&a, &b, first, end, onA, onB, before);
@@ -360,14 +367,14 @@ fn bouncePair(first: u32, end: u32, backward: bool, h: f32, still: f32) {
         var rb = vec3<f32>(0.0);
         _ = pairDepth(c, a, b, false, &ra, &rb);
         let normal = pairSpeed(c, a, b, ra, rb);
-        let weight = bodyWeight(a, ra, c.normal) + bodyWeight(b, rb, c.normal);
+        let weight = bodyWeight(a, a.q, c.onA, c.normal) + bodyWeight(b, b.q, c.onB, c.normal);
         let bounce = select(0.0, params.rigidContact.x, c.speed < -still);
         let aim = -bounce * min(c.speed, 0.0);
         let total = max(c.applied + (aim - normal) / weight, -c.lambda / h);
         let j = total - c.applied;
         blocks[at + 13u] = bitcast<u32>(total);
-        bodyKick(&a, ra, j * c.normal);
-        bodyKick(&b, rb, -j * c.normal);
+        bodyKick(&a, c.onA, j * c.normal);
+        bodyKick(&b, c.onB, -j * c.normal);
     }
     var area = PairPatch();
     if (pairPatchOf(a, b, first, end, h, &area)) {

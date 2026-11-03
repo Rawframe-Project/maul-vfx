@@ -655,9 +655,11 @@ fn bodyAcross(b: Solid, d: vec3<f32>, n: vec3<f32>) -> f32 {
     return ldexp(sqrt(max(dot3(l, l) - along * along, 0.0)), b.lengthUnit);
 }
 
-fn bodyWeight(b: Solid, r: vec3<f32>, n: vec3<f32>) -> f32 {
-    let c = cross(inLength(b, r), n);
-    return b.inverseMass + dot3(c, inverseInertiaTimes(b, c));
+// The generalized inverse mass at the body's point on (placed by pose q)
+// along unit n, taken in the frame of q, as the core's mvfxBodyWeight.
+fn bodyWeight(b: Solid, q: vec4<f32>, on: vec3<f32>, n: vec3<f32>) -> f32 {
+    let c = cross(inLength(b, on), rotate(conjugate(q), n));
+    return b.inverseMass + dot3(c, symmetricTimes(b.inverse, c));
 }
 
 // The most a patch's friction against turning takes, as the core's
@@ -676,17 +678,19 @@ fn turnFirst(q: vec4<f32>, turn: vec3<f32>) -> vec4<f32> {
 // The most exponent of a turn's component, as the core's MOST_TURN.
 const MOST_TURN: i32 = 60;
 
-// The turn an impulse u at offset r gives the body, in its units, held at
-// 2^MOST_TURN a component, as the core's TurnOf.
-fn turnOf(b: Solid, r: vec3<f32>, u: vec3<f32>) -> vec3<f32> {
-    let turned = inverseInertiaTimes(b, cross(inLength(b, r), u));
+// The turn an impulse u at the body's point on (placed by pose q) gives
+// the body, taken in the frame of q, in its units, held at 2^MOST_TURN a
+// component, as the core's TurnOf.
+fn turnOf(b: Solid, q: vec4<f32>, on: vec3<f32>, u: vec3<f32>) -> vec3<f32> {
+    let local = symmetricTimes(b.inverse, cross(inLength(b, on), rotate(conjugate(q), u)));
+    let turned = rotate(q, local);
     let exponent = frexp(max(abs(turned.x), max(abs(turned.y), abs(turned.z)))).exp;
     let shift = select(-b.lengthUnit, MOST_TURN - exponent, exponent - b.lengthUnit > MOST_TURN);
     return ldexp(turned, vec3<i32>(shift));
 }
 
-fn bodyPush(b: ptr<function, Solid>, r: vec3<f32>, p: vec3<f32>, both: bool) {
-    let turn = turnOf(*b, r, p);
+fn bodyPush(b: ptr<function, Solid>, q: vec4<f32>, on: vec3<f32>, p: vec3<f32>, both: bool) {
+    let turn = turnOf(*b, q, on, p);
     (*b).q = turnFirst((*b).q, turn);
     (*b).x += p * (*b).inverseMass;
     if (both) {
@@ -695,8 +699,8 @@ fn bodyPush(b: ptr<function, Solid>, r: vec3<f32>, p: vec3<f32>, both: bool) {
     }
 }
 
-fn bodyKick(b: ptr<function, Solid>, r: vec3<f32>, j: vec3<f32>) {
-    let turn = turnOf(*b, r, j);
+fn bodyKick(b: ptr<function, Solid>, on: vec3<f32>, j: vec3<f32>) {
+    let turn = turnOf(*b, (*b).q, on, j);
     (*b).v += j * (*b).inverseMass;
     (*b).w += turn;
 }
@@ -706,7 +710,7 @@ fn pointVelocity(b: Solid, r: vec3<f32>) -> vec3<f32> {
 }
 
 // Where a friction impulse along the patch acts on the body at offset r,
-// as the core's Lever.
+// along unit n, both in one frame, as the core's Lever.
 fn lever(r: vec3<f32>, n: vec3<f32>, balance: f32, impulse: f32) -> vec3<f32> {
     let along = dot3(r, n);
     let tipping = impulse * abs(along);
@@ -715,6 +719,12 @@ fn lever(r: vec3<f32>, n: vec3<f32>, balance: f32, impulse: f32) -> vec3<f32> {
         level = min(max((1.05 * balance - tipping) / (0.1 * balance), 0.0), 1.0);
     }
     return r - level * along * n;
+}
+
+// Lever for the body's point on, in its frame, along unit n of the world:
+// the lever in the body's frame, as the core's LeverOf.
+fn leverOf(b: Solid, on: vec3<f32>, n: vec3<f32>, balance: f32, impulse: f32) -> vec3<f32> {
+    return lever(on, rotate(conjugate(b.q), n), balance, impulse);
 }
 
 // How far a patch reaches from its center along unit u, 0 at least.
@@ -728,7 +738,7 @@ fn patchReach(p: Patch, u: vec3<f32>) -> f32 {
 
 // A patch's static friction against the world, as the core's
 // mvfxRubPatch with no second body.
-fn rubPatch(b: ptr<function, Solid>, r: vec3<f32>, r0: vec3<f32>, p: Patch,
+fn rubPatch(b: ptr<function, Solid>, on: vec3<f32>, r: vec3<f32>, r0: vec3<f32>, p: Patch,
             rubbed: ptr<function, f32>) {
     let slide = (*b).x + r - (*b).x0 - r0;
     let along = dot3(slide, p.n);
@@ -743,13 +753,14 @@ fn rubPatch(b: ptr<function, Solid>, r: vec3<f32>, r0: vec3<f32>, p: Patch,
         return;
     }
     *rubbed += holding;
-    let l = lever(r, p.n, p.load * patchReach(p, u), *rubbed);
-    let lambda = slid / bodyWeight(*b, l, u);
-    bodyPush(b, l, -lambda * u, false);
+    let l = leverOf(*b, on, p.n, p.load * patchReach(p, u), *rubbed);
+    let lambda = slid / bodyWeight(*b, (*b).q, l, u);
+    bodyPush(b, (*b).q, l, -lambda * u, false);
 }
 
 // A patch's dynamic friction, as the core's mvfxSlowPatch.
-fn slowPatch(b: ptr<function, Solid>, r: vec3<f32>, p: Patch, slowed: ptr<function, f32>) {
+fn slowPatch(b: ptr<function, Solid>, on: vec3<f32>, r: vec3<f32>, p: Patch,
+             slowed: ptr<function, f32>) {
     var v = pointVelocity(*b, r);
     v -= dot3(v, p.n) * p.n;
     let speed = bodyLength(*b, v);
@@ -758,8 +769,8 @@ fn slowPatch(b: ptr<function, Solid>, r: vec3<f32>, p: Patch, slowed: ptr<functi
     }
     let u = v / speed;
     let limit = params.rigidContact.z * p.pressed;
-    let l = lever(r, p.n, p.pressed * patchReach(p, u), limit);
-    let stop = speed / bodyWeight(*b, l, u);
+    let l = leverOf(*b, on, p.n, p.pressed * patchReach(p, u), limit);
+    let stop = speed / bodyWeight(*b, (*b).q, l, u);
     let j = min(stop, max(limit - *slowed, 0.0));
     *slowed += j;
     bodyKick(b, l, -j * u);
@@ -806,9 +817,8 @@ fn passIndex(count: u32, step: u32, backward: bool) -> u32 {
 
 // A contact's depth at the body's pose, and its offset from the center in
 // the world.
-fn depthOf(b: Solid, c: Contact, r: ptr<function, vec3<f32>>) -> f32 {
-    *r = rotate(b.q, c.body);
-    return dot3(b.x + *r - c.surface, c.normal);
+fn depthOf(b: Solid, c: Contact) -> f32 {
+    return dot3(b.x + rotate(b.q, c.body) - c.surface, c.normal);
 }
 
 fn startDepthOf(b: Solid, c: Contact) -> f32 {
@@ -875,7 +885,7 @@ fn rub(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f32) {
             let r = rotate((*b).q, area.point);
             let r0 = rotate((*b).q0, area.point);
             var rubbed = (*list).items[i].rubbed;
-            rubPatch(b, r, r0, area, &rubbed);
+            rubPatch(b, area.point, r, r0, area, &rubbed);
             (*list).items[i].rubbed = rubbed;
             var twisted = (*list).items[i].twisted;
             twistPatch(b, area.n, turnLimit(*b, area.load, area.radius), &twisted);
@@ -891,7 +901,7 @@ fn slow(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f32) {
         if (firstOf(list, i) && patchOf(list, i, h, *b, &area)) {
             let r = rotate((*b).q, area.point);
             var slowed = (*list).items[i].slowed;
-            slowPatch(b, r, area, &slowed);
+            slowPatch(b, area.point, r, area, &slowed);
             (*list).items[i].slowed = slowed;
             var spun = (*list).items[i].spun;
             unspinPatch(b, area.n, turnLimit(*b, params.rigidContact.z * area.pressed, area.radius),
@@ -908,8 +918,8 @@ fn stabilize(b: ptr<function, Solid>, list: ptr<function, Contacts>, backward: b
         let c = (*list).items[passIndex((*list).count, step, backward)];
         let depth = startDepthOf(*b, c);
         if (depth < 0.0) {
-            let r = rotate((*b).q0, c.body);
-            bodyPush(b, r, -depth / bodyWeight(*b, r, c.normal) * c.normal, true);
+            let q0 = (*b).q0;
+            bodyPush(b, q0, c.body, -depth / bodyWeight(*b, q0, c.body, c.normal) * c.normal, true);
         }
     }
 }
@@ -920,13 +930,13 @@ fn solvePositions(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f32
                   backward: bool) {
     for (var step = 0u; step < (*list).count; step++) {
         let at = passIndex((*list).count, step, backward);
-        var r = vec3<f32>(0.0);
-        let depth = depthOf(*b, (*list).items[at], &r);
+        let depth = depthOf(*b, (*list).items[at]);
         if (depth < 0.0) {
             let n = (*list).items[at].normal;
-            let lambda = -depth / bodyWeight(*b, r, n);
+            let on = (*list).items[at].body;
+            let lambda = -depth / bodyWeight(*b, (*b).q, on, n);
             (*list).items[at].lambda += lambda;
-            bodyPush(b, r, lambda * n, false);
+            bodyPush(b, (*b).q, on, lambda * n, false);
         }
     }
     if (friction) {
@@ -953,10 +963,11 @@ fn solveVelocities(b: ptr<function, Solid>, list: ptr<function, Contacts>, h: f3
         let r = rotate((*b).q, c.body);
         let normal = dot3(pointVelocity(*b, r), c.normal);
         let goal = bounceTarget(c.speed, still);
-        let total = max(c.applied + (goal - normal) / bodyWeight(*b, r, c.normal), -c.lambda / h);
+        let weight = bodyWeight(*b, (*b).q, c.body, c.normal);
+        let total = max(c.applied + (goal - normal) / weight, -c.lambda / h);
         let j = total - c.applied;
         (*list).items[at].applied = total;
-        bodyKick(b, r, j * c.normal);
+        bodyKick(b, c.body, j * c.normal);
     }
     slow(b, list, h);
 }
