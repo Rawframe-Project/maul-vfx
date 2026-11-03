@@ -340,6 +340,40 @@ static void TestCapsule(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestCapsuleNoTwist(void)
+{
+    // Capsules 0.4 long and 1e-4 and 1e-6 across, turned askew and dropped
+    // on the floor with no friction: a push along a normal through a
+    // capsule's axis turns it about none of it, so as they land and tip
+    // over (at up to 11 rad/s) they spin about their axes at 0.001 rad/s
+    // at most. A contact's turn taken in the world leaked about 2^-24 of
+    // it into the axis a thin body's inverse inertia magnifies: 0.15 and
+    // 0.17 rad/s.
+    static const float across[2] = {1e-4f, 1e-6f};
+    static const double place[3] = {0, 0.5, 0};
+    static const float still[3] = {0, 0, 0};
+    float most = 0.0f;
+    for (int32_t i = 0; i < 2; ++i)
+    {
+        mvfxEmitterDef emitter = Rigid(mvfx_rigidCapsule, across[i], 0.4f, across[i]);
+        emitter.rigid.staticFriction = 0.0f;
+        emitter.rigid.dynamicFriction = 0.0f;
+        emitter.orientationMode = mvfx_orientationEuler;
+        emitter.orientation = (mvfxVectorSource){
+            .kind = mvfx_sourceRange, .min = {0.3f, 0.7f, 1.3f}, .max = {0.3f, 0.7f, 1.3f}};
+        Open(&emitter, place, still);
+        for (int32_t step = 0; step < 120; ++step)
+        {
+            Steps(1);
+            float axis[3];
+            Axis(1, axis);
+            most = fmaxf(most, fabsf(W(0) * axis[0] + W(1) * axis[1] + W(2) * axis[2]));
+        }
+        mvfxDestroyContext(s_scene.context);
+    }
+    CHECK(most <= 0.01f, "a thin capsule landing with no friction spins not about its axis");
+}
+
 static void TestStrikes(void)
 {
     mvfxEmitterDef emitter = Rigid(mvfx_rigidSphere, 1, 1, 1);
@@ -2147,6 +2181,7 @@ int main(void)
     TestSlope();
     TestSpheres();
     TestCapsule();
+    TestCapsuleNoTwist();
     TestStrikes();
     TestCapped();
     TestDeepest();
