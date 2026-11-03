@@ -14,6 +14,7 @@
 // include: shared/length.wgsl
 // include: shared/gas_lift.wgsl
 // include: shared/cell_floor.wgsl
+// include: shared/held_middle.wgsl
 
 const RECIPROCALS: u32 = 0u;
 const QUOTIENTS: u32 = 1u;
@@ -32,6 +33,7 @@ const CROSS_EDGES: u32 = 13u;
 const GAS_LIFTS: u32 = 14u;
 const LENGTHS: u32 = 15u;
 const CELLS: u32 = 16u;
+const HELD_MIDDLES: u32 = 17u;
 
 // What is checked; the first significand of reciprocals; the elements;
 // the workgroups dispatched.
@@ -74,7 +76,9 @@ var<immediate> root: Root;
 // weight (w0), a density (w1), a heat lift (w2) and a temperature (w3),
 // out the buoyant factor in w4. Lengths (shared/length.wgsl): in a vector
 // (w0 to w2), out its length in w3. Cells (shared/cell_floor.wgsl): in a
-// place (w0) and a cell's inverse (w1), out the cell in w2.
+// place (w0) and a cell's inverse (w1), out the cell in w2. Held middles
+// (shared/held_middle.wgsl): in three moments, largest first (w0 to w2),
+// out the held middle in w3.
 @compute @workgroup_size(64, 1, 1)
 fn check(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var e = id.x; e < root.count; e += root.groups * 64u) {
@@ -139,6 +143,11 @@ fn check(@builtin(global_invocation_id) id: vec3<u32>) {
             case CELLS: {
                 words[w + 2u] = bitcast<u32>(cellOf(bitcast<f32>(words[w]),
                                                     bitcast<f32>(words[w + 1u])));
+            }
+            case HELD_MIDDLES: {
+                words[w + 3u] = bitcast<u32>(heldMiddle(vec3<f32>(bitcast<f32>(words[w]),
+                                                                  bitcast<f32>(words[w + 1u]),
+                                                                  bitcast<f32>(words[w + 2u]))));
             }
             case SINES: {
                 let sc = sinCos(bitcast<f32>(words[w]));

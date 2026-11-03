@@ -35,6 +35,7 @@
 #include "neighbor.h"
 #include "random.h"
 #include "rhi_driver.h"
+#include "rigid_flow.h"
 #include "test_harness.h"
 
 #include "kernels/exact_check_container.h"
@@ -273,7 +274,8 @@ typedef enum CheckMode
     CHECK_CROSS_EDGES = 13,
     CHECK_GAS_LIFTS = 14,
     CHECK_LENGTHS = 15,
-    CHECK_CELLS = 16
+    CHECK_CELLS = 16,
+    CHECK_HELD_MIDDLES = 17
 } CheckMode;
 
 // The bytes of an element of a mode: sixteen words for cross edges,
@@ -1115,6 +1117,69 @@ static void TestCells(Gpu* gpu, Checker* checker)
           "cells as the core's floors");
 }
 
+// Held middle moments (shared/held_middle.wgsl) against the core's
+// mvfxHeldMiddle, bit for bit: largest moments drawn from 2^-40 to 2^40,
+// the middle below it by up to 3 times 2^-20 of it in steps of 2^-25, so
+// a sixth falls in the band held equal, a sixth in the ramp and the rest
+// past it; and the band's edges exactly and a unit in the last place
+// either side.
+static void TestHeldMiddles(Gpu* gpu, Checker* checker)
+{
+    enum
+    {
+        EDGES = 6,
+        DRAWN = 65536
+    };
+    const uint32_t count = EDGES * 64 + DRAWN;
+    uint64_t state = 29;
+    for (uint32_t e = 0; e < count; ++e)
+    {
+        uint32_t a = Draw(&state);
+        uint32_t b = Draw(&state);
+        float largest = ldexpf(1.0f + (float)(a >> 9u) * 0x1p-23f, -40 + (int32_t)(b % 81u));
+        float middle = 0.0f;
+        if (e < EDGES * 64)
+        {
+            // The band's edges, 2^-21 and 2^-20 of the largest below it,
+            // and a unit in the last place either side of each.
+            float edge = largest - ldexpf(largest, e % 2u == 0u ? -21 : -20);
+            uint32_t side = e / 2u % 3u;
+            middle = side == 0   ? edge
+                     : side == 1 ? nextafterf(edge, 0.0f)
+                                 : nextafterf(edge, largest);
+        }
+        else
+        {
+            middle = (float)((double)largest * (1.0 - (double)(Draw(&state) % 96u) * 0x1p-25));
+        }
+        uint32_t* w = &checker->words[4 * e];
+        w[0] = Bits(largest);
+        w[1] = Bits(middle);
+        w[2] = Bits(0.5f * middle);
+        w[3] = 0x5A5A5A5Au;
+    }
+    bool ran = RunChecks(gpu, checker, CHECK_HELD_MIDDLES, 0, count);
+    int32_t apart = 0;
+    int32_t held = 0;
+    int32_t ramped = 0;
+    int32_t kept = 0;
+    for (uint32_t e = 0; ran && e < count; ++e)
+    {
+        const uint32_t* w = &checker->words[4 * e];
+        const float moments[3] = {FloatOf(w[0]), FloatOf(w[1]), FloatOf(w[2])};
+        float ours = mvfxHeldMiddle(moments);
+        apart += Bits(ours) != w[3];
+        held += moments[1] < moments[0] && ours == moments[0];
+        ramped += ours > moments[1] && ours < moments[0];
+        kept += moments[1] < moments[0] && ours == moments[1];
+    }
+    printf("held middles: %d apart from the core's of %u, %d held equal, %d ramped, %d kept\n",
+           apart, count, held, ramped, kept);
+    CHECK(ran && apart == 0 && held > (int32_t)count / 8 && ramped > (int32_t)count / 8 &&
+              kept > (int32_t)count / 16,
+          "held middles as the core's");
+}
+
 // The most the kernels' sines and cosines (shared/sincos.wgsl) are from
 // the core's mvfxSinCos, in units in the last place: the remainder within
 // two of its own, from its 64-bit fraction and its product by pi/2 in
@@ -1431,6 +1496,7 @@ static void TestExact(Gpu* gpu)
         TestLengths(gpu, &checker);
         TestClasses(gpu, &checker);
         TestCells(gpu, &checker);
+        TestHeldMiddles(gpu, &checker);
         TestSines(gpu, &checker);
         TestAirShares(gpu, &checker);
         TestCrossEdges(gpu, &checker);
