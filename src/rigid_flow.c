@@ -267,9 +267,25 @@ static double Pieces(double turn, double least, double most)
     return n;
 }
 
+float mvfxHeldMiddle(const float moments[3])
+{
+    float gap = moments[0] - moments[1];
+    float band = 0x1p-21f * moments[0];
+    if (gap <= band)
+    {
+        return moments[0];
+    }
+    if (gap <= 2.0f * band)
+    {
+        return moments[0] - 2.0f * (gap - band);
+    }
+    return moments[1];
+}
+
 bool mvfxFlowBody(const mvfxPrincipal* p, float t, float q[4], float w[3])
 {
-    const double m[3] = {(double)p->moments[0], (double)p->moments[1], (double)p->moments[2]};
+    const double m[3] = {(double)p->moments[0], (double)mvfxHeldMiddle(p->moments),
+                         (double)p->moments[2]};
     const double h = (double)t;
     const double v[3] = {(double)w[0], (double)w[1], (double)w[2]};
     if (m[0] == m[2] || !(m[2] > 0.0))

@@ -645,7 +645,14 @@ extern "C"
     // and come to rest on an edge or a face. Each particle is a body of a
     // shape and a density; its orientation and angular velocity (stored for
     // it) turn by its free flow, keeping its angular momentum, after the
-    // angular drag slows its spin. Each substep a
+    // angular drag slows its spin. Its two largest principal moments are
+    // held equal within 2^-21 of the larger, and their gap ramped back to
+    // its own from there to 2^-20, so the flow's middle moment is at most
+    // 2^-21 of the largest from its own: a body symmetric about its least
+    // axis, whose two equal moments binary32 rounds a few units in the last
+    // place apart, turns as a symmetric one, and Euler's equations, which
+    // divide that gap by the least moment, do not grow its rounding. Each
+    // substep a
     // body is moved as a particle is, then meets its contacts at its
     // predicted pose: the colliders of its emitter and, with
     // hostColliders, the instance's, outside or inside, at the shape's

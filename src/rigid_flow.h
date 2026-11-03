@@ -25,14 +25,27 @@ typedef struct mvfxPrincipal
 // positive, and the third is negated if the three turn left-handed.
 mvfxPrincipal mvfxPrincipalOf(const float inertia[6]);
 
+// The middle of three principal moments, largest first, with the two
+// largest held equal within 2^-21 of the largest, their gap ramped from 0
+// there to its own at 2^-20 and kept past it: a body symmetric about its
+// least axis has the two equal, binary32's rounding of its inertia sets
+// their gap only to a few units in its last place, and Euler's equations
+// divide that gap by the least moment. Every operation is exact but the
+// last, which IEEE binary32 rounds alike everywhere: the GPU part's
+// heldMiddle (rhi/kernels/shared/held_middle.wgsl) takes the same
+// operations in the same order, so both paths take the same middle moment
+// from the same moments, to the bit.
+float mvfxHeldMiddle(const float moments[3]);
+
 // Turns a body's orientation q and its angular velocity w, both in the
 // particles' space, by the free flow of its kinetic energy over t, and
 // true; false, both left, for a body of one moment about every axis (or
 // with one of none, a body of no volume), whose flow is a turn about w by
 // |w| t, and for a turn past mvfxSinCos's range or terms past binary64's.
-// The energy is split as the momentum's square over twice the middle
-// moment (the Casimir part: the body turned about its momentum by
-// t |L| / I1, its momentum in its frame kept) and, about each other axis
+// The middle moment is mvfxHeldMiddle's. The energy is split as the
+// momentum's square over twice the middle moment (the Casimir part: the
+// body turned about its momentum by t |L| / I1, its momentum in its frame
+// kept) and, about each other axis
 // i, L_i^2 (1 / I_i - 1 / I1) / 2 (the residual: the body and its momentum
 // turned about i by t L_i (1 / I_i - 1 / I1)), stepped as the least
 // moment's residual for t / 2, the largest's for t, the least's for t / 2,

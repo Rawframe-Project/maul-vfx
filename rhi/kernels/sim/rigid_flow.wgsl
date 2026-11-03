@@ -222,7 +222,7 @@ fn flowTurned(p: Principal, h: f32, q: vec4<f32>, w: vec3<f32>, out: ptr<functio
     if (!(isFinite(I.x) && I.z >= 1.17549435e-38 && I.z / I.x >= 1.17549435e-38)) {
         return false;
     }
-    let S = vec3<f32>(1.0, I.y / I.x, I.z / I.x);
+    let S = vec3<f32>(1.0, heldMiddle(I) / I.x, I.z / I.x);
     if (S.y == 1.0 && S.z == 1.0) {
         return false;
     }
