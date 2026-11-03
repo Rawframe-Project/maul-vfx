@@ -6,6 +6,18 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.9.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.8.0...v0.9.0) (2026-11-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **step:** a free rigid body whose two largest principal moments are within 2^-20 of the larger, and not already equal, turns with them held equal (within 2^-21) or with their gap ramped, so its orientation and angular velocity differ from those of 0.8.0. These are needles and rods with a symmetric cross-section, mostly rigid hulls of such meshes. Bodies whose two largest moments are equal or more than 2^-20 apart keep their results.
+
+### Fixed
+
+* **step:** hold a symmetric body's two largest moments equal ([#277](https://github.com/Rawframe-Project/maul-vfx/issues/277)) ([11720c0](https://github.com/Rawframe-Project/maul-vfx/commit/11720c0d1434a8401f0e57652498e9e30bff7539)), closes [#274](https://github.com/Rawframe-Project/maul-vfx/issues/274)
+* **step:** hold a thin body's least inertia at 2^-18 of its trace ([#275](https://github.com/Rawframe-Project/maul-vfx/issues/275)) ([2a28e14](https://github.com/Rawframe-Project/maul-vfx/commit/2a28e14a4f14e147d5d0696a1adeead809f86356)), closes [#115](https://github.com/Rawframe-Project/maul-vfx/issues/115)
+
 ## [0.8.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.7.0...v0.8.0) (2026-11-02)
 
 This release adds one call to the GPU part. The simulation's results,
