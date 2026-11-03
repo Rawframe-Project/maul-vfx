@@ -6,6 +6,37 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.10.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.9.0...v0.10.0) (2026-11-03)
+
+This release changes rigid hulls' mass properties and refuses hulls too
+thin or too small to resolve. The golden hashes and the GPU part's
+tolerances are unchanged.
+
+### Changed
+
+- **Breaking: a rigid hull's volume, centroid and moments are
+  integrated over its hull's triangles**, not over fans across its
+  faces. A face gathers triangles whose corners lie within four
+  tolerances of its plane, so a fan over it missed a sliver: a needle 1
+  long with a ring of 6 points had its volume off by up to 3.5e6%, and a
+  negative second moment at 29 widths. The volume is now within 2.6
+  tolerances over the hull's width and the centroid within 0.4
+  tolerances, as `mvfx_rigidHull` states. A hull with a face of more
+  than three corners can move in its last bits; a hull of triangles
+  only does not. The GPU part reads the same volume and moments
+  ([#278](https://github.com/Rawframe-Project/maul-vfx/pull/278)).
+- **Breaking: a hull no more than 8 tolerances deep behind any of its
+  triangles, or whose volume or a second moment is below `FLT_MIN`, is
+  refused** with the status points that span no volume get:
+  `mvfxCreateEffect` of a rigid hull emitter over such a mesh returns
+  `mvfx_errorUnsupported`, `mvfxMesh_GetHullCenter` gives no hull and
+  `mvfxMesh_GetHullVertexCount` gives 0. A tolerance is three float
+  epsilons of the sum of the positions' largest magnitudes on each axis
+  (1.1e-6 within 1 of the origin). A needle 1 long about the origin is
+  refused up to about 3e-6 across, and 10 from the origin up to about
+  1e-4; a cube under about 4e-8 across is refused
+  ([#278](https://github.com/Rawframe-Project/maul-vfx/pull/278)).
+
 ## [0.9.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.8.0...v0.9.0) (2026-11-03)
 
 This release changes the simulation's results for thin and nearly
