@@ -6,6 +6,48 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.9.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.8.0...v0.9.0) (2026-11-03)
+
+This release changes the simulation's results for thin and nearly
+symmetric rigid bodies, and adds one constant. The golden hashes, the
+effect file format and the GPU part's tolerances are unchanged.
+
+### Added
+
+- `MVFX_MIN_INERTIA_SHARE` (2^-18), in `maul-vfx/effect.h`: the least
+  share of its trace a rigid body's least moment of inertia is held at
+  (see Changed)
+  ([#275](https://github.com/Rawframe-Project/maul-vfx/pull/275)).
+
+### Changed
+
+- **Breaking: a thin rigid body's least moment of inertia is held at
+  `MVFX_MIN_INERTIA_SHARE` (2^-18) of its trace or more**, on both
+  paths. Results change only for bodies thinner than that bound: boxes
+  thinner than 1/512 of their length, capsules thinner than about
+  1/440, and hulls whose least moment is under 2^-18 of their trace.
+  Such a needle now turns about its length as a needle at the bound
+  does, whatever its shape and however it lies in its mesh. Before, a
+  needle hull lying along a diagonal of its mesh, from 1e-6 to 1.1e-4
+  of its length across, did not turn about its length at all, and below
+  1e-3 the GPU part gave its inertia differently from the CPU path (at
+  1e-4 they parted by 0.43). The internal ceiling of 2^40 on a body's
+  inverse inertia is gone
+  ([#275](https://github.com/Rawframe-Project/maul-vfx/pull/275)).
+- **Breaking: a free rigid body's two largest principal moments are
+  held equal when within 2^-21 of the larger**, and their gap is ramped
+  back to its own between 2^-21 and 2^-20. Both paths take the same
+  middle moment, to the bit while the largest moment is at least
+  2^-101. A body whose two largest moments are within 2^-20 of the
+  larger and not already equal turns differently: needles and rods with
+  a symmetric cross-section, mostly rigid hulls of such meshes. Bodies
+  whose two largest moments are equal, as boxes and capsules with equal
+  sides are, or more than 2^-20 apart keep their results. Diagonal
+  needle hulls 2e-3 and 3.2e-3 of their length across, which parted
+  between the GPU part and the CPU path in their first step by 1.4e-3,
+  now agree within 1.2e-5
+  ([#277](https://github.com/Rawframe-Project/maul-vfx/pull/277)).
+
 ## [0.8.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.7.0...v0.8.0) (2026-11-02)
 
 This release adds one call to the GPU part. The simulation's results,
