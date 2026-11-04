@@ -2398,11 +2398,16 @@ static bool SameSelfCapped(int32_t e)
 // the run's last step.
 static uint32_t s_rigidCapped;
 
-// Whether an emitter's rigid contacts dropped past the most and its
-// searches stopped at their cap, counted by the GPU, are the CPU path's
-// within a hundredth of them (at least one): a contact is one within the
-// margin of a surface, decided on places, so a corner at the margin may
-// count on one path only, and the counts sum over the run.
+// The bodies with more candidates than the most, counted by the GPU, at
+// the run's last step.
+static uint32_t s_candidatesCapped;
+
+// Whether an emitter's rigid contacts dropped past the most, its searches
+// stopped at their cap and its bodies with more candidates than the most,
+// counted by the GPU, are the CPU path's within a hundredth of them (at
+// least one): a contact is one within the margin of a surface, decided on
+// places, so a corner at the margin may count on one path only, and the
+// counts sum over the run.
 static bool SameRigidCapped(int32_t e)
 {
     mvfxEmitterStats stats;
@@ -2420,13 +2425,24 @@ static bool SameRigidCapped(int32_t e)
                                  : stats.rigidSearchStopCount - searches;
     uint64_t searchesSlack = stats.rigidSearchStopCount / 100u;
     same = same && searchesApart <= (searchesSlack > 1u ? searchesSlack : 1u);
+    // The bodies with more candidates than the most, alike (one at the
+    // edge of a reach may count on one path only).
+    uint32_t candidates = s_record[MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT];
+    uint64_t candidatesApart = candidates > stats.rigidCandidateCappedBodyCount
+                                   ? candidates - stats.rigidCandidateCappedBodyCount
+                                   : stats.rigidCandidateCappedBodyCount - candidates;
+    uint64_t candidatesSlack = stats.rigidCandidateCappedBodyCount / 100u;
+    same = same && candidatesApart <= (candidatesSlack > 1u ? candidatesSlack : 1u);
     if (!same)
     {
-        printf("rigid contacts capped: GPU %u, the CPU path's %llu; searches GPU %u, CPU %llu\n",
+        printf("rigid contacts capped: GPU %u, the CPU path's %llu; searches GPU %u, CPU %llu; "
+               "candidates capped GPU %u, CPU %llu\n",
                capped, (unsigned long long)stats.rigidContactsDropped, searches,
-               (unsigned long long)stats.rigidSearchStopCount);
+               (unsigned long long)stats.rigidSearchStopCount, candidates,
+               (unsigned long long)stats.rigidCandidateCappedBodyCount);
     }
     s_rigidCapped = capped > s_rigidCapped ? capped : s_rigidCapped;
+    s_candidatesCapped = candidates > s_candidatesCapped ? candidates : s_candidatesCapped;
     return same;
 }
 
@@ -2551,7 +2567,7 @@ static bool SameSkipped(const mvfxEmitterDef* def, int32_t e)
         bool skipped;
         uint32_t word;
         uint64_t cpu;
-    } counts[15] = {{def->events == 0, MVFX_GPU_EVENTS_WRITTEN, 0},
+    } counts[16] = {{def->events == 0, MVFX_GPU_EVENTS_WRITTEN, 0},
                     {def->events == 0, MVFX_GPU_EVENTS_WRITTEN + 1, 0},
                     {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS, 0},
                     {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 1, 0},
@@ -2568,9 +2584,12 @@ static bool SameSkipped(const mvfxEmitterDef* def, int32_t e)
                     {!(def->unit.selfThickness > 0.0f), MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT,
                      stats.selfContactCappedPointCount},
                     {!rigid, MVFX_GPU_RIGID_CONTACTS_DROPPED, stats.rigidContactsDropped},
-                    {!rigid, MVFX_GPU_RIGID_SEARCH_STOP_COUNT, stats.rigidSearchStopCount}};
+                    {!rigid, MVFX_GPU_RIGID_SEARCH_STOP_COUNT, stats.rigidSearchStopCount},
+                    {!rigid || def->rigid.bodyContacts == 0,
+                     MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT,
+                     stats.rigidCandidateCappedBodyCount}};
     bool same = true;
-    for (int32_t c = 0; c < 15; ++c)
+    for (int32_t c = 0; c < 16; ++c)
     {
         if (counts[c].skipped && s_record[counts[c].word] != counts[c].cpu)
         {
@@ -2795,6 +2814,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_contactsCapped = 0;
     s_selfCapped = 0;
     s_rigidCapped = 0;
+    s_candidatesCapped = 0;
     s_mostAsleep = 0;
     s_woken = 0;
     memset(s_wasAsleep, 0, sizeof s_wasAsleep);
@@ -3059,6 +3079,10 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     {
         printf("  rigid contacts capped: %u (at least %d)\n", s_rigidCapped, run->leastRigidCapped);
         CHECK(s_rigidCapped >= (uint32_t)run->leastRigidCapped, "rigid contacts capped");
+        printf("  rigid candidates capped: %u (at least %d)\n", s_candidatesCapped,
+               run->leastCandidatesCapped);
+        CHECK(s_candidatesCapped >= (uint32_t)run->leastCandidatesCapped,
+              "rigid candidates capped");
     }
     if (run->emitters[0].rigid.enable && run->emitters[0].rigid.sleepSpeed > 0.0f)
     {

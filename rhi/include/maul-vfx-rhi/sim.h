@@ -218,10 +218,19 @@ extern "C"
 // only).
 #define MVFX_GPU_RIGID_SEARCH_STOP_COUNT 53
 
+// For an emitter of rigid particles that meet each other, the statistics
+// record's word counting the bodies with more bodies within reach to
+// meet than MVFX_MAX_BODY_CANDIDATES, once a substep each, since the
+// instance was last cleared
+// (mvfxEmitterStats.rigidCandidateCappedBodyCount on the CPU path; a body
+// within reach is decided on places, so one at its edge may count on one
+// path only).
+#define MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT 54
+
 // The words of an emitter's statistics record (for an emitter whose
 // ribbons pin a head, its words from 39 hold the head, which
 // mvfxGpuSim_GetBounds joins as the CPU path's bounds do).
-#define MVFX_GPU_STATISTICS_WORDS 54
+#define MVFX_GPU_STATISTICS_WORDS 55
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.

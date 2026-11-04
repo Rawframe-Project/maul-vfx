@@ -45,12 +45,15 @@ fn pairWake(t: u32, live: u32) -> bool {
                 continue;
             }
             var past = 0u;
-            loop {
-                let b = nextCandidate(a, past, grid, true);
+            for (var taken = 0u; taken < MOST_CANDIDATES; taken++) {
+                let b = nextCandidate(a, past, grid);
                 if (b == NONE) {
                     break;
                 }
                 past = b + 1u;
+                if (!pairWanted(a, b, true)) {
+                    continue;
+                }
                 let sleeper = select(b, a, (blocks[infoAt(a) + 1u] & FLAG_ASLEEP) != 0u);
                 let at = infoAt(sleeper) + 1u;
                 if ((blocks[at] & FLAG_ASLEEP) != 0u) {

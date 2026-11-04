@@ -685,6 +685,9 @@ extern "C"
         // and EPA) stopped at their most steps: the pair is kept as
         // touching, its depth then at most the true one.
         uint64_t rigidSearchStopCount;
+        // Rigid particles with more bodies within reach to meet than
+        // MVFX_MAX_BODY_CANDIDATES, once a substep each.
+        uint64_t rigidCandidateCappedBodyCount;
     } mvfxEmitterStats;
 
     /// Reads what an emitter of an instance has done.

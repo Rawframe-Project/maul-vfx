@@ -188,11 +188,32 @@ static bool Wanted(const mvfxRigidSolve* s, int32_t a, int32_t b, bool waking)
     return waking ? asleep != mvfxBodyAsleep(s, b) : !asleep || !mvfxBodyAsleep(s, b);
 }
 
+// The first of a grid's entries from `from` to `end` (ascending bodies)
+// whose body is above a.
+static int32_t FirstAbove(const mvfxNeighborGrid* grid, int32_t from, int32_t end, int32_t a)
+{
+    while (from < end)
+    {
+        int32_t mid = from + (end - from) / 2;
+        if (grid->index[mid] <= a)
+        {
+            from = mid + 1;
+        }
+        else
+        {
+            end = mid;
+        }
+    }
+    return from;
+}
+
 // Body a's candidates at one level of the grid: its bodies within reach
 // whose pair with a is a's to find (those of a's level after it, all of
-// a higher one) and wanted, appended from at.
+// a higher one), at most MVFX_MAX_BODY_CANDIDATES + 1 from each cell's
+// slot, appended from at. A slot holds its bodies in ascending order, so
+// those are its least.
 static int32_t CandidatesAt(const mvfxRigidSolve* s, int32_t a, int32_t level, const Levels* levels,
-                            bool waking, int32_t at)
+                            int32_t at)
 {
     mvfxEmitterState* state = &s->instance->emitters[s->emitter];
     const mvfxNeighborGrid* grid = &state->rigidGrid;
@@ -216,7 +237,11 @@ static int32_t CandidatesAt(const mvfxRigidSolve* s, int32_t a, int32_t level, c
         }
         visited[visits] = key;
         visits += seen ? 0 : 1;
-        for (int32_t e = seen ? 0 : grid->table[key]; !seen && e < grid->table[key + 1u]; ++e)
+        int32_t end = grid->table[key + 1u];
+        int32_t e = seen ? end : grid->table[key];
+        // Of a's level only those after a are a's.
+        e = level == own ? FirstAbove(grid, e, end, a) : e;
+        for (int32_t taken = 0; e < end && taken <= MVFX_MAX_BODY_CANDIDATES; ++e)
         {
             int32_t b = grid->index[e];
             state->rigidExamined += 1u;
@@ -227,30 +252,43 @@ static int32_t CandidatesAt(const mvfxRigidSolve* s, int32_t a, int32_t level, c
                 float d = s->x[k][a] - s->x[k][b];
                 square += d * d;
             }
-            // Of this level (keys of others may share the slot), a's to
-            // find.
-            bool mine = LevelOf(ReachOf(s, b), levels->base) == level && (level > own || b > a);
-            if (mine && Wanted(s, a, b, waking) && square < reach * reach)
+            // Of this level (keys of others may share the slot).
+            if (LevelOf(ReachOf(s, b), levels->base) == level && square < reach * reach)
             {
                 state->rigidCandidates[at++] = b;
+                taken += 1;
             }
         }
     }
     return at;
 }
 
-// Body a's candidates at every level from its own.
-static int32_t CandidatesOf(const mvfxRigidSolve* s, int32_t a, const Levels* levels, bool waking)
+// Body a's candidates, ascending: the least MVFX_MAX_BODY_CANDIDATES of
+// the bodies within reach whose pair is a's to find at every level from
+// its own, then those of them wanted; capped when there were more.
+static int32_t CandidatesOf(const mvfxRigidSolve* s, int32_t a, const Levels* levels, bool waking,
+                            bool* capped)
 {
+    mvfxEmitterState* state = &s->instance->emitters[s->emitter];
+    int32_t* found = state->rigidCandidates;
     int32_t count = 0;
     for (int32_t level = LevelOf(ReachOf(s, a), levels->base); level < MOST_LEVELS; ++level)
     {
         if ((levels->present >> level & 1u) != 0u)
         {
-            count = CandidatesAt(s, a, level, levels, waking, count);
+            count = CandidatesAt(s, a, level, levels, count);
         }
     }
-    return count;
+    SortIndexes(found, count);
+    *capped = count > MVFX_MAX_BODY_CANDIDATES;
+    count = *capped ? MVFX_MAX_BODY_CANDIDATES : count;
+    int32_t wanted = 0;
+    for (int32_t c = 0; c < count; ++c)
+    {
+        found[wanted] = found[c];
+        wanted += Wanted(s, a, found[c], waking) ? 1 : 0;
+    }
+    return wanted;
 }
 
 // Body a's pairs to find, met in the order of the other body's index
@@ -259,8 +297,9 @@ static int32_t CandidatesOf(const mvfxRigidSolve* s, int32_t a, const Levels* le
 static void PairsOf(const mvfxRigidSolve* s, int32_t a, const Levels* levels)
 {
     mvfxEmitterState* state = &s->instance->emitters[s->emitter];
-    int32_t count = CandidatesOf(s, a, levels, false);
-    SortIndexes(state->rigidCandidates, count);
+    bool capped = false;
+    int32_t count = CandidatesOf(s, a, levels, false, &capped);
+    state->rigidCandidateCappedBodyCount += capped ? 1u : 0u;
     for (int32_t c = 0; c < count; ++c)
     {
         int32_t b = state->rigidCandidates[c];
@@ -347,7 +386,8 @@ bool mvfxWakeTouching(const mvfxRigidSolve* s, int32_t count)
         sweep = false;
         for (int32_t a = 0; a < count; ++a)
         {
-            int32_t found = CandidatesOf(s, a, &levels, true);
+            bool capped = false;
+            int32_t found = CandidatesOf(s, a, &levels, true, &capped);
             for (int32_t c = 0; c < found; ++c)
             {
                 int32_t b = state->rigidCandidates[c];

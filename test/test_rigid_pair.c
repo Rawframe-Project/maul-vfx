@@ -7,7 +7,8 @@
 // without body contacts; three boxes stacked and still with their creep
 // bounded; one large body among a thousand small ones; a box landing aside slowed by every impulse
 // of its impacts; a heavy box landing on a light one without rebound; mixed spheres' overlapping
-// pairs all found, and the same bits whatever the grid's layout; a narrow box on a wide one
+// pairs all found, and a burst overlapping at one place finding at most the
+// candidates' cap a body; the same bits whatever the grid's layout; a narrow box on a wide one
 // standing and tipping by the statics; a capsule lying across another; a box dropped on a box, and
 // a sphere on a sphere rolling off; a box sliding to a stop on a wider one by friction, the one
 // below held; a pile of spheres in a box settled without deep overlaps; the pool capped and
@@ -414,6 +415,53 @@ static void TestPairsFound(void)
         }
     }
     CHECK(found && overlapping >= 20, "every overlapping pair found");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestCandidatesCapped(void)
+{
+    // A burst of spheres born overlapping at one place: each body finds
+    // its pairs with the MVFX_MAX_BODY_CANDIDATES bodies after it at most,
+    // the first in the particles' order, and one with more is counted, so
+    // the pairs grow with the bodies, not with their square.
+    enum
+    {
+        BURST = 200,
+        CAPPED = BURST - 1 - MVFX_MAX_BODY_CANDIDATES,
+        // MVFX_MAX_BODY_CANDIDATES pairs each for those capped, and the
+        // rest one fewer each in turn.
+        FOUND = CAPPED * MVFX_MAX_BODY_CANDIDATES +
+                MVFX_MAX_BODY_CANDIDATES * (MVFX_MAX_BODY_CANDIDATES + 1) / 2
+    };
+    static double places[3 * BURST];
+    static float still[3 * BURST];
+    for (int32_t i = 0; i < BURST; ++i)
+    {
+        // Within a hundredth of each other, so every pair overlaps.
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            places[3 * i + k] = 0.001 * (double)((i * (3 + 2 * k)) % 11);
+        }
+    }
+    mvfxEmitterDef emitter = Bodies(mvfx_rigidSphere, false);
+    emitter.capacity = BURST;
+    emitter.hostSpawnCapacity = BURST;
+    emitter.rigid.substeps = 1;
+    emitter.rigid.bodyContacts = MVFX_MAX_BODY_CONTACTS;
+    OpenHosted(&emitter, places, still, NULL, BURST, false);
+    Steps(2);
+    static int32_t pairA[BURST * MVFX_MAX_BODY_CONTACTS];
+    static int32_t pairB[BURST * MVFX_MAX_BODY_CONTACTS];
+    int32_t pairs = mvfxTestRigidPairs(s_scene.context, s_scene.instance, 0, pairA, pairB,
+                                       BURST * MVFX_MAX_BODY_CONTACTS);
+    bool first = pairs == FOUND;
+    for (int32_t c = 0; c < pairs && c < BURST * MVFX_MAX_BODY_CONTACTS; ++c)
+    {
+        first = first && pairB[c] > pairA[c] && pairB[c] - pairA[c] <= MVFX_MAX_BODY_CANDIDATES;
+    }
+    mvfxEmitterStats stats = Stats();
+    CHECK(first && stats.rigidCandidateCappedBodyCount == CAPPED && stats.rigidContactsDropped == 0,
+          "each body's first candidates found, those with more counted");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -875,6 +923,7 @@ int main(void)
     TestOneLarge();
     TestLandings();
     TestPairsFound();
+    TestCandidatesCapped();
     TestLayoutFree();
     TestNarrowOnWide();
     TestCapsules();

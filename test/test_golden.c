@@ -22,11 +22,11 @@
 #include <string.h>
 
 static const uint64_t s_golden[SCENE_STEP_COUNT] = {
-    0x75508ADC9B37A95Du, 0x5CC96394D891D8E4u, 0x8142FC4E9A15401Cu, 0xE1C8B32679FA853Bu,
-    0xB4962AD9A965CC16u, 0x308FE3476F32C47Bu, 0x2BE1F4B170AFF90Au, 0xF61F97E12AEAFFB7u,
-    0x97196E0CF9DF99CFu, 0x81E15B85E810F2A2u, 0x10D64761E964EE73u, 0xAA4C9FA0F505AD8Du,
-    0xEEB9A0124D5115C7u, 0x8D822C266AEA20B6u, 0x0E6232A23A111977u, 0xAFAE43267AD8D4AAu,
-    0x85BBC5C66D77A4F2u, 0x632CBBDD0CD3E5C0u, 0xBFD164987B86F2B5u, 0x4338EE58CE109019u};
+    0xB87C3D7EB6594E68u, 0x93E783A67A3ECE47u, 0xFE1CCD1DEF512CD3u, 0xBA9FA862202F3649u,
+    0x66F969AB9E82E496u, 0x6D785D25A06D4E25u, 0x6320DBA448FED8F3u, 0x2E1185DF1B05E108u,
+    0x2963C58760DB1B68u, 0x4EC60BC3CDF3E01Bu, 0x1D24A9741D1F362Au, 0x3ED1EC0162475E4Bu,
+    0x90D9D65266453B9Bu, 0xAB16E7A08D2C0D03u, 0xED373450705C4543u, 0xD8511749BDB02A6Bu,
+    0xB773DDBB0B5C0311u, 0x33B2597BF0731EC1u, 0x4104BCAD87271C33u, 0x7FEED465613ED5E7u};
 
 // Bytes of memory aligned to 16, by hand, freed through the block.
 static void* Aligned(int64_t bytes, void** block)
@@ -102,6 +102,24 @@ static mvfxResult ThroughFile(mvfxContext* context, const mvfxEffectDef* def,
     return result.result;
 }
 
+// Expects no body of the scene to have met more bodies than the cap lets
+// it: the scene's pairs are those of an uncapped search.
+static void ExpectUncapped(const mvfxContext* context)
+{
+    const Scene* scene = SceneOf(context);
+    for (int32_t i = 0; i < scene->count; ++i)
+    {
+        for (int32_t e = 0; e < scene->instances[i].emitterCount; ++e)
+        {
+            mvfxEmitterStats stats;
+            CHECK(mvfxInstance_GetEmitterStats(context, scene->instances[i].id, e, &stats) ==
+                          mvfx_success &&
+                      stats.rigidCandidateCappedBodyCount == 0,
+                  "no body past the candidates' cap");
+        }
+    }
+}
+
 static void RunScene(bool print)
 {
     mvfxContextDef def = mvfxDefaultContextDef();
@@ -119,6 +137,7 @@ static void RunScene(bool print)
         }
         CHECK(hash == s_golden[step], "the state matches the committed hash");
     }
+    ExpectUncapped(context);
     mvfxDestroyContext(context);
 }
 

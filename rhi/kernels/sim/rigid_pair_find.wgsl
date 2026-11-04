@@ -16,11 +16,17 @@ const FLAG_WOKEN: u32 = 2u;
 // (MVFX_GRID_SALT).
 const MOST_LEVELS: u32 = 24u;
 const PAIR_GRID_SALT: u32 = 0x4E474244u;
+// The most bodies within reach a body finds its pairs with
+// (MVFX_MAX_BODY_CANDIDATES), and the statistics record's word counting
+// the bodies with more (MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT).
+const MOST_CANDIDATES: u32 = 64u;
+const STATISTICS_RIGID_CANDIDATES: u32 = 54u;
 
 var<workgroup> pairHeld: u32;
 var<workgroup> pairLeast: atomic<u32>;
 var<workgroup> pairMost: atomic<u32>;
 var<workgroup> pairPresent: atomic<u32>;
+var<workgroup> pairCapped: atomic<u32>;
 
 // v of invocation 0, the same in every invocation (control flow uniform).
 fn pairUniform(t: u32, v: u32) -> u32 {
@@ -148,9 +154,8 @@ struct PairGrid {
 
 // Whether body b, met at level and cell from a's search, is a's to find
 // as the core's CandidatesAt: of that level and cell, after a or of a
-// higher level, wanted (not two asleep; waking, one asleep and one not),
-// within their reaches.
-fn isCandidate(a: u32, b: u32, level: u32, cell: vec3<i32>, own: u32, waking: bool) -> bool {
+// higher level, within their reaches.
+fn isCandidate(a: u32, b: u32, level: u32, cell: vec3<i32>, own: u32) -> bool {
     let ib = infoAt(b);
     if (blocks[ib + 3u] != level || blocks[ib + 4u] != u32(cell.x) ||
         blocks[ib + 5u] != u32(cell.y) || blocks[ib + 6u] != u32(cell.z)) {
@@ -160,11 +165,6 @@ fn isCandidate(a: u32, b: u32, level: u32, cell: vec3<i32>, own: u32, waking: bo
         return false;
     }
     let ia = infoAt(a);
-    let both = (blocks[ia + 1u] & blocks[ib + 1u] & FLAG_ASLEEP) != 0u;
-    let either = ((blocks[ia + 1u] | blocks[ib + 1u]) & FLAG_ASLEEP) != 0u;
-    if (select(both, !either || both, waking)) {
-        return false;
-    }
     let reach = bitcast<f32>(blocks[ia]) + bitcast<f32>(blocks[ib]);
     let xa = loadVector(solidAt(a));
     let xb = loadVector(solidAt(b));
@@ -176,10 +176,20 @@ fn isCandidate(a: u32, b: u32, level: u32, cell: vec3<i32>, own: u32, waking: bo
     return square < reach * reach;
 }
 
+// Whether a's pair with candidate b is wanted, as the core's Wanted: not
+// two asleep; waking, one asleep and one not.
+fn pairWanted(a: u32, b: u32, waking: bool) -> bool {
+    let fa = blocks[infoAt(a) + 1u];
+    let fb = blocks[infoAt(b) + 1u];
+    let both = (fa & fb & FLAG_ASLEEP) != 0u;
+    let either = ((fa | fb) & FLAG_ASLEEP) != 0u;
+    return !select(both, !either || both, waking);
+}
+
 // a's least candidate from index past on, NONE for none: over the
 // levels from its own, each of the 27 cells about it there, the first
 // sorted entry of that cell's key not below from that passes.
-fn nextCandidate(a: u32, past: u32, grid: PairGrid, waking: bool) -> u32 {
+fn nextCandidate(a: u32, past: u32, grid: PairGrid) -> u32 {
     let own = blocks[infoAt(a) + 3u];
     let x = loadVector(solidAt(a));
     let entries = powerAbove(grid.live);
@@ -198,7 +208,7 @@ fn nextCandidate(a: u32, past: u32, grid: PairGrid, waking: bool) -> u32 {
                 if (blocks[gridAt() + 2u * e] != key || b >= best) {
                     break;
                 }
-                if (isCandidate(a, b, level, around, own, waking)) {
+                if (isCandidate(a, b, level, around, own)) {
                     best = b;
                     break;
                 }
@@ -310,21 +320,31 @@ fn pairLevels(t: u32, live: u32) -> PairGrid {
     return grid;
 }
 
-// Body a's pairs, as the core's PairsOf: counting, its candidates'
-// contacts summed into its info; else written from its place in the pool,
-// those past the room dropped and counted against it, both bodies of a
-// pair with contacts touched.
+// Body a's pairs, as the core's PairsOf, with its first MOST_CANDIDATES
+// candidates that are wanted: counting, their contacts summed into its
+// info; else written from its place in the pool, those past the room
+// dropped and counted against it, both bodies of a pair with contacts
+// touched, and a counted when it had more candidates.
 fn pairVisit(a: u32, grid: PairGrid, writing: bool, room: u32) {
     var at = blocks[infoAt(a) + 8u];
     var count = 0u;
     var fate = loadFate(a);
     var past = 0u;
-    loop {
-        let b = nextCandidate(a, past, grid, false);
+    for (var taken = 0u; taken <= MOST_CANDIDATES; taken++) {
+        let b = nextCandidate(a, past, grid);
         if (b == NONE) {
             break;
         }
+        if (taken == MOST_CANDIDATES) {
+            if (writing) {
+                atomicAdd(&pairCapped, 1u);
+            }
+            break;
+        }
         past = b + 1u;
+        if (!pairWanted(a, b, false)) {
+            continue;
+        }
         let low = min(a, b);
         let high = max(a, b);
         var list = pairGather(low, high);
@@ -382,6 +402,9 @@ fn pairFind(t: u32, live: u32) -> u32 {
         return 0u;
     }
     let room = bodyContacts() * grid.count;
+    if (t == 0u) {
+        _ = atomicExchange(&pairCapped, 0u);
+    }
     var total = 0u;
     for (var round = 0u; round < 2u; round++) {
         if (round == 1u) {
@@ -393,6 +416,9 @@ fn pairFind(t: u32, live: u32) -> u32 {
             }
         }
         pairWait();
+    }
+    if (t == 0u) {
+        counts[STATISTICS_RIGID_CANDIDATES] += atomicLoad(&pairCapped);
     }
     return min(total, room);
 }
