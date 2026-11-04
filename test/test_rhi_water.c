@@ -11,7 +11,8 @@
 // frames dropped; two surfaces; a hitch slowed past the most substeps.
 // Shallow water: a basin filled and pushed; springs on a terrain of the
 // effect's, level and leaning, and on the instance's, two walls open; a
-// clear; frames dropped; a moving instance. Both at the limits: a pond
+// clear; frames dropped; a moving instance; particles crossing into a
+// basin's edge, the crossing point held on it. Both at the limits: a pond
 // pushed past MVFX_MAX_WATER_DEPTH, a basin poured into past binary32's
 // range. Both beside a liquid gas
 // splitting the frames; the record read back and reported, a stopped
@@ -328,6 +329,37 @@ static void TestCoupled(Gpu* gpu, mvfxGpu* kernels)
     pouring.velocity.direction[1] = -1.0f;
     water = Basin(32, 28, 0.1f, 0.2f);
     Floats(gpu, kernels, pouring, &water, (Run){0}, "sprites thrown down pouring into a basin");
+}
+
+// Two particles crossing a shallow surface centered off 0 into its west
+// edge (X -12 in its frame), t rounded to 1: one met exactly at the edge,
+// one where from + t (to - from) rounds an ulp past it on the CPU path
+// (test_water_couple.c's TestAtEdge). Queued each step, a little further
+// each, so placed for the second, after the surface's first has filled
+// it; steps of 1/64 s.
+static void TestAtEdge(Gpu* gpu, mvfxGpu* kernels)
+{
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.rate = 0.0f;
+    emitter.capacity = 16;
+    emitter.hostSpawnCapacity = 16;
+    emitter.lifetime = mvfxMakeRangeSource(100.0f, 100.0f);
+    emitter.water = (mvfxWaterCoupling){.enable = true, .radius = 0.05f};
+    emitter.events = mvfx_eventMaskWater;
+    emitter.eventCapacity = 64;
+    mvfxWaterDef water = Basin(24, 16, 1.0f, 0x1.000002p-2f);
+    water.center[0] = 0.1f;
+    water.center[1] = 0.0f;
+    water.friction = 0.0f;
+    static const double placed[6] = {(double)0x1.0a017ep+1f - 0.01, 1000.0 - 0.01, -0.01,
+                                     (double)0x1.72a182p+2f - 0.01, 1000.0 - 0.01, -0.01};
+    const float vy = (0.25f - 1000.0f) * 64.0f;
+    const float thrown[6] = {-0x1.bf4d2cp+9f, vy, 0.0f, -0x1.1b0ec6p+10f, vy, 0.0f};
+    const mvfxSpawnRequest spawn = {.count = 2, .positions = placed, .velocities = thrown};
+    SetStepTicks(MVFX_TICKS_PER_SECOND / 64);
+    Floats(gpu, kernels, emitter, &water, (Run){.steps = 4, .least = -1, .spawn = &spawn},
+           "particles crossing at a basin's edge");
+    SetStepTicks(STEP_TICKS);
 }
 
 static const mvfxCollider s_tank = {.kind = mvfx_colliderBox,
@@ -851,6 +883,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestHitch(gpu, kernels);
     TestShallow(gpu, kernels);
     TestCoupled(gpu, kernels);
+    TestAtEdge(gpu, kernels);
     TestHeld(gpu, kernels);
     TestSplit(gpu, kernels);
     TestFinishing(gpu, kernels);
