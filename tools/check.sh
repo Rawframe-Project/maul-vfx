@@ -108,8 +108,9 @@ source_checks() {
 # analyzer reads it. Each hides findings the other shows. The header filter
 # is given because clang-tidy-20, run from the root, takes none from
 # .clang-tidy and drops every finding in a header; tools/tidy_filter.sh
-# anchors it where the tree was configured from, so that headers fetched
-# under out/ are not taken for the library's.
+# anchors it where the tree was configured from, keeping the GPU part's
+# headers under rhi/ too, so that headers fetched under out/ are not taken
+# for the library's.
 tidy() { # files
     local build filter
     for build in Release Debug; do
@@ -117,7 +118,7 @@ tidy() { # files
             -DMAUL_VFX_RHI=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
         # rhi/src/kernels.c includes the containers' arrays the build writes.
         build "tidy-$build" --target mvfx-rhi-kernels
-        filter=$("$root/tools/tidy_filter.sh" "$out/check-tidy-$build")
+        filter=$("$root/tools/tidy_filter.sh" "$out/check-tidy-$build" rhi)
         printf '%s\n' "$@" |
             xargs -P "$jobs" -n 4 clang-tidy-20 -p "$out/check-tidy-$build" --quiet \
                 --warnings-as-errors='*' --header-filter="$filter" 2>/dev/null
