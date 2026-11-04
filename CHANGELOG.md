@@ -6,6 +6,17 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.12.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.11.0...v0.12.0) (2026-11-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **collide:** a rigid body now meets at most MVFX_MAX_BODY_CANDIDATES (64) of the bodies within its reach in a substep, the first in the particles' order, so a body with more, as when many overlap, meets fewer than before and its results change. mvfxEmitterStats gains rigidCandidateCappedBodyCount and the GPU part's statistics record a word (MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT), so MVFX_GPU_STATISTICS_WORDS is 55. The state hash test_golden checks covers the new counter, so its committed values change although no golden scene's results do.
+
+### Fixed
+
+* **collide:** cap the bodies a rigid body meets in a substep ([#288](https://github.com/Rawframe-Project/maul-vfx/issues/288)) ([38401b2](https://github.com/Rawframe-Project/maul-vfx/commit/38401b2e84d05fa4f795f4b0aaf31e1005330d0e)), closes [#287](https://github.com/Rawframe-Project/maul-vfx/issues/287)
+
 ## [0.11.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.10.0...v0.11.0) (2026-11-04)
 
 This release changes how rigid bodies turn at their contacts, so every
