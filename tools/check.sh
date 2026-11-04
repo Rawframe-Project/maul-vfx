@@ -172,7 +172,10 @@ if [ "$tier" = changed ]; then
             fi
         done
     fi
-    if [ ${#tidy_files[@]} -gt 0 ]; then
+    if [ $headers -eq 1 ]; then
+        step "clang-tidy on all ${#tidy_files[@]} library files, a library header changed"
+        tidy "${tidy_files[@]}"
+    elif [ ${#tidy_files[@]} -gt 0 ]; then
         step "clang-tidy on ${#tidy_files[@]} changed library files"
         tidy "${tidy_files[@]}"
     fi
