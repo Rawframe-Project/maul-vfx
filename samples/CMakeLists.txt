@@ -31,5 +31,14 @@ if(MAUL_VFX_RHI)
                              FAIL_REGULAR_EXPRESSION "Validation Error|VUID-"
                              LABELS "sample;integration"
                              ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+        # A value of MVFX_RHI_REQUIRED that names no driver fails it before
+        # any adapter search, so this needs no device: exit status 1 and the
+        # refusal's message as its whole output, both required.
+        add_test(NAME sample_gpu_required_unknown
+                 COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:sample_gpu>
+                         "-DEXPECT=MVFX_RHI_REQUIRED is .vulcan., which names no driver: set it to vulkan or d3d12, or leave it unset"
+                         -P ${PROJECT_SOURCE_DIR}/cmake/ExpectRefusal.cmake)
+        set_tests_properties(sample_gpu_required_unknown PROPERTIES
+                             ENVIRONMENT "MVFX_RHI_REQUIRED=vulcan" LABELS sample)
     endif()
 endif()

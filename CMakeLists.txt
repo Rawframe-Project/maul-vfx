@@ -323,6 +323,16 @@ if(MAUL_VFX_BUILD_TESTS)
         set_tests_properties(rhi_kernels PROPERTIES SKIP_RETURN_CODE 77
                              FAIL_REGULAR_EXPRESSION "Validation Error|VUID-")
         set_property(TEST rhi_kernels APPEND PROPERTY LABELS integration nightly)
+        # A value of MVFX_RHI_REQUIRED that names no driver fails the device
+        # suites before any adapter search (test/rhi_driver.h), so this needs
+        # no device: exit status 1 and the refusal's message as its whole
+        # output, both required.
+        add_test(NAME rhi_required_unknown
+                 COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:test_rhi_kernels>
+                         "-DEXPECT=FAIL: MVFX_RHI_REQUIRED is .vulcan., which names no driver: set it to vulkan or d3d12, or leave it unset"
+                         -P ${PROJECT_SOURCE_DIR}/cmake/ExpectRefusal.cmake)
+        set_tests_properties(rhi_required_unknown PROPERTIES
+                             ENVIRONMENT "MVFX_RHI_REQUIRED=vulcan" LABELS rhi_kernels)
         # Planned instances on the device beside the CPU path, through the
         # tests' shared harness: their particles, and their records.
         foreach(suite rhi_sim rhi_records rhi_events rhi_spawn rhi_shapes rhi_ribbons
