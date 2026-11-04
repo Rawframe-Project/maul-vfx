@@ -437,27 +437,20 @@ fn setEdge(edges: ptr<function, array<u32, 204>>, j: u32, edge: u32) {
     (*edges)[j / 2u] = ((*edges)[j / 2u] & ~(0xFFFFu << shift)) | (edge << shift);
 }
 
-// Adds point p: the faces it sees removed and the horizon joined to it, in
-// the core's order (a twin removed by the last edge); false when there is
-// no room.
-fn expand(e: ptr<function, Epa>, p: Point) -> bool {
-    if ((*e).pointCount >= EPA_POINTS) {
-        return false;
-    }
-    let at = (*e).pointCount;
-    (*e).pointCount += 1u;
-    (*e).w[at] = p.w;
-    (*e).vertices[at] = p.a | (p.b << 8u);
-    var edges = array<u32, 204>();
+// Whether the triangle of points i and j and w has area.
+fn hasArea(e: ptr<function, Epa>, i: u32, j: u32, w: vec3<f32>) -> bool {
+    let n = cross((*e).w[j] - (*e).w[i], w - (*e).w[i]);
+    return dot3(n, n) > 0.0;
+}
+
+// The horizon of the faces marked seen into edges: each edge of a seen
+// face whose twin is on no seen face, in the faces' order (a twin removed
+// by the last edge); their count.
+fn horizon(e: ptr<function, Epa>, seen: ptr<function, array<bool, EPA_FACES>>,
+           edges: ptr<function, array<u32, 204>>) -> u32 {
     var edgeCount = 0u;
-    var kept = 0u;
     for (var f = 0u; f < (*e).faceCount; f++) {
-        if (dot3((*e).normals[f], p.w) - (*e).distances[f] <=
-            1e-6 * (abs((*e).distances[f]) + 1e-30)) {
-            (*e).faces[kept] = (*e).faces[f];
-            (*e).normals[kept] = (*e).normals[f];
-            (*e).distances[kept] = (*e).distances[f];
-            kept += 1u;
+        if (!(*seen)[f]) {
             continue;
         }
         for (var k = 0u; k < 3u; k++) {
@@ -466,26 +459,96 @@ fn expand(e: ptr<function, Epa>, p: Point) -> bool {
             // An edge seen from both sides is inside the hole.
             var twin = false;
             for (var j = 0u; j < edgeCount && !twin; j++) {
-                if (edgeAt(&edges, j) == (end | (start << 8u))) {
+                if (edgeAt(edges, j) == (end | (start << 8u))) {
                     twin = true;
                     // Read, then step: maul-rhi's stale_reads falsely refuses the reverse.
                     let last = edgeCount - 1u;
-                    setEdge(&edges, j, edgeAt(&edges, last));
+                    setEdge(edges, j, edgeAt(edges, last));
                     edgeCount = last;
                 }
             }
             if (!twin) {
-                setEdge(&edges, edgeCount, start | (end << 8u));
+                setEdge(edges, edgeCount, start | (end << 8u));
                 edgeCount += 1u;
             }
         }
     }
-    (*e).faceCount = kept;
-    for (var j = 0u; j < edgeCount; j++) {
+    return edgeCount;
+}
+
+// The face beyond horizon edge start end: the unseen face holding end
+// start. The polytope is closed, so there is one; faceCount stands for
+// none.
+fn beyond(e: ptr<function, Epa>, seen: ptr<function, array<bool, EPA_FACES>>, start: u32,
+          end: u32) -> u32 {
+    for (var f = 0u; f < (*e).faceCount; f++) {
+        for (var k = 0u; k < 3u && !(*seen)[f]; k++) {
+            if (faceCorner(e, f, k) == end && faceCorner(e, f, (k + 1u) % 3u) == start) {
+                return f;
+            }
+        }
+    }
+    return (*e).faceCount;
+}
+
+// Adds point p whole, as the core's Expand: the faces it sees removed and
+// the horizon joined to it; a horizon edge in line with p takes the face
+// beyond it too, and the horizon is found again. False, the polytope as it
+// was, when there is no room or no face would be left.
+fn expand(e: ptr<function, Epa>, p: Point) -> bool {
+    if ((*e).pointCount >= EPA_POINTS) {
+        return false;
+    }
+    var seen: array<bool, EPA_FACES>;
+    for (var f = 0u; f < (*e).faceCount; f++) {
+        seen[f] = dot3((*e).normals[f], p.w) - (*e).distances[f] >
+                  1e-6 * (abs((*e).distances[f]) + 1e-30);
+    }
+    var edges = array<u32, 204>();
+    var edgeCount = horizon(e, &seen, &edges);
+    var j = 0u;
+    loop {
+        if (j >= edgeCount) {
+            break;
+        }
         let edge = edgeAt(&edges, j);
-        if (!addTriangle(e, edge & 0xFFu, edge >> 8u, at)) {
+        if (hasArea(e, edge & 0xFFu, edge >> 8u, p.w)) {
+            j += 1u;
+            continue;
+        }
+        let g = beyond(e, &seen, edge & 0xFFu, edge >> 8u);
+        if (g >= (*e).faceCount) {
             return false;
         }
+        seen[g] = true;
+        edgeCount = horizon(e, &seen, &edges);
+        j = 0u;
+    }
+    var kept = 0u;
+    for (var f = 0u; f < (*e).faceCount; f++) {
+        kept += select(1u, 0u, seen[f]);
+    }
+    if (kept + edgeCount == 0u || kept + edgeCount > EPA_FACES) {
+        return false;
+    }
+    let at = (*e).pointCount;
+    (*e).pointCount += 1u;
+    (*e).w[at] = p.w;
+    (*e).vertices[at] = p.a | (p.b << 8u);
+    kept = 0u;
+    for (var f = 0u; f < (*e).faceCount; f++) {
+        if (!seen[f]) {
+            (*e).faces[kept] = (*e).faces[f];
+            (*e).normals[kept] = (*e).normals[f];
+            (*e).distances[kept] = (*e).distances[f];
+            kept += 1u;
+        }
+    }
+    (*e).faceCount = kept;
+    for (var k = 0u; k < edgeCount; k++) {
+        // Each has area and room, as found above.
+        let edge = edgeAt(&edges, k);
+        _ = addTriangle(e, edge & 0xFFu, edge >> 8u, at);
     }
     return true;
 }
@@ -526,7 +589,7 @@ fn penetration(a: Poly, b: Poly, s: ptr<function, Simplex>) -> Meet {
     for (; steps < CONVEX_STEPS; steps++) {
         let p = support(a, b, e.normals[f]);
         let gain = dot3(e.normals[f], p.w) - e.distances[f];
-        if (gain <= 1e-6 * max(e.distances[f], reach) || !expand(&e, p) || e.faceCount == 0u) {
+        if (gain <= 1e-6 * max(e.distances[f], reach) || !expand(&e, p)) {
             break;
         }
         f = nearestFace(&e);

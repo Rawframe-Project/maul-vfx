@@ -4,6 +4,7 @@
 #include "convex.h"
 
 #include "direction.h"
+#include "invariant.h"
 
 #include <math.h>
 #include <string.h>
@@ -546,24 +547,6 @@ static bool StartEpa(Epa* e, const Simplex* s)
            AddTriangle(e, c, 3, 0);
 }
 
-// A face of EPA's polytope, apart from it: its points (indices into the
-// polytope's, which only grow), its outward unit normal and its distance
-// from the origin.
-typedef struct EpaFace
-{
-    uint8_t points[3];
-    double normal[3];
-    double distance;
-} EpaFace;
-
-static EpaFace FaceOf(const Epa* e, int32_t f)
-{
-    EpaFace face = {.distance = e->distances[f]};
-    memcpy(face.points, e->faces[f], sizeof face.points);
-    memcpy(face.normal, e->normals[f], sizeof face.normal);
-    return face;
-}
-
 // The face nearest the origin.
 static int32_t NearestFace(const Epa* e)
 {
@@ -575,29 +558,26 @@ static int32_t NearestFace(const Epa* e)
     return best;
 }
 
-// Adds point p: the faces it sees removed and the horizon joined to it;
-// false when there is no room.
-static bool Expand(Epa* e, const Point* p)
+// Whether the triangle of points i and j and w has area.
+static bool HasArea(const Epa* e, int32_t i, int32_t j, const double w[3])
 {
-    if (e->pointCount >= EPA_VERTICES)
-    {
-        return false;
-    }
-    int32_t at = e->pointCount++;
-    e->points[at] = *p;
-    uint8_t edges[3 * EPA_FACES][2];
+    double ab[3];
+    double aw[3];
+    double n[3];
+    Sub(e->points[j].w, e->points[i].w, ab);
+    Sub(w, e->points[i].w, aw);
+    Cross(ab, aw, n);
+    return Dot(n, n) > 0.0;
+}
+
+// The horizon of the faces marked seen into edges: each edge of a seen
+// face whose twin is on no seen face, in the faces' order; their count.
+static int32_t Horizon(const Epa* e, const bool* seen, uint8_t edges[][2])
+{
     int32_t edgeCount = 0;
-    int32_t kept = 0;
     for (int32_t f = 0; f < e->faceCount; ++f)
     {
-        if (Dot(e->normals[f], p->w) - e->distances[f] <= 1e-12 * (fabs(e->distances[f]) + 1e-30))
-        {
-            memcpy(e->faces[kept], e->faces[f], sizeof e->faces[0]);
-            memcpy(e->normals[kept], e->normals[f], sizeof e->normals[0]);
-            e->distances[kept++] = e->distances[f];
-            continue;
-        }
-        for (int32_t k = 0; k < 3; ++k)
+        for (int32_t k = 0; k < 3 && seen[f]; ++k)
         {
             uint8_t from = e->faces[f][k];
             uint8_t to = e->faces[f][(k + 1) % 3];
@@ -619,13 +599,83 @@ static bool Expand(Epa* e, const Point* p)
             }
         }
     }
+    return edgeCount;
+}
+
+// The face beyond horizon edge from to: the unseen face holding to from.
+// The polytope is closed (every edge of a face is another's the other
+// way), so there is one.
+static int32_t Beyond(const Epa* e, const bool* seen, uint8_t from, uint8_t to)
+{
+    for (int32_t f = 0; f < e->faceCount; ++f)
+    {
+        for (int32_t k = 0; k < 3 && !seen[f]; ++k)
+        {
+            if (e->faces[f][k] == to && e->faces[f][(k + 1) % 3] == from)
+            {
+                return f;
+            }
+        }
+    }
+    MVFX_ASSERT(false);
+    return 0;
+}
+
+// Adds point p whole: the faces it sees removed and the horizon joined to
+// it. A horizon edge in line with p (p on the plane of the face beyond it,
+// which it does not see by the tolerance) would join it by a face of no
+// area, so the face beyond goes too and the horizon is found again; each
+// pass takes one more face, so it ends. False, the polytope as it was,
+// when there is no room or no face would be left.
+static bool Expand(Epa* e, const Point* p)
+{
+    if (e->pointCount >= EPA_VERTICES)
+    {
+        return false;
+    }
+    bool seen[EPA_FACES];
+    for (int32_t f = 0; f < e->faceCount; ++f)
+    {
+        seen[f] =
+            Dot(e->normals[f], p->w) - e->distances[f] > 1e-12 * (fabs(e->distances[f]) + 1e-30);
+    }
+    uint8_t edges[3 * EPA_FACES][2];
+    int32_t edgeCount = Horizon(e, seen, edges);
+    for (int32_t j = 0; j < edgeCount; ++j)
+    {
+        if (!HasArea(e, edges[j][0], edges[j][1], p->w))
+        {
+            seen[Beyond(e, seen, edges[j][0], edges[j][1])] = true;
+            edgeCount = Horizon(e, seen, edges);
+            j = -1;
+        }
+    }
+    int32_t kept = 0;
+    for (int32_t f = 0; f < e->faceCount; ++f)
+    {
+        kept += seen[f] ? 0 : 1;
+    }
+    if (kept + edgeCount == 0 || kept + edgeCount > EPA_FACES)
+    {
+        return false;
+    }
+    int32_t at = e->pointCount++;
+    e->points[at] = *p;
+    kept = 0;
+    for (int32_t f = 0; f < e->faceCount; ++f)
+    {
+        if (!seen[f])
+        {
+            memcpy(e->faces[kept], e->faces[f], sizeof e->faces[0]);
+            memcpy(e->normals[kept], e->normals[f], sizeof e->normals[0]);
+            e->distances[kept++] = e->distances[f];
+        }
+    }
     e->faceCount = kept;
     for (int32_t j = 0; j < edgeCount; ++j)
     {
-        if (!AddTriangle(e, edges[j][0], edges[j][1], at))
-        {
-            return false;
-        }
+        // Each has area and room, as found above.
+        (void)AddTriangle(e, edges[j][0], edges[j][1], at);
     }
     return true;
 }
@@ -633,15 +683,14 @@ static bool Expand(Epa* e, const Point* p)
 // EPA (van den Bergen 2003): of the difference holding the origin, the
 // face nearest it, grown until its distance holds; how far a must move
 // against its normal to part them, the normal and the witnesses. At most
-// most steps, counted in steps; stopped there, the nearest face found
-// (its depth at most the true one), as when a step cannot grow the
-// polytope, the face kept from before that step: a failed Expand has
-// already removed it from the polytope. It stops once a step gains no more
-// than a millionth of the face's distance from the origin, whichever side
-// the origin is on: in an overlap shallow to rounding the origin can lie
-// just outside the faces GJK left, and a floor taken from the signed
-// distance was 1e-18, which a support point already on the face passed
-// by its own rounding, so the same step repeated to the limit.
+// most steps, counted in steps; stopped there, or at a step that cannot
+// be added whole, the nearest face found (its depth at most the true
+// one). It stops once a step gains no more than a millionth of the face's
+// distance from the origin, whichever side the origin is on: in an
+// overlap shallow to rounding the origin can lie just outside the faces
+// GJK left, and a floor taken from the signed distance was 1e-18, which a
+// support point already on the face passed by its own rounding, so the
+// same step repeated to the limit.
 static void Penetration(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s,
                         mvfxConvexMeet* out, int32_t most, int32_t* steps)
 {
@@ -652,31 +701,31 @@ static void Penetration(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s
     {
         return;
     }
-    EpaFace best = FaceOf(&e, NearestFace(&e));
+    int32_t f = NearestFace(&e);
     for (*steps = 0; *steps < most; ++*steps)
     {
-        Point p = Support(a, b, best.normal);
-        double gain = Dot(best.normal, p.w) - best.distance;
-        if (gain <= 1e-6 * fmax(fabs(best.distance), 1e-12) || !Expand(&e, &p) || e.faceCount == 0)
+        Point p = Support(a, b, e.normals[f]);
+        double gain = Dot(e.normals[f], p.w) - e.distances[f];
+        if (gain <= 1e-6 * fmax(fabs(e.distances[f]), 1e-12) || !Expand(&e, &p))
         {
             break;
         }
-        best = FaceOf(&e, NearestFace(&e));
+        f = NearestFace(&e);
     }
     // The face's point nearest the origin, by its triangle's weights.
     Simplex face = {.count = 3};
     for (int32_t i = 0; i < 3; ++i)
     {
-        face.p[i] = e.points[best.points[i]];
+        face.p[i] = e.points[e.faces[f][i]];
     }
     double v[3];
     (void)Nearest(&face, v);
     Witnesses(a, b, &face, out->onA, out->onB);
     for (int32_t k = 0; k < 3; ++k)
     {
-        out->normal[k] = (float)-best.normal[k];
+        out->normal[k] = (float)-e.normals[f][k];
     }
-    out->distance = (float)-best.distance;
+    out->distance = (float)-e.distances[f];
 }
 
 bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b, float margin, int32_t most,

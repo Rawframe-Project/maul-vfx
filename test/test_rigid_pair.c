@@ -982,12 +982,11 @@ static void TestEpaStuck(void)
     // A box of half sizes 1, 0.75 and 1, turned a quarter about Z in
     // binary32 (its corners an ulp off), and a flat square, a hull of no
     // width, at X -0.75 across Y 0.5 to 1 and Z -1 to -0.5. They overlap
-    // by 0.25 at most: the square leaves the box moved 0.25 along -X, or
-    // an ulp more along +Y. EPA's first step cannot grow its polytope (a
-    // new face would have no area), and the search answers with the face
-    // it had chosen, of distance 0, never deeper than they overlap. Read
-    // from the face's slot after that step, which then held a kept face,
-    // it was a depth of 1.75 along +Y.
+    // by 0.25: the box moved 0.25 along -X leaves the square on its face.
+    // EPA's first step finds a point in line with an edge of its horizon,
+    // whose face would have no area; the face beyond that edge goes too,
+    // and the search goes on to the depth. A step left half added read a
+    // face that was gone: a depth of 1.75 along +Y.
     static const float box[24] = {
         0x1.fffffcp-1f, -0x1.800002p-1f, -0x1p+0f, 0x1p+0f,         0x1.7ffffcp-1f, -0x1p+0f,
         -0x1p+0f,       -0x1.7ffffcp-1f, -0x1p+0f, -0x1.fffffcp-1f, 0x1.800002p-1f, -0x1p+0f,
@@ -1000,10 +999,243 @@ static void TestEpaStuck(void)
     float distance = 1.0f;
     float normal[3];
     bool met = mvfxTestConvexMeet(box, 8, square, 4, 0.01f, &stopped, &steps, &distance, normal);
-    CHECK(met && !stopped && steps == 0 && distance <= 0.0f && distance >= -0.25f,
-          "a flat square in a box met no deeper than they overlap");
-    CHECK(distance == 0.0f && normal[0] == 0.0f && normal[1] == 0.0f && normal[2] == 1.0f,
-          "a search that cannot grow answers with the face it had");
+    CHECK(met && !stopped && distance == -0.25f && normal[0] == 1.0f && fabsf(normal[1]) <= 1e-7f &&
+              normal[2] == 0.0f,
+          "a flat square in a box met at their depth, 0.25 along +X");
+}
+
+// A box's corners: half sizes about center, turned by unit quaternion q.
+static void TurnedBox(const float center[3], const float half[3], const float q[4], float out[24])
+{
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        float c[3];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            c[k] = (i >> k & 1) != 0 ? half[k] : -half[k];
+        }
+        // v + 2 w (u x v) + 2 u x (u x v), u the quaternion's vector part.
+        float t[3] = {2.0f * (q[1] * c[2] - q[2] * c[1]), 2.0f * (q[2] * c[0] - q[0] * c[2]),
+                      2.0f * (q[0] * c[1] - q[1] * c[0])};
+        float r[3] = {c[0] + q[3] * t[0] + (q[1] * t[2] - q[2] * t[1]),
+                      c[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]),
+                      c[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0])};
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[3 * i + k] = center[k] + r[k];
+        }
+    }
+}
+
+// A box's axes in binary64 from its quaternion, as rows.
+static void BoxAxes(const float qf[4], double m[3][3])
+{
+    double x = qf[0];
+    double y = qf[1];
+    double z = qf[2];
+    double w = qf[3];
+    double n = sqrt(x * x + y * y + z * z + w * w);
+    x /= n;
+    y /= n;
+    z /= n;
+    w /= n;
+    const double rows[3][3] = {{1 - 2 * (y * y + z * z), 2 * (x * y + w * z), 2 * (x * z - w * y)},
+                               {2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x)},
+                               {2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)}};
+    memcpy(m, rows, sizeof rows);
+}
+
+static void SpanAlong(const float* points, const double d[3], double* low, double* high)
+{
+    *low = INFINITY;
+    *high = -INFINITY;
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        double t = d[0] * points[3 * i] + d[1] * points[3 * i + 1] + d[2] * points[3 * i + 2];
+        *low = fmin(*low, t);
+        *high = fmax(*high, t);
+    }
+}
+
+// How deep boxes a and b overlap by the separating axes (each box's
+// three, and the nine across an axis of each), and the normal from b
+// toward a that parts them by it: the least of the axes' overlaps, each
+// both ways. In unique, whether every other way not along the normal is
+// 1e-3 deeper.
+static double SeparatingDepth(const float* a, const float qa[4], const float* b, const float qb[4],
+                              double normal[3], bool* unique)
+{
+    double ma[3][3];
+    double mb[3][3];
+    double axes[15][3];
+    int32_t count = 0;
+    BoxAxes(qa, ma);
+    BoxAxes(qb, mb);
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        memcpy(axes[count++], ma[i], sizeof ma[i]);
+        memcpy(axes[count++], mb[i], sizeof mb[i]);
+    }
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        for (int32_t j = 0; j < 3; ++j)
+        {
+            double c[3] = {ma[i][1] * mb[j][2] - ma[i][2] * mb[j][1],
+                           ma[i][2] * mb[j][0] - ma[i][0] * mb[j][2],
+                           ma[i][0] * mb[j][1] - ma[i][1] * mb[j][0]};
+            double length = sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
+            if (length >= 1e-6)
+            {
+                for (int32_t k = 0; k < 3; ++k)
+                {
+                    axes[count][k] = c[k] / length;
+                }
+                ++count;
+            }
+        }
+    }
+    // Each way: its depth (a moved that far against the normal parts
+    // them) and the normal.
+    double ways[30][4];
+    for (int32_t i = 0; i < count; ++i)
+    {
+        double lowA;
+        double highA;
+        double lowB;
+        double highB;
+        SpanAlong(a, axes[i], &lowA, &highA);
+        SpanAlong(b, axes[i], &lowB, &highB);
+        ways[2 * i][0] = highA - lowB;
+        ways[2 * i + 1][0] = highB - lowA;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            ways[2 * i][1 + k] = -axes[i][k];
+            ways[2 * i + 1][1 + k] = axes[i][k];
+        }
+    }
+    int32_t least = 0;
+    for (int32_t i = 1; i < 2 * count; ++i)
+    {
+        least = ways[i][0] < ways[least][0] ? i : least;
+    }
+    double next = INFINITY;
+    for (int32_t i = 0; i < 2 * count; ++i)
+    {
+        double along =
+            ways[i][1] * ways[least][1] + ways[i][2] * ways[least][2] + ways[i][3] * ways[least][3];
+        next = along < 0.999 ? fmin(next, ways[i][0]) : next;
+    }
+    memcpy(normal, &ways[least][1], 3 * sizeof(double));
+    *unique = next - ways[least][0] > 1e-3;
+    return ways[least][0];
+}
+
+static uint32_t s_draws = 0x2545F491u;
+
+static uint32_t Draw(void)
+{
+    s_draws ^= s_draws << 13u;
+    s_draws ^= s_draws >> 17u;
+    s_draws ^= s_draws << 5u;
+    return s_draws;
+}
+
+static float Unit(void)
+{
+    return (float)(Draw() >> 8u) * 0x1p-24f;
+}
+
+// A turn: none, a quarter, half or three quarters about an axis, or any.
+static void DrawTurn(bool gridded, float q[4])
+{
+    int32_t kind = (int32_t)(Draw() % (gridded ? 2u : 3u));
+    q[0] = 0.0f;
+    q[1] = 0.0f;
+    q[2] = 0.0f;
+    q[3] = 1.0f;
+    if (kind == 1)
+    {
+        double half = (double)(1 + Draw() % 3u) * 0.78539816339744831;
+        int32_t axis = (int32_t)(Draw() % 3u);
+        q[axis] = (float)sin(half);
+        q[3] = (float)cos(half);
+    }
+    else if (kind == 2)
+    {
+        double v[4];
+        double length = 0.0;
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            v[k] = (double)Unit() * 2.0 - 1.0 + 1e-3;
+            length += v[k] * v[k];
+        }
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            q[k] = (float)(v[k] / sqrt(length));
+        }
+    }
+}
+
+static void TestEpaAgainstAxes(void)
+{
+    // Pairs of boxes, as hulls of their corners, three quarters of them
+    // flat (of no size along one axis, or two), half of them on a grid of
+    // quarters turned by quarter turns, so that faces line up and points
+    // fall in line with edges; the other half anywhere, turned any way.
+    // Where they overlap by more than rounding, or the search says they
+    // overlap, its depth is the separating axes' within 1e-4 of 1 plus it,
+    // and where one way is least by 1e-3 its normal is that way's.
+    int32_t judged = 0;
+    int32_t wrong = 0;
+    for (int32_t n = 0; n < 40000; ++n)
+    {
+        bool gridded = n % 2 == 0;
+        float ha[3];
+        float hb[3];
+        float cb[3];
+        const float ca[3] = {0.0f, 0.0f, 0.0f};
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            ha[k] = gridded ? (float)(1 + Draw() % 6u) * 0.25f : 0.1f + Unit();
+            hb[k] = gridded ? (float)(1 + Draw() % 6u) * 0.25f : 0.1f + Unit();
+            cb[k] = gridded ? (float)((int32_t)(Draw() % 13u) - 6) * 0.25f : 3.0f * Unit() - 1.5f;
+        }
+        // Flat: b along one axis, then a too, then b along two.
+        uint32_t flat = Draw() % 4u;
+        uint32_t first = Draw() % 3u;
+        uint32_t second = Draw() % 3u;
+        uint32_t third = Draw() % 3u;
+        hb[first] = flat >= 1u ? 0.0f : hb[first];
+        ha[second] = flat >= 2u ? 0.0f : ha[second];
+        hb[third] = flat == 3u ? 0.0f : hb[third];
+        float qa[4];
+        float qb[4];
+        DrawTurn(gridded, qa);
+        DrawTurn(gridded, qb);
+        float a[24];
+        float b[24];
+        TurnedBox(ca, ha, qa, a);
+        TurnedBox(cb, hb, qb, b);
+        double expected[3];
+        bool unique = false;
+        double depth = SeparatingDepth(a, qa, b, qb, expected, &unique);
+        bool stopped = true;
+        int32_t steps = 0;
+        float distance = 0.0f;
+        float normal[3] = {0.0f, 0.0f, 0.0f};
+        bool met = mvfxTestConvexMeet(a, 8, b, 8, 0.01f, &stopped, &steps, &distance, normal);
+        if (!(depth > 1e-6) && !(met && distance < 0.0f))
+        {
+            continue;
+        }
+        ++judged;
+        double along = expected[0] * normal[0] + expected[1] * normal[1] + expected[2] * normal[2];
+        bool right = met && !stopped && fabs(-(double)distance - depth) <= 1e-4 * (1.0 + depth) &&
+                     (!unique || along >= 0.999);
+        wrong += right ? 0 : 1;
+    }
+    CHECK(judged >= 10000, "box pairs overlapping");
+    CHECK(wrong == 0, "every overlap found at the separating axes' depth and normal");
 }
 
 int main(void)
@@ -1025,6 +1257,7 @@ int main(void)
     TestShallowOverlaps();
     TestTouching();
     TestEpaStuck();
+    TestEpaAgainstAxes();
     TestPoolAndStrikes();
     TestUnits();
     return s_failures == 0 ? 0 : 1;
