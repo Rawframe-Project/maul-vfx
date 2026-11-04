@@ -503,7 +503,9 @@ extern "C"
     // point j its root's plus j spacings along direction, of a sheet's
     // point in row r and place c across its root's plus c spacings along
     // direction and r along downDirection; they die together, a kill of
-    // one kills the unit. Counts (owed, dropped,
+    // one kills the unit. Units born in a step join the solve from the
+    // next: in their birth step each point moves as a particle, a pinned
+    // point held where it was born. Counts (owed, dropped,
     // capacities of host spawns and event spawns) are in units, the
     // emitter's capacity in points, as their comments say.
     typedef struct mvfxUnitDef
