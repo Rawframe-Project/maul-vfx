@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Sirac Ozmen
 //
-// Versions and result names.
+// Versions, result names, and the result attribute.
 
 #include "test_harness.h"
 
 #include "maul-vfx/base.h"
 
 #include <string.h>
+
+// The suites build as C23, where every compiler the family takes has
+// [[nodiscard]], so MVFX_NODISCARD expands to it and a dropped status
+// warns (GCC 14 reports its C23 as 202000L).
+#define TEXT(x)     #x
+#define EXPANDED(x) TEXT(x)
+static_assert(sizeof(EXPANDED(MVFX_NODISCARD)) > 1, "MVFX_NODISCARD is the attribute in C23");
 
 static void TestVersionMatchesHeader(void)
 {
