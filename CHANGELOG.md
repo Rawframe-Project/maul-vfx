@@ -6,6 +6,32 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.12.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.11.0...v0.12.0) (2026-11-04)
+
+This release bounds the work of rigid bodies that meet each other: a
+body meets at most 64 of the bodies within its reach in a substep.
+Results change only for a body with more than 64 bodies within its
+reach, as when many overlap; no golden scene has one. The golden hashes
+change only because the state they hash now holds the new counter. The
+effect file format and the GPU part's tolerances are unchanged.
+
+### Changed
+
+- **Breaking: a rigid body meets at most `MVFX_MAX_BODY_CANDIDATES`
+  (64) of the bodies within its reach in a substep**, the first in the
+  particles' order, on the CPU path and the GPU part alike. Before, a
+  body met every one, and each pair went through the narrow phase even
+  after the pool was full and its contacts were only dropped, so bodies
+  that overlap, as a burst born at one point does, made a substep's work
+  grow with the square of the bodies: an effect of 3616 hulls born
+  together took 20.4 s for a step of 1/30 s, built Release on one
+  thread, and now takes 1.23 s. A body with more is counted once a
+  substep in the new `mvfxEmitterStats.rigidCandidateCappedBodyCount`,
+  and in the GPU part's statistics record's new word
+  `MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT`, so
+  `MVFX_GPU_STATISTICS_WORDS` is 55
+  ([#288](https://github.com/Rawframe-Project/maul-vfx/pull/288)).
+
 ## [0.11.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.10.0...v0.11.0) (2026-11-04)
 
 This release changes how rigid bodies turn at their contacts, so every
