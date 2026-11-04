@@ -299,11 +299,13 @@ int32_t mvfxTestLiquidSubsteps(const mvfxContext* context, mvfxInstanceId instan
 }
 
 bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b, int32_t countB,
-                        float margin, bool* stopped, int32_t* epaSteps, float* distance)
+                        float margin, bool* stopped, int32_t* epaSteps, float* distance,
+                        float normal[3])
 {
     *stopped = false;
     *epaSteps = 0;
     *distance = 0.0f;
+    memset(normal, 0, 3 * sizeof(float));
     if (countA < 1 || countA > MVFX_MAX_HULL_VERTICES || countB < 1 ||
         countB > MVFX_MAX_HULL_VERTICES)
     {
@@ -322,5 +324,6 @@ bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b, int32_t 
     *stopped = meet.capped;
     *epaSteps = steps.epa;
     *distance = meet.distance;
+    memcpy(normal, meet.normal, 3 * sizeof(float));
     return true;
 }

@@ -546,6 +546,24 @@ static bool StartEpa(Epa* e, const Simplex* s)
            AddTriangle(e, c, 3, 0);
 }
 
+// A face of EPA's polytope, apart from it: its points (indices into the
+// polytope's, which only grow), its outward unit normal and its distance
+// from the origin.
+typedef struct EpaFace
+{
+    uint8_t points[3];
+    double normal[3];
+    double distance;
+} EpaFace;
+
+static EpaFace FaceOf(const Epa* e, int32_t f)
+{
+    EpaFace face = {.distance = e->distances[f]};
+    memcpy(face.points, e->faces[f], sizeof face.points);
+    memcpy(face.normal, e->normals[f], sizeof face.normal);
+    return face;
+}
+
 // The face nearest the origin.
 static int32_t NearestFace(const Epa* e)
 {
@@ -616,7 +634,9 @@ static bool Expand(Epa* e, const Point* p)
 // face nearest it, grown until its distance holds; how far a must move
 // against its normal to part them, the normal and the witnesses. At most
 // most steps, counted in steps; stopped there, the nearest face found
-// (its depth at most the true one). It stops once a step gains no more
+// (its depth at most the true one), as when a step cannot grow the
+// polytope, the face kept from before that step: a failed Expand has
+// already removed it from the polytope. It stops once a step gains no more
 // than a millionth of the face's distance from the origin, whichever side
 // the origin is on: in an overlap shallow to rounding the origin can lie
 // just outside the faces GJK left, and a floor taken from the signed
@@ -632,31 +652,31 @@ static void Penetration(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s
     {
         return;
     }
-    int32_t f = NearestFace(&e);
+    EpaFace best = FaceOf(&e, NearestFace(&e));
     for (*steps = 0; *steps < most; ++*steps)
     {
-        Point p = Support(a, b, e.normals[f]);
-        double gain = Dot(e.normals[f], p.w) - e.distances[f];
-        if (gain <= 1e-6 * fmax(fabs(e.distances[f]), 1e-12) || !Expand(&e, &p) || e.faceCount == 0)
+        Point p = Support(a, b, best.normal);
+        double gain = Dot(best.normal, p.w) - best.distance;
+        if (gain <= 1e-6 * fmax(fabs(best.distance), 1e-12) || !Expand(&e, &p) || e.faceCount == 0)
         {
             break;
         }
-        f = NearestFace(&e);
+        best = FaceOf(&e, NearestFace(&e));
     }
     // The face's point nearest the origin, by its triangle's weights.
     Simplex face = {.count = 3};
     for (int32_t i = 0; i < 3; ++i)
     {
-        face.p[i] = e.points[e.faces[f][i]];
+        face.p[i] = e.points[best.points[i]];
     }
     double v[3];
     (void)Nearest(&face, v);
     Witnesses(a, b, &face, out->onA, out->onB);
     for (int32_t k = 0; k < 3; ++k)
     {
-        out->normal[k] = (float)-e.normals[f][k];
+        out->normal[k] = (float)-best.normal[k];
     }
-    out->distance = (float)-e.distances[f];
+    out->distance = (float)-best.distance;
 }
 
 bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b, float margin, int32_t most,

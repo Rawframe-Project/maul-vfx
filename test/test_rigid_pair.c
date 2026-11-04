@@ -907,11 +907,103 @@ static void TestShallowOverlaps(void)
         bool stopped = true;
         int32_t steps = -1;
         float distance = 0.0f;
+        float normal[3];
         once = once &&
-               mvfxTestConvexMeet(a[i], 6, b[i], 6, 0x1.3f2648p-7f, &stopped, &steps, &distance) &&
+               mvfxTestConvexMeet(a[i], 6, b[i], 6, 0x1.3f2648p-7f, &stopped, &steps, &distance,
+                                  normal) &&
                !stopped && steps <= 1;
     }
     CHECK(once, "hulls overlapping by rounding alone, met without a stopped search");
+}
+
+// The corners of a box of half sizes half about center, as hull points.
+static void BoxPoints(const float center[3], const float half[3], float out[24])
+{
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[3 * i + k] = center[k] + ((i >> k & 1) != 0 ? half[k] : -half[k]);
+        }
+    }
+}
+
+static void TestTouching(void)
+{
+    // Unit cubes touching by a face, an edge and a corner meet at distance
+    // 0. GJK finds the origin on a point of their difference, or on a
+    // segment, and EPA starts from the tetrahedron grown about it. Its
+    // normal runs from b toward a, along a face of the contact: for the
+    // face, its normal.
+    static const float half[3] = {0.5f, 0.5f, 0.5f};
+    static const float origin[3] = {0.0f, 0.0f, 0.0f};
+    static const float places[3][3] = {{1, 0, 0}, {1, 1, 0}, {1, 1, 1}};
+    static const char* names[3] = {"cubes touching by a face met at distance 0",
+                                   "cubes touching by an edge met at distance 0",
+                                   "cubes touching by a corner met at distance 0"};
+    float a[24];
+    BoxPoints(origin, half, a);
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        float b[24];
+        BoxPoints(places[i], half, b);
+        bool stopped = true;
+        int32_t steps = 0;
+        float distance = 1.0f;
+        float normal[3];
+        bool met = mvfxTestConvexMeet(a, 8, b, 8, 0.01f, &stopped, &steps, &distance, normal);
+        float toward =
+            normal[0] * places[i][0] + normal[1] * places[i][1] + normal[2] * places[i][2];
+        CHECK(met && !stopped && steps > 0 && distance == 0.0f && toward <= -1.0f &&
+                  normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] == 1.0f,
+              names[i]);
+    }
+    // Two flat squares, as hulls of no height, overlapping in the plane Y
+    // 0: their difference is flat, so no tetrahedron grows in it, and they
+    // meet at distance 0 along +Y, the plane's normal.
+    static const float flat[3] = {0.5f, 0.0f, 0.5f};
+    static const float aside[3] = {0.25f, 0.0f, 0.25f};
+    float c[24];
+    float d[24];
+    BoxPoints(origin, flat, c);
+    BoxPoints(aside, flat, d);
+    bool stopped = true;
+    int32_t steps = 1;
+    float distance = 1.0f;
+    float normal[3];
+    bool met = mvfxTestConvexMeet(c, 8, d, 8, 0.01f, &stopped, &steps, &distance, normal);
+    CHECK(met && !stopped && steps == 0 && distance == 0.0f && normal[0] == 0.0f &&
+              normal[1] == 1.0f && normal[2] == 0.0f,
+          "flat squares overlapping met at distance 0 along their normal");
+}
+
+static void TestEpaStuck(void)
+{
+    // A box of half sizes 1, 0.75 and 1, turned a quarter about Z in
+    // binary32 (its corners an ulp off), and a flat square, a hull of no
+    // width, at X -0.75 across Y 0.5 to 1 and Z -1 to -0.5. They overlap
+    // by 0.25 at most: the square leaves the box moved 0.25 along -X, or
+    // an ulp more along +Y. EPA's first step cannot grow its polytope (a
+    // new face would have no area), and the search answers with the face
+    // it had chosen, of distance 0, never deeper than they overlap. Read
+    // from the face's slot after that step, which then held a kept face,
+    // it was a depth of 1.75 along +Y.
+    static const float box[24] = {
+        0x1.fffffcp-1f, -0x1.800002p-1f, -0x1p+0f, 0x1p+0f,         0x1.7ffffcp-1f, -0x1p+0f,
+        -0x1p+0f,       -0x1.7ffffcp-1f, -0x1p+0f, -0x1.fffffcp-1f, 0x1.800002p-1f, -0x1p+0f,
+        0x1.fffffcp-1f, -0x1.800002p-1f, 0x1p+0f,  0x1p+0f,         0x1.7ffffcp-1f, 0x1p+0f,
+        -0x1p+0f,       -0x1.7ffffcp-1f, 0x1p+0f,  -0x1.fffffcp-1f, 0x1.800002p-1f, 0x1p+0f};
+    static const float square[12] = {-0.75f, 1.0f, -1.0f, -0.75f, 1.0f, -0.5f,
+                                     -0.75f, 0.5f, -1.0f, -0.75f, 0.5f, -0.5f};
+    bool stopped = true;
+    int32_t steps = -1;
+    float distance = 1.0f;
+    float normal[3];
+    bool met = mvfxTestConvexMeet(box, 8, square, 4, 0.01f, &stopped, &steps, &distance, normal);
+    CHECK(met && !stopped && steps == 0 && distance <= 0.0f && distance >= -0.25f,
+          "a flat square in a box met no deeper than they overlap");
+    CHECK(distance == 0.0f && normal[0] == 0.0f && normal[1] == 0.0f && normal[2] == 1.0f,
+          "a search that cannot grow answers with the face it had");
 }
 
 int main(void)
@@ -931,6 +1023,8 @@ int main(void)
     TestSliding();
     TestPile();
     TestShallowOverlaps();
+    TestTouching();
+    TestEpaStuck();
     TestPoolAndStrikes();
     TestUnits();
     return s_failures == 0 ? 0 : 1;

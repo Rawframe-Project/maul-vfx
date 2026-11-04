@@ -164,11 +164,13 @@ int32_t mvfxTestLiquidSubsteps(const mvfxContext* context, mvfxInstanceId instan
 // b's points (x, y and z each, countA and countB of them, from 1 to
 // MVFX_MAX_HULL_VERTICES, already where they meet) within margin: whether
 // they meet, and when they do, whether a search stopped at its limit
-// (stopped), EPA's steps and their distance (below 0 overlapping). Returns
-// false too for a count out of range. A step counts its stopped searches
-// (mvfxEmitterStats.rigidSearchStopCount) but no public call gives one's
-// steps.
+// (stopped), EPA's steps, their distance (below 0 overlapping) and the
+// unit normal from b toward a. Returns false too for a count out of range.
+// A step counts its stopped searches (mvfxEmitterStats.rigidSearchStopCount)
+// but no public call gives one's steps, nor the search's normal before
+// contacts are made from it.
 bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b, int32_t countB,
-                        float margin, bool* stopped, int32_t* epaSteps, float* distance);
+                        float margin, bool* stopped, int32_t* epaSteps, float* distance,
+                        float normal[3]);
 
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H
