@@ -20,16 +20,10 @@ typedef struct mvfxCurveIntegral
     double end;
 } mvfxCurveIntegral;
 
-// The integral of a baked curve, which mvfxCurveIntegralAt and
-// mvfxCurveIntegralTime read; end is the domain's end the curve was baked
-// over.
+// The integral of a baked curve, which mvfxCurveIntegralTime reads, its
+// last cumulative value the whole domain's; end is the domain's end the
+// curve was baked over.
 void mvfxIntegrateCurve(const mvfxCurveTable* table, double end, mvfxCurveIntegral* integralOut);
-
-// The integral of the baked curve from its domain's start to time, the
-// curve held at its end samples outside the domain (negative before the
-// start).
-double mvfxCurveIntegralAt(const mvfxCurveTable* table, const mvfxCurveIntegral* integral,
-                           double time);
 
 // The first time the integral reaches target, for a curve no sample of
 // which is below 0; INFINITY when it never does.

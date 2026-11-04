@@ -11,7 +11,7 @@ static_assert(sizeof(bool) == 1, "a bool is one byte, as the file's");
 static_assert(sizeof(mvfxGridId) == sizeof(mvfxMeshId), "ids are coded alike");
 
 // The bytes of each scalar kind.
-static const uint8_t s_scalarBytes[] = {1, 1, 1, 2, 2, 4, 4, 8, 8, 4, 8};
+static const uint8_t s_scalarBytes[] = {1, 1, 1, 4, 4, 8, 8, 4, 8};
 
 // A field's head: its tag and its payload's length. A list's head is its
 // count and a zero word, an item's its length and a zero word.
@@ -53,12 +53,6 @@ static uint64_t Load(const uint8_t* place, size_t bytes)
     {
     case 1:
         return place[0];
-    case 2:
-    {
-        uint16_t value = 0;
-        memcpy(&value, place, sizeof value);
-        return value;
-    }
     case 4:
     {
         uint32_t value = 0;
@@ -81,12 +75,6 @@ static void Store(uint8_t* place, uint64_t value, size_t bytes)
     case 1:
         place[0] = (uint8_t)value;
         break;
-    case 2:
-    {
-        uint16_t narrow = (uint16_t)value;
-        memcpy(place, &narrow, sizeof narrow);
-        break;
-    }
     case 4:
     {
         uint32_t narrow = (uint32_t)value;

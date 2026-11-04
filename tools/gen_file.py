@@ -173,6 +173,8 @@ def scalar(typedefs, name):
     """A type's scalar after typedefs, or None for a struct."""
     while name in typedefs:
         name = typedefs[name]
+    if name not in KINDS and re.fullmatch(r"u?int\d+_t", name):
+        raise SystemExit(f"{name}: no file kind for it; add one to KINDS and to the codec")
     return name if name in KINDS else None
 
 
@@ -200,8 +202,6 @@ KINDS = {
     "bool": "mvfx_fieldBool",
     "uint8_t": "mvfx_fieldU8",
     "int8_t": "mvfx_fieldI8",
-    "uint16_t": "mvfx_fieldU16",
-    "int16_t": "mvfx_fieldI16",
     "uint32_t": "mvfx_fieldU32",
     "int32_t": "mvfx_fieldI32",
     "uint64_t": "mvfx_fieldU64",
@@ -216,8 +216,6 @@ WIRES = {
     "bool": "bool",
     "uint8_t": "u8",
     "int8_t": "i8",
-    "uint16_t": "u16",
-    "int16_t": "i16",
     "uint32_t": "u32",
     "int32_t": "i32",
     "uint64_t": "u64",
@@ -561,8 +559,8 @@ def defaulted(typedefs, structs, order):
 
 
 # The bytes of each scalar.
-SIZES = {"bool": 1, "uint8_t": 1, "int8_t": 1, "uint16_t": 2, "int16_t": 2, "uint32_t": 4,
-         "int32_t": 4, "uint64_t": 8, "int64_t": 8, "float": 4, "double": 8}
+SIZES = {"bool": 1, "uint8_t": 1, "int8_t": 1, "uint32_t": 4, "int32_t": 4, "uint64_t": 8,
+         "int64_t": 8, "float": 4, "double": 8}
 
 
 def payload_bytes(typedefs, kind, dims, pointer, wire):
@@ -984,6 +982,14 @@ def self_test():
         message = str(error)
     if "3 steps below mvfxEffectDef, past MVFX_MAX_FIELD_DEPTH (2)" not in message:
         print(f"gen_file.py --self-test: a field too deep: {message!r}")
+        failed += 1
+    try:
+        scalar({"mvfxCount": "uint16_t"}, "mvfxCount")
+        message = "accepted"
+    except SystemExit as error:
+        message = str(error)
+    if "uint16_t: no file kind for it" not in message:
+        print(f"gen_file.py --self-test: an integer without a file kind: {message!r}")
         failed += 1
     for what, text, expected in cases:
         try:

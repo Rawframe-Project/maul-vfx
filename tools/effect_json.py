@@ -69,8 +69,6 @@ FORMATS = {
     "bool": "B",
     "uint8_t": "B",
     "int8_t": "b",
-    "uint16_t": "H",
-    "int16_t": "h",
     "uint32_t": "I",
     "int32_t": "i",
     "uint64_t": "Q",
