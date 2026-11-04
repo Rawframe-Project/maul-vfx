@@ -18,6 +18,7 @@
 
 #include "maul-vfx/context.h"
 #include "maul-vfx/effect.h"
+#include "maul-vfx/file.h"
 #include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
 #include "maul-vfx/mesh.h"
@@ -430,13 +431,330 @@ static void TestBusyLeavesBuffers(void)
     mvfxDestroyContext(context);
 }
 
-// The calls that change the context, each called back in from a host
-// module through one table: refused as busy before they look at their
-// arguments or the instance, each refusal counted as misuse. The instance
-// is not planned and its effect has no gas or water surface, so a setter
-// of a planned instance's gas or water that went on would answer
+// Every call that takes the context mutable, each called back in from a
+// host module through one table: refused as busy, one misuse counted, and
+// nothing changed, the objects it names still there after. Each is called
+// with arguments it would take, on live objects. The instance is not
+// planned and its effect has no gas or water surface, so a setter of a
+// planned instance's gas or water that went on would answer
 // mvfx_errorInvalid or mvfx_errorUnsupported instead.
+// tools/check_host_calls.py refuses a public call taking the context
+// mutable that the table lacks.
 typedef mvfxResult (*Change)(mvfxContext* context);
+
+static mvfxEffectId s_effect;
+static mvfxGridId s_grid;
+static mvfxMeshId s_mesh;
+static mvfxLayoutId s_changeLayout;
+static const float s_gridValues[8];
+static const float s_corners[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1};
+static const mvfxView s_view = {.forward = {0, 0, -1}, .up = {0, 1, 0}};
+static const double s_origin[3];
+static _Alignas(16) unsigned char s_out[256];
+static uint32_t s_outIndices[6];
+static int64_t s_counts[2];
+static const mvfxExpandBuffers s_expand = {
+    .vertices = s_out, .vertexCapacity = 4, .indices = s_outIndices, .indexCapacity = 6};
+
+static mvfxResult Step(mvfxContext* context)
+{
+    return mvfxContext_Step(context, 1.0 / 60.0);
+}
+
+static mvfxResult StepTicks(mvfxContext* context)
+{
+    return mvfxContext_StepTicks(context, 1);
+}
+
+static mvfxResult CreateEffect(mvfxContext* context)
+{
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    mvfxEffectDef def = mvfxDefaultEffectDef();
+    def.emitters = &emitter;
+    def.emitterCount = 1;
+    mvfxEffectId effect;
+    return mvfxCreateEffect(context, &def, &effect, NULL);
+}
+
+static mvfxResult DestroyEffect(mvfxContext* context)
+{
+    return mvfxDestroyEffect(context, s_effect);
+}
+
+static mvfxResult CreateEffectFromBytes(mvfxContext* context)
+{
+    static const _Alignas(16) unsigned char bytes[64];
+    mvfxEffectId effect;
+    return mvfxCreateEffectFromBytes(context, bytes, sizeof bytes, NULL, 0, &effect, NULL).result;
+}
+
+static mvfxResult CreateGrid(mvfxContext* context)
+{
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 2;
+    def.size[1] = 2;
+    def.size[2] = 2;
+    def.values = s_gridValues;
+    mvfxGridId grid;
+    return mvfxCreateGrid(context, &def, &grid);
+}
+
+static mvfxResult DestroyGrid(mvfxContext* context)
+{
+    return mvfxDestroyGrid(context, s_grid);
+}
+
+static mvfxResult GridSetValues(mvfxContext* context)
+{
+    return mvfxGrid_SetValues(context, s_grid, s_gridValues, 8);
+}
+
+static mvfxResult GridSetValuesIn(mvfxContext* context)
+{
+    static const int32_t first[3] = {0, 0, 0};
+    static const int32_t size[3] = {1, 1, 1};
+    return mvfxGrid_SetValuesIn(context, s_grid, first, size, s_gridValues, 1);
+}
+
+static mvfxResult CreateInstance(mvfxContext* context)
+{
+    mvfxInstanceDef def = mvfxDefaultInstanceDef();
+    def.effect = s_effect;
+    mvfxInstanceId instance;
+    return mvfxCreateInstance(context, &def, &instance);
+}
+
+static mvfxResult DestroyInstance(mvfxContext* context)
+{
+    return mvfxDestroyInstance(context, s_instance);
+}
+
+static mvfxResult SetTransform(mvfxContext* context)
+{
+    static const float rotation[4] = {0, 0, 0, 1};
+    return mvfxInstance_SetTransform(context, s_instance, s_origin, rotation, 1.0f, false);
+}
+
+static mvfxResult SetVisible(mvfxContext* context)
+{
+    return mvfxInstance_SetVisible(context, s_instance, false);
+}
+
+static mvfxResult SetOffscreen(mvfxContext* context)
+{
+    return mvfxInstance_SetOffscreen(context, s_instance, mvfx_offscreenPause, 1);
+}
+
+static mvfxResult Spawn(mvfxContext* context)
+{
+    const mvfxSpawnRequest request = {.count = 1, .positions = s_origin};
+    return mvfxInstance_Spawn(context, s_instance, 0, &request);
+}
+
+static mvfxResult SetAttachFrames(mvfxContext* context)
+{
+    static const mvfxAttachFrame frame = {.rotation = {0, 0, 0, 1}};
+    return mvfxInstance_SetAttachFrames(context, s_instance, 0, &frame, 1);
+}
+
+static mvfxResult Prewarm(mvfxContext* context)
+{
+    double remaining;
+    return mvfxInstance_Prewarm(context, s_instance, 1.0, 0.1, 4, &remaining);
+}
+
+static mvfxResult SetColliders(mvfxContext* context)
+{
+    static const mvfxCollider plane = {.kind = mvfx_colliderPlane, .normal = {0, 1, 0}};
+    return mvfxInstance_SetColliders(context, s_instance, &plane, 1);
+}
+
+static mvfxResult GetSceneQueries(mvfxContext* context)
+{
+    const mvfxSceneQuery* queries;
+    int32_t count;
+    return mvfxInstance_GetSceneQueries(context, s_instance, 0, &queries, &count);
+}
+
+static mvfxResult AnswerSceneQueries(mvfxContext* context)
+{
+    static const mvfxSceneAnswer answer;
+    return mvfxInstance_AnswerSceneQueries(context, s_instance, 0, &answer, 0);
+}
+
+static mvfxResult SetDepthImage(mvfxContext* context)
+{
+    return mvfxInstance_SetDepthImage(context, s_instance, NULL);
+}
+
+static mvfxResult WakeBodies(mvfxContext* context)
+{
+    static const float center[3];
+    return mvfxInstance_WakeBodies(context, s_instance, 0, center, 1.0f);
+}
+
+static mvfxResult GetEvents(mvfxContext* context)
+{
+    const mvfxEvent* events;
+    int32_t count;
+    return mvfxInstance_GetEvents(context, s_instance, 0, &events, &count);
+}
+
+static mvfxResult SetEmitterMesh(mvfxContext* context)
+{
+    return mvfxInstance_SetEmitterMesh(context, s_instance, 0, s_mesh);
+}
+
+static mvfxResult SetParameter(mvfxContext* context)
+{
+    static const float value[4];
+    return mvfxInstance_SetParameter(context, s_instance, 0, value);
+}
+
+static mvfxResult GetEmitterStats(mvfxContext* context)
+{
+    mvfxEmitterStats stats;
+    return mvfxInstance_GetEmitterStats(context, s_instance, 0, &stats);
+}
+
+static mvfxResult Stop(mvfxContext* context)
+{
+    return mvfxInstance_Stop(context, s_instance, mvfx_stopAndClear);
+}
+
+static mvfxResult Restart(mvfxContext* context)
+{
+    return mvfxInstance_Restart(context, s_instance);
+}
+
+static mvfxResult BreakRibbons(mvfxContext* context)
+{
+    return mvfxInstance_BreakRibbons(context, s_instance, 0);
+}
+
+static mvfxResult PushWater(mvfxContext* context)
+{
+    static const mvfxWaterPush push;
+    return mvfxInstance_PushWater(context, s_instance, 0, &push, 0);
+}
+
+static mvfxResult CreateMesh(mvfxContext* context)
+{
+    mvfxMeshDef def = mvfxDefaultMeshDef();
+    def.positions = s_corners;
+    def.vertexCount = 4;
+    mvfxMeshId mesh;
+    return mvfxCreateMesh(context, &def, &mesh);
+}
+
+static mvfxResult DestroyMesh(mvfxContext* context)
+{
+    return mvfxDestroyMesh(context, s_mesh);
+}
+
+static mvfxResult MeshSetPositions(mvfxContext* context)
+{
+    return mvfxMesh_SetPositions(context, s_mesh, s_corners, NULL, 4);
+}
+
+static mvfxResult CreateLayout(mvfxContext* context)
+{
+    static const mvfxLayoutField position = {
+        .field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3};
+    mvfxLayoutDef def = mvfxDefaultLayoutDef();
+    def.fields = &position;
+    def.fieldCount = 1;
+    def.stride = 16;
+    mvfxLayoutId layout;
+    return mvfxCreateLayout(context, &def, &layout);
+}
+
+static mvfxResult DestroyLayout(mvfxContext* context)
+{
+    return mvfxDestroyLayout(context, s_changeLayout);
+}
+
+static mvfxResult WriteParticles(mvfxContext* context)
+{
+    return mvfxInstance_WriteParticles(context, s_instance, 0, s_changeLayout, &s_view, NULL, 0,
+                                       s_out, 4, &s_counts[0]);
+}
+
+static mvfxResult WriteRibbons(mvfxContext* context)
+{
+    static mvfxRibbon ribbons[1];
+    const mvfxRibbonBuffers list = {
+        .points = s_out, .pointCapacity = 4, .ribbons = ribbons, .ribbonCapacity = 1};
+    return mvfxInstance_WriteRibbons(context, s_instance, 0, s_changeLayout, &s_view, &list,
+                                     &s_counts[0], &s_counts[1]);
+}
+
+static mvfxResult ExpandSprites(mvfxContext* context)
+{
+    return mvfxInstance_ExpandSprites(context, s_instance, 0, s_changeLayout, &s_view, &s_expand,
+                                      &s_counts[0]);
+}
+
+static mvfxResult ExpandRibbons(mvfxContext* context)
+{
+    return mvfxInstance_ExpandRibbons(context, s_instance, 0, s_changeLayout, &s_view, &s_expand,
+                                      &s_counts[0], &s_counts[1]);
+}
+
+static mvfxResult ExpandTubes(mvfxContext* context)
+{
+    static const mvfxTubeDef tube = {.sides = 3};
+    return mvfxInstance_ExpandTubes(context, s_instance, 0, s_changeLayout, &s_view, &tube,
+                                    &s_expand, &s_counts[0], &s_counts[1]);
+}
+
+static mvfxResult WritePlexus(mvfxContext* context)
+{
+    static mvfxRibbon ribbons[1];
+    const mvfxRibbonBuffers list = {
+        .points = s_out, .pointCapacity = 4, .ribbons = ribbons, .ribbonCapacity = 1};
+    return mvfxInstance_WritePlexus(context, s_instance, 0, s_changeLayout, &s_view, &list,
+                                    &s_counts[0], &s_counts[1]);
+}
+
+static mvfxResult ExpandPlexus(mvfxContext* context)
+{
+    return mvfxInstance_ExpandPlexus(context, s_instance, 0, s_changeLayout, &s_view, &s_expand,
+                                     &s_counts[0], &s_counts[1]);
+}
+
+static mvfxResult ExpandSheets(mvfxContext* context)
+{
+    return mvfxInstance_ExpandSheets(context, s_instance, 0, s_changeLayout, &s_view, &s_expand,
+                                     &s_counts[0], &s_counts[1]);
+}
+
+static mvfxResult WriteLights(mvfxContext* context)
+{
+    static mvfxLight lights[1];
+    return mvfxInstance_WriteLights(context, s_instance, 0, &s_view, lights, 1, &s_counts[0]);
+}
+
+static mvfxResult GetBounds(mvfxContext* context)
+{
+    mvfxBounds bounds;
+    return mvfxInstance_GetBounds(context, s_instance, -1, &bounds);
+}
+
+static mvfxResult OrderEmitters(mvfxContext* context)
+{
+    static mvfxDrawItem items[1];
+    return mvfxContext_OrderEmitters(context, s_origin, NULL, items, 1, &s_counts[0]);
+}
+
+static mvfxResult WriteSurfaceMesh(mvfxContext* context)
+{
+    static float positions[3];
+    const mvfxSurfaceMeshBuffers mesh = {
+        .positions = positions, .vertexCapacity = 1, .indices = s_outIndices, .indexCapacity = 6};
+    return mvfxInstance_WriteSurfaceMesh(context, s_instance, 0, s_origin, 0.0f, &mesh,
+                                         &s_counts[0], &s_counts[1]);
+}
 
 static mvfxResult SetGasHolds(mvfxContext* context)
 {
@@ -463,11 +781,59 @@ static mvfxResult SetWaterCounts(mvfxContext* context)
     return mvfxInstance_SetWaterCounts(context, s_instance, 0, 0, 1.0f, 1, 1.0);
 }
 
+// Each call by its public name, which tools/check_host_calls.py reads.
 static const struct
 {
     Change call;
     const char* name;
 } s_changes[] = {
+    {Step, "mvfxContext_Step"},
+    {StepTicks, "mvfxContext_StepTicks"},
+    {CreateEffect, "mvfxCreateEffect"},
+    {DestroyEffect, "mvfxDestroyEffect"},
+    {CreateEffectFromBytes, "mvfxCreateEffectFromBytes"},
+    {CreateGrid, "mvfxCreateGrid"},
+    {DestroyGrid, "mvfxDestroyGrid"},
+    {GridSetValues, "mvfxGrid_SetValues"},
+    {GridSetValuesIn, "mvfxGrid_SetValuesIn"},
+    {CreateInstance, "mvfxCreateInstance"},
+    {DestroyInstance, "mvfxDestroyInstance"},
+    {SetTransform, "mvfxInstance_SetTransform"},
+    {SetVisible, "mvfxInstance_SetVisible"},
+    {SetOffscreen, "mvfxInstance_SetOffscreen"},
+    {Spawn, "mvfxInstance_Spawn"},
+    {SetAttachFrames, "mvfxInstance_SetAttachFrames"},
+    {Prewarm, "mvfxInstance_Prewarm"},
+    {SetColliders, "mvfxInstance_SetColliders"},
+    {GetSceneQueries, "mvfxInstance_GetSceneQueries"},
+    {AnswerSceneQueries, "mvfxInstance_AnswerSceneQueries"},
+    {SetDepthImage, "mvfxInstance_SetDepthImage"},
+    {WakeBodies, "mvfxInstance_WakeBodies"},
+    {GetEvents, "mvfxInstance_GetEvents"},
+    {SetEmitterMesh, "mvfxInstance_SetEmitterMesh"},
+    {SetParameter, "mvfxInstance_SetParameter"},
+    {GetEmitterStats, "mvfxInstance_GetEmitterStats"},
+    {Stop, "mvfxInstance_Stop"},
+    {Restart, "mvfxInstance_Restart"},
+    {BreakRibbons, "mvfxInstance_BreakRibbons"},
+    {PushWater, "mvfxInstance_PushWater"},
+    {CreateMesh, "mvfxCreateMesh"},
+    {DestroyMesh, "mvfxDestroyMesh"},
+    {MeshSetPositions, "mvfxMesh_SetPositions"},
+    {CreateLayout, "mvfxCreateLayout"},
+    {DestroyLayout, "mvfxDestroyLayout"},
+    {WriteParticles, "mvfxInstance_WriteParticles"},
+    {WriteRibbons, "mvfxInstance_WriteRibbons"},
+    {ExpandSprites, "mvfxInstance_ExpandSprites"},
+    {ExpandRibbons, "mvfxInstance_ExpandRibbons"},
+    {ExpandTubes, "mvfxInstance_ExpandTubes"},
+    {WritePlexus, "mvfxInstance_WritePlexus"},
+    {ExpandPlexus, "mvfxInstance_ExpandPlexus"},
+    {ExpandSheets, "mvfxInstance_ExpandSheets"},
+    {WriteLights, "mvfxInstance_WriteLights"},
+    {GetBounds, "mvfxInstance_GetBounds"},
+    {OrderEmitters, "mvfxContext_OrderEmitters"},
+    {WriteSurfaceMesh, "mvfxInstance_WriteSurfaceMesh"},
     {SetGasHolds, "mvfxInstance_SetGasHolds"},
     {SetLiquidSpeed, "mvfxInstance_SetLiquidSpeed"},
     {SetWaterHolds, "mvfxInstance_SetWaterHolds"},
@@ -515,11 +881,27 @@ static void TestChangesRefused(void)
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
     effectDef.emitterCount = 1;
-    mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
+    CHECK(mvfxCreateEffect(context, &effectDef, &s_effect, NULL) == mvfx_success, "effect");
     mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
-    instanceDef.effect = effect;
+    instanceDef.effect = s_effect;
     CHECK(mvfxCreateInstance(context, &instanceDef, &s_instance) == mvfx_success, "instance");
+    mvfxGridDef gridDef = mvfxDefaultGridDef();
+    gridDef.size[0] = 2;
+    gridDef.size[1] = 2;
+    gridDef.size[2] = 2;
+    gridDef.values = s_gridValues;
+    CHECK(mvfxCreateGrid(context, &gridDef, &s_grid) == mvfx_success, "grid");
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = s_corners;
+    meshDef.vertexCount = 4;
+    CHECK(mvfxCreateMesh(context, &meshDef, &s_mesh) == mvfx_success, "mesh");
+    static const mvfxLayoutField position = {
+        .field = mvfx_recordPosition, .format = mvfx_formatFloat32, .components = 3};
+    mvfxLayoutDef layoutDef = mvfxDefaultLayoutDef();
+    layoutDef.fields = &position;
+    layoutDef.fieldCount = 1;
+    layoutDef.stride = 16;
+    CHECK(mvfxCreateLayout(context, &layoutDef, &s_changeLayout) == mvfx_success, "layout");
     for (int32_t c = 0; c < CHANGES; ++c)
     {
         s_changed[c] = mvfx_success;
@@ -538,6 +920,18 @@ static void TestChangesRefused(void)
         CHECK(s_changed[c] == mvfx_errorBusy && s_changeMisuse[c] == 1,
               "a change from a host module refused as busy and counted");
     }
+    // Nothing the refused calls named was destroyed or replaced.
+    static mvfxEmitterView emitterView;
+    mvfxGridView gridView;
+    mvfxMeshView meshView;
+    mvfxLayoutView layoutView;
+    int32_t level = -1;
+    CHECK(mvfxEffect_GetEmitterView(context, s_effect, 0, &emitterView) == mvfx_success &&
+              mvfxInstance_GetQuality(context, s_instance, &level) == mvfx_success &&
+              mvfxGrid_GetView(context, s_grid, &gridView) == mvfx_success &&
+              mvfxMesh_GetView(context, s_mesh, &meshView) == mvfx_success &&
+              mvfxLayout_GetView(context, s_changeLayout, &layoutView) == mvfx_success,
+          "the objects the refused calls named still there");
     mvfxDestroyContext(context);
 }
 
