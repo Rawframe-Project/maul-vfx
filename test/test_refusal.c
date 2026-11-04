@@ -4,12 +4,13 @@
 // Why an effect is refused: the field each check names, by its file tags
 // from mvfxEffectDef down, at every depth and in every part of a def, the
 // same from mvfxCreateEffect and mvfxWriteEffect; refusals of no field;
-// and the path written as text.
+// the grids a gas or a water surface names; and the path written as text.
 
 #include "test_harness.h"
 
 #include "maul-vfx/effect.h"
 #include "maul-vfx/file.h"
+#include "maul-vfx/grid.h"
 
 #include <math.h>
 #include <string.h>
@@ -366,6 +367,97 @@ static void TestRefusalsOfNoField(void)
     mvfxDestroyContext(context);
 }
 
+// A grid of one component or three, size[1] points tall.
+static mvfxGridId NewGrid(mvfxContext* context, int32_t components, int32_t height)
+{
+    static const float values[24] = {0};
+    mvfxGridDef def = mvfxDefaultGridDef();
+    def.size[0] = 2;
+    def.size[1] = height;
+    def.size[2] = 2;
+    def.components = components;
+    def.values = values;
+    mvfxGridId grid = {0};
+    CHECK(mvfxCreateGrid(context, &def, &grid) == mvfx_success, "a grid");
+    return grid;
+}
+
+// Creates the parts' effect: whether it is refused with status at path in
+// gas or water, and counts one misuse for an invalid grid, none for a
+// stale one.
+static bool RefusedAt(mvfxContext* context, const Parts* parts, mvfxResult status, const char* path,
+                      int32_t gas, int32_t water)
+{
+    uint64_t misuse = mvfxContext_GetMisuse(context);
+    mvfxEffectId effect = {1, 1};
+    mvfxEffectRefusal refusal = {0};
+    return mvfxCreateEffect(context, &parts->effect, &effect, &refusal) == status &&
+           refusal.result == status && IsPath(&refusal, path) && refusal.emitter == -1 &&
+           refusal.gas == gas && refusal.water == water && effect.index1 == 0 &&
+           mvfxContext_GetMisuse(context) == misuse + (status == mvfx_errorInvalid ? 1u : 0u);
+}
+
+static void TestFluidGridsNamed(void)
+{
+    // A gas's obstacle and force and a water surface's terrain, each over
+    // a grid of its kind; then each over a grid gone or of the wrong
+    // shape, refused at the field that names it.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    mvfxGridId distances = NewGrid(context, 1, 2);
+    mvfxGridId velocities = NewGrid(context, 3, 2);
+    mvfxGridId heights = NewGrid(context, 1, 1);
+    mvfxGridId gone = NewGrid(context, 1, 1);
+    CHECK(mvfxDestroyGrid(context, gone) == mvfx_success, "a grid gone");
+    static Parts parts;
+    MakeParts(&parts, true);
+    mvfxCollider obstacle = {.kind = mvfx_colliderDistance,
+                             .halfExtents = {1, 1, 1},
+                             .rotation = {0, 0, 0, 1},
+                             .grid = distances};
+    mvfxForce force = {.kind = mvfx_forceVectorField,
+                       .strength = {.kind = mvfx_sourceRange, .range = {1.0f, 1.0f}},
+                       .grid = velocities,
+                       .boxSize = {1, 1, 1},
+                       .boxRotation = {0, 0, 0, 1}};
+    parts.gas.obstacles = &obstacle;
+    parts.gas.obstacleCount = 1;
+    parts.gas.forces = &force;
+    parts.gas.forceCount = 1;
+    parts.water.terrain = (mvfxCollider){.kind = mvfx_colliderHeightfield,
+                                         .halfExtents = {1, 1, 1},
+                                         .rotation = {0, 0, 0, 1},
+                                         .grid = heights};
+    parts.water.enableTerrain = true;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &parts.effect, &effect, NULL) == mvfx_success &&
+              mvfxDestroyEffect(context, effect) == mvfx_success,
+          "each grid of its kind: created");
+
+    obstacle.grid = velocities;
+    CHECK(RefusedAt(context, &parts, mvfx_errorInvalid, "gases[0].obstacles[0].grid", 0, -1),
+          "an obstacle's distances of three components");
+    obstacle.grid = gone;
+    CHECK(RefusedAt(context, &parts, mvfx_errorStale, "gases[0].obstacles[0].grid", 0, -1),
+          "an obstacle's grid gone");
+    obstacle.grid = distances;
+    force.grid = distances;
+    CHECK(RefusedAt(context, &parts, mvfx_errorInvalid, "gases[0].forces[0].grid", 0, -1),
+          "a gas's vector field of one component");
+    force.grid = gone;
+    CHECK(RefusedAt(context, &parts, mvfx_errorStale, "gases[0].forces[0].grid", 0, -1),
+          "a gas's vector field gone");
+    force.grid = velocities;
+    parts.water.terrain.grid = distances;
+    CHECK(RefusedAt(context, &parts, mvfx_errorInvalid, "waters[0].terrain.grid", -1, 0),
+          "a terrain two points tall");
+    parts.water.terrain.grid = gone;
+    CHECK(RefusedAt(context, &parts, mvfx_errorStale, "waters[0].terrain.grid", -1, 0),
+          "a terrain's grid gone");
+    mvfxDestroyContext(context);
+}
+
 // Writes a refusal's path into text of a capacity, prefilled with 'x';
 // the status, the length given and whether every byte past the length is
 // still 'x' (on success) or the whole capacity zero (on failure).
@@ -464,6 +556,7 @@ int main(void)
 {
     TestFieldsNamed();
     TestRefusalsOfNoField();
+    TestFluidGridsNamed();
     TestPathText();
     return s_failures == 0 ? 0 : 1;
 }

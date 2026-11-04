@@ -12,7 +12,8 @@
 // writing one event on the surface; a box spun about its middle axis
 // flipping by the gyroscopic term while its momentum and energy hold;
 // boxes turned by their free flow, their momentum, energy and orbit
-// against Euler's equations; a box spun on a plane stopped by its
+// against Euler's equations; a sphere's turn scaled by its rotation
+// speed over life; a box spun on a plane stopped by its
 // friction at the rate its contacts' spread gives; a tall box tipping
 // over on a slope a short one stands on;
 // a box tipping at its edge's angle, standing steady parked at it and
@@ -898,6 +899,58 @@ static void TestFreeFlow(void)
         energy = fmax(energy, drift[1]);
     }
     CHECK(energy <= 5e-3, "fast boxes' energy kept");
+}
+
+// The angle a sphere spun about Z at 2 rad/s for life 1 s has turned
+// after 30 steps of 1/60 s under a rotation speed over life, and its
+// angular velocity about Z then.
+static float TurnedOverLife(const mvfxRotationOverLife* overLife, float* spin)
+{
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidSphere, 1.0f, 1.0f, 1.0f);
+    emitter.lifetime = mvfxMakeRangeSource(1.0f, 1.0f);
+    emitter.motion.gravity[1] = 0.0f;
+    emitter.motion.angularDrag = 0.0f;
+    emitter.collision.enable = false;
+    emitter.colliderCount = 0;
+    emitter.orientationMode = mvfx_orientationNone;
+    emitter.angularVelocity =
+        (mvfxVectorSource){.kind = mvfx_sourceRange, .min = {0, 0, 2}, .max = {0, 0, 2}};
+    emitter.overLife.rotation = *overLife;
+    static const double place[3] = {0, 1, 0};
+    Open(&emitter, place, NULL);
+    Steps(30);
+    float q[4];
+    Q(q);
+    *spin = W(2);
+    mvfxDestroyContext(s_scene.context);
+    return 2.0f * atan2f(q[2], q[3]);
+}
+
+static void TestTurnOverLife(void)
+{
+    // A rigid body turns by its angular velocity times its rotation speed
+    // over life at its age, as other particles do, and keeps its angular
+    // velocity: half a radian for 0.5 s at 2 rad/s at half the rate, none
+    // at 0, and at a rate rising from 0 to 1 over its life of 1 s, read at
+    // the start of each of 240 substeps h = 1/480 s, 2 h^2 (0 + ... + 239),
+    // 0.248958 (at their ends, 0.251042).
+    float spin = 0.0f;
+    float whole = TurnedOverLife(&(mvfxRotationOverLife){0}, &spin);
+    CHECK(fabsf(whole - 1.0f) < 1e-4f && spin == 2.0f, "a radian unscaled");
+    float half =
+        TurnedOverLife(&(mvfxRotationOverLife){.enable = true, .scale = {.value = 0.5f}}, &spin);
+    CHECK(fabsf(half - 0.5f) < 1e-4f && spin == 2.0f, "half a radian at half the rate");
+    float none =
+        TurnedOverLife(&(mvfxRotationOverLife){.enable = true, .scale = {.value = 0.0f}}, &spin);
+    CHECK(none == 0.0f && spin == 2.0f, "no turn at 0");
+    static const mvfxCurveKey rising[2] = {
+        {.time = 0.0f, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1.0f, .value = 1.0f, .interpolation = mvfx_interpolationLinear}};
+    float aged = TurnedOverLife(
+        &(mvfxRotationOverLife){.enable = true,
+                                .scale = {.value = 1.0f, .curve = {.keys = rising, .keyCount = 2}}},
+        &spin);
+    CHECK(fabsf(aged - 0.248958f) < 1e-4f && spin == 2.0f, "a quarter radian at a rising rate");
 }
 
 static void TestThinBoxSpin(void)
@@ -2197,6 +2250,7 @@ int main(void)
     TestDepth();
     TestGyroscopic();
     TestFreeFlow();
+    TestTurnOverLife();
     TestThinBoxSpin();
     TestNearSquareNeedles();
     TestTwist();

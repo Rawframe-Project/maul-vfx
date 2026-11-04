@@ -10,7 +10,8 @@
 // those of unequal inertias), boxes spun near an axis for 200 steps and
 // spun at up to 870 rad/s, rods down to 1e-6 of their length across spun
 // about it and tumbling, and spun for 10 s, newborns taking the rest of
-// their step's substeps, sizes over life by age and by speed, in the
+// their step's substeps, sizes over life by age and by speed, turned
+// at a rate over life, in the
 // world's space under a moving instance, and bodies coming to rest in a
 // drag and falling asleep alone, held in the air under gravity; spheres
 // and capsules meeting planes, spheres and boxes from outside and in, the
@@ -168,6 +169,15 @@ static void TestSizes(Gpu* gpu, mvfxGpu* kernels)
     emitter.overLife.size.speedRange[0] = 1.0f;
     emitter.overLife.size.speedRange[1] = 4.0f;
     Tumbled(gpu, kernels, &emitter, false, "boxes sized by their speed");
+    // Turned at a rate rising over life from 0 to 2, read at each
+    // substep's start.
+    static const mvfxCurveKey rising[2] = {
+        {.time = 0, .value = 0.0f, .interpolation = mvfx_interpolationLinear},
+        {.time = 1, .value = 2.0f, .interpolation = mvfx_interpolationLinear}};
+    emitter = Bodies(mvfx_rigidBox);
+    emitter.overLife.rotation = (mvfxRotationOverLife){
+        .enable = true, .scale = {.value = 1.0f, .curve = {.keys = rising, .keyCount = 2}}};
+    Tumbled(gpu, kernels, &emitter, false, "boxes turned at a rate over life");
 }
 
 static void TestFloor(Gpu* gpu, mvfxGpu* kernels)
