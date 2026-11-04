@@ -325,10 +325,11 @@ if(MAUL_VFX_BUILD_TESTS)
         set_property(TEST rhi_kernels APPEND PROPERTY LABELS integration nightly)
         # A value of MVFX_RHI_REQUIRED that names no driver fails the device
         # suites before any adapter search (test/rhi_driver.h), so this needs
-        # no device: exit status 1 and the refusal's message, both required.
+        # no device: exit status 1 and the refusal's message as its whole
+        # output, both required.
         add_test(NAME rhi_required_unknown
                  COMMAND ${CMAKE_COMMAND} -DPROGRAM=$<TARGET_FILE:test_rhi_kernels>
-                         "-DEXPECT=MVFX_RHI_REQUIRED is .vulcan., which names no driver"
+                         "-DEXPECT=FAIL: MVFX_RHI_REQUIRED is .vulcan., which names no driver: set it to vulkan or d3d12, or leave it unset"
                          -P ${PROJECT_SOURCE_DIR}/cmake/ExpectRefusal.cmake)
         set_tests_properties(rhi_required_unknown PROPERTIES
                              ENVIRONMENT "MVFX_RHI_REQUIRED=vulcan" LABELS rhi_kernels)
