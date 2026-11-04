@@ -9,7 +9,7 @@ What to run before pushing, what each tier covers, and what the test presets exp
 | Tier | Runs | Budget |
 |---|---|---|
 | `changed` | The source, module, length, documentation and snippet rules; the generated files' checks; the organization's documentation check; clang-format on the changed files; clang-tidy on the changed library sources (`src/*.c` and `rhi/src/*.c`, as the `pr` tier reads them, in a Release and a Debug tree); the `linux-clang-20-asan` preset. A change to documentation alone builds nothing. | under 2 minutes |
-| `pr` | Every rule; clang-format on every source but the generated tables and kernel containers; clang-tidy on `src/` and `rhi/src/` but `rhi/src/kernels.c`, in a Release tree, where an assertion's condition is not evaluated, and in a Debug one, where the analyzer reads it; both parts built at `-O0`, where no function may take a stack frame over 64 KB; the `linux-clang-20-asan`, `linux-gcc-14` and `linux-rhi` presets; 10 seconds of fuzzing per target. | under 10 minutes |
+| `pr` | Every rule; clang-format on every source but the generated tables and kernel containers; clang-tidy on `src/` and `rhi/src/` but `rhi/src/kernels.c`, in a Release tree, where an assertion's condition is not evaluated, and in a Debug one, where the analyzer reads it; both parts built at `-O0`, where no function may take a stack frame over 64 KB; the `linux-clang-20-asan`, `linux-gcc-14` and `linux-rhi` presets; the `linux-gcc-14-rhi` preset built; 10 seconds of fuzzing per target. | under 10 minutes |
 | `full` | Also ThreadSanitizer, the shared library, Clang's Release build, clang-tidy on `rhi/src/kernels.c` (it includes 70 MB of containers and takes over three minutes), and 60 seconds of fuzzing per target. | under 20 minutes |
 | `extended` | Also the GPU part's suites on lavapipe: under the Vulkan validation layer, and under AddressSanitizer. | up to 2 hours |
 
@@ -70,6 +70,7 @@ The one internal header a public suite may include is `src/test_hooks.h`. Its fu
 | `checks` | clang-format, the rules above (test hygiene over the library's build and the GPU part's), the generated files' checks, the documentation site's build, clang-tidy in a Release and a Debug tree (`rhi/src/kernels.c` only off pull requests), and both parts built at `-O0`, where no function may take a stack frame over 64 KB. | always |
 | `build` | One cell per CMake preset through the organization's `cpp.yml`, in its CI image on Linux: `linux-gcc-14`, `linux-arm64-gcc-14`, `linux-clang-20`, `linux-clang-20-asan` (each test up to three times on a pull request), `linux-clang-20-tsan`, `linux-shared`, `linux-rhi`, `macos-clang` and `windows-clang-cl`. | code changes |
 | `package` | The installed shared library used by `samples/minimal`, and the static library's size. | code changes |
+| `gcc-rhi` | The `linux-gcc-14-rhi` preset built, not run: the GPU part and its tests under GCC 14 with warnings as errors, since every cell that runs the GPU part is Clang and GCC warns where Clang does not. | code changes |
 | `msvc-headers` | The public headers under MSVC's `cl` as C17 and C++17 (`cmake/HeaderCheck`). | code changes |
 | `web-emscripten` | The suites under Node, and the library's size. | code changes |
 | `fuzz` | Both fuzz targets, 30 seconds each on a pull request and 300 elsewhere; the fixtures written again by the library. | code changes |

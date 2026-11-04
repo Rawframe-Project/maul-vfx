@@ -207,6 +207,26 @@ jobs:
           cmake --build out/size
           size -t out/size/libmaul-vfx.a | tail -1
 
+  # The GPU part and its tests built with GCC 14, warnings as errors, and
+  # not run: every cell that runs the GPU part is Clang, and GCC warns where
+  # Clang does not.
+  gcc-rhi:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container: ghcr.io/rawframe-project/ci-cpp:2026.10.7@sha256:08c846597243dc000c83d6c008d078a8c3fabf8633d83963d46c0e6d02c2577e
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build
+        run: |
+          cmake --preset linux-gcc-14-rhi >/dev/null
+          cmake --build --preset linux-gcc-14-rhi
+
   # The public headers alone under MSVC's cl, as C17 and C++17 with /W4 /WX;
   # cl cannot build the library itself, which is C23.
   msvc-headers:
@@ -406,8 +426,8 @@ jobs:
   # ruleset.
   required:
     if: always()
-    needs: [changes, docs, zizmor, checks, build, package, msvc-headers, web-emscripten, fuzz, extended,
-            windows-d3d12, prune-caches]
+    needs: [changes, docs, zizmor, checks, build, package, gcc-rhi, msvc-headers, web-emscripten, fuzz,
+            extended, windows-d3d12, prune-caches]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions: {}

@@ -17,7 +17,8 @@
 #                             unoptimized with no stack frame over 64 KB,
 #                             the linux-clang-20-asan, linux-gcc-14 and
 #                             linux-rhi presets (the GPU sample on lavapipe
-#                             among them), and a short fuzzing pass.
+#                             among them), the linux-gcc-14-rhi preset
+#                             built, and a short fuzzing pass.
 #   tools/check.sh full       also ThreadSanitizer, the shared library,
 #                             Clang's Release build, clang-tidy on the
 #                             kernel table and longer fuzzing.
@@ -220,6 +221,12 @@ build frames
 preset linux-clang-20-asan
 preset linux-gcc-14
 preset linux-rhi
+
+# GCC warns where Clang does not; no cell runs the GPU part under GCC, so
+# its build alone is checked.
+step "preset linux-gcc-14-rhi, built only"
+cmake --preset linux-gcc-14-rhi >"$out/linux-gcc-14-rhi.log"
+cmake --build --preset linux-gcc-14-rhi -j "$jobs" >>"$out/linux-gcc-14-rhi.log"
 
 fuzz_seconds=10
 [ "$tier" = pr ] || fuzz_seconds=60
