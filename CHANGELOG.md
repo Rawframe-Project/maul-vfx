@@ -6,6 +6,54 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.11.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.10.0...v0.11.0) (2026-11-04)
+
+This release changes how rigid bodies turn at their contacts, so every
+rigid body that meets a collider or another body moves differently in
+rounding, and the golden hashes change. It also ends a convex search in
+an overlap shallow to rounding at once, and states how far the two paths
+agree on a needle's spin. The effect file format and the GPU part's
+tolerances are unchanged.
+
+### Changed
+
+- **Breaking: a contact's turn is taken in the body's frame**, on the
+  CPU path and the GPU part. The impulse is rotated into the frame of
+  the pose that places the contact's point on the body, the cross
+  product and the inverse inertia are taken there, and only the turn is
+  rotated out; friction's lever is built in the body's frame from its
+  patch's point. Taken in the world, each rounding leaked about 2^-24 of
+  the turn into the axis of a body's least moment, which a thin body's
+  inverse inertia magnified by the square of its length over its width.
+  A capsule pushed along a normal through its axis now gets no turn
+  about that axis to rounding of its own size, not the world's. Every
+  rigid body that meets a collider or another body turns differently in
+  rounding, and a thin one by far more: of 419 capsules and boxes
+  landing on a floor, those that one unit in the last place of every
+  contact's lever parted by more than 1e-3 fell, rolling onto it and
+  dropped upright, from 263 and 122 to 8 and 49 for boxes 1e-6 across,
+  and from 114 and 44 to 39 and 32 for capsules 1/40 of their length
+  across. The golden hashes change
+  ([#281](https://github.com/Rawframe-Project/maul-vfx/pull/281)).
+- **Breaking: EPA ends a search whose nearest face has the origin just
+  outside it** once a step gains no more than a millionth of the face's
+  distance, whichever side the origin is on. In an overlap shallow to
+  rounding a convex search between rigid hulls ran its 64 steps without
+  growing, and was counted as stopped; it now ends at once on the same
+  face, so `mvfxEmitterStats.rigidSearchStopCount` no longer counts it,
+  and a contact found there can differ in rounding. A pile of six hulls
+  stopped a search in 7 of 81 rounding variants, and now in none. The
+  golden hashes are unchanged by this
+  ([#283](https://github.com/Rawframe-Project/maul-vfx/pull/283)).
+- `mvfxRigidDef` and the guide state a measured limit: a body thinner
+  than about 1/40 of its length takes its spin about its length from
+  rounding once it meets something, so the CPU path and the GPU part
+  agree on such bodies only statistically. Of 256 capsules and boxes
+  1e-8 of their length across landing on a floor, 9 to 102 part between
+  the paths at their first contacts, against at most one of those 1/4
+  across. Results are unchanged
+  ([#282](https://github.com/Rawframe-Project/maul-vfx/pull/282)).
+
 ## [0.10.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.9.0...v0.10.0) (2026-11-03)
 
 This release changes rigid hulls' mass properties and refuses hulls too
