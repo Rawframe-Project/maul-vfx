@@ -94,8 +94,8 @@ static int32_t BoundOf(const char* what)
 // perturbation, not a correctness count: tools/pair_budgets.py derives
 // them, and is run again when the arithmetic changes. Its margin, times 1.5
 // plus 4, lets a new run step past the ensemble's largest count as far
-// again as the widest step between its two largest (1.57 times, the pool's
-// 58 against 37) or by a few bodies for a small count.
+// again as the widest step between its two largest (1.5 times, the
+// capsules' 33 against 22) or by a few bodies for a small count.
 static void Met(Gpu* gpu, mvfxGpu* kernels, const Run* scene, const char* what)
 {
     Run run = *scene;

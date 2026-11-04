@@ -14,14 +14,17 @@
 # most any run parted, times FACTOR, plus SLACK.
 #
 # The margin is how far past the ensemble's largest count a new run may
-# go. In the ensemble the header holds, no scene's largest count is more
-# than 1.57 times its next largest (the pool's contacts dropped: 58 against
-# 37; the others 1.5 or less, the counts ranging from 7 to 58 by k), and
-# no small count is more than 2 above its next (6 against 4). Times 1.5
-# plus 4 lets a new perturbation step past the largest as far again as the
-# widest step the ensemble shows, by its ratio for a large count and by a
-# few bodies for a small one. A run that still exceeds a bound calls for
-# more runs or a wider margin here, not an edit of the header.
+# go. In the ensemble the header holds, no count of 10 or more is more
+# than 1.5 times its scene's next largest (the capsules on the floor: 33
+# against 22, the counts ranging from 15 to 33 by k; the others 1.47 or
+# less), and no smaller count is more than 3 above its next (the sleeping
+# boxes: 9 against 6). Times 1.5 plus 4 lets a new perturbation step past
+# the largest as far again as the widest step the ensemble shows, by its
+# ratio for a large count and by a few bodies for a small one. A run that
+# still exceeds a bound calls for more runs or a wider margin here, not an
+# edit of the header. The burst born at one place parts 96 of its 100
+# bodies at every k, as it does on the CPU path alone, so its bound checks
+# its counts, not its places.
 #
 # Run it again whenever the kernels' or the core's arithmetic changes, on a
 # machine with lavapipe, through the shared machine's heavy-job limiter:
