@@ -103,7 +103,10 @@ source_checks() {
 
 # clang-tidy on library sources, as CI's: in a Release tree, where an
 # assertion's condition is not evaluated, and in a Debug one, where the
-# analyzer reads it. Each hides findings the other shows.
+# analyzer reads it. Each hides findings the other shows. The header filter
+# is given, anchored at the checkout: clang-tidy-20 run from the root took
+# none from .clang-tidy and dropped every finding in the library's
+# headers, and unanchored it would report a fetched dependency's.
 tidy() { # files
     local build
     for build in Release Debug; do
@@ -113,7 +116,7 @@ tidy() { # files
         build "tidy-$build" --target mvfx-rhi-kernels
         printf '%s\n' "$@" |
             xargs -P "$jobs" -n 4 clang-tidy-20 -p "$out/check-tidy-$build" --quiet \
-                --warnings-as-errors='*' 2>/dev/null
+                --warnings-as-errors='*' --header-filter="^$root/(src|include)/" 2>/dev/null
     done
 }
 
