@@ -384,7 +384,7 @@ static void CompileEmitter(const mvfxEmitterDef* source, struct mvfxMesh* mesh,
     mvfxCompileVelocity(&source->velocity, &out->velocity);
     double seconds = (double)out->duration / (double)MVFX_TICKS_PER_SECOND;
     out->loopIntegral = curve != nullptr
-                            ? seconds * mvfxCurveIntegralAt(&curve->table, &curve->integral, 1.0)
+                            ? seconds * curve->integral.cumulative[MVFX_CURVE_SAMPLES - 1]
                             : seconds * (double)source->rate;
 }
 

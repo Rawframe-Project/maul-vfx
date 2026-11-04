@@ -828,11 +828,3 @@ mvfxResult mvfxMeasureHull(const float* points, int32_t count, const mvfxAllocat
     mvfxRelease(allocator, b, sizeof(Build), _Alignof(Build));
     return result;
 }
-
-mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator* allocator,
-                         mvfxHull* out)
-{
-    mvfxHullMeasure measure;
-    mvfxResult result = mvfxMeasureHull(points, count, allocator, &measure, out);
-    return result == mvfx_success ? measure.built : result;
-}

@@ -58,9 +58,4 @@ typedef struct mvfxHullMeasure
 mvfxResult mvfxMeasureHull(const float* points, int32_t count, const mvfxAllocator* allocator,
                            mvfxHullMeasure* measure, mvfxHull* out);
 
-// Builds the hull of count points into out: the build of
-// mvfxMeasureHull's, or mvfx_errorCapacity when the allocator fails.
-mvfxResult mvfxBuildHull(const float* points, int32_t count, const mvfxAllocator* allocator,
-                         mvfxHull* out);
-
 #endif

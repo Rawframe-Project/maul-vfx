@@ -35,28 +35,6 @@ static double Step(const mvfxCurveIntegral* integral)
     return (integral->end - integral->start) / (double)(MVFX_CURVE_SAMPLES - 1);
 }
 
-double mvfxCurveIntegralAt(const mvfxCurveTable* table, const mvfxCurveIntegral* integral,
-                           double time)
-{
-    const int32_t last = MVFX_CURVE_SAMPLES - 1;
-    if (time <= integral->start)
-    {
-        return (time - integral->start) * (double)table->samples[0];
-    }
-    if (time >= integral->end)
-    {
-        return integral->cumulative[last] + (time - integral->end) * (double)table->samples[last];
-    }
-    double step = Step(integral);
-    double position = (time - integral->start) / step;
-    int32_t index = (int32_t)position;
-    index = index > last - 1 ? last - 1 : index;
-    double f = position - (double)index;
-    double low = (double)table->samples[index];
-    double rise = (double)table->samples[index + 1] - low;
-    return integral->cumulative[index] + step * (low * f + rise * f * f * 0.5);
-}
-
 // The fraction f in [0, 1] of an interval of width step, starting at
 // value low and rising by rise, at which the area reaches area >= 0:
 // step (low f + rise f^2 / 2) = area, by the root free of cancellation.
