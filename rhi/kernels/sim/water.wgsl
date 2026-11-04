@@ -35,12 +35,22 @@ fn waterCorners(x: f32, z: f32, lo: ptr<function, vec2<u32>>,
     if (!(p.x >= 0.0 && p.x <= n.x && p.y >= 0.0 && p.y <= n.y)) {
         return false;
     }
+    waterCornersHeld(x, z, lo, t);
+    return true;
+}
+
+// mvfxWaterCornersHeld: the corners waterCorners finds, a point off the
+// grid held to its edge.
+fn waterCornersHeld(x: f32, z: f32, lo: ptr<function, vec2<u32>>,
+                    t: ptr<function, vec2<f32>>) {
+    let n = vec2<f32>(f32(params.water.y), f32(params.water.z));
+    let h = params.waterNumbers.w;
+    let p = vec2<f32>(x / h + 0.5 * n.x, z / h + 0.5 * n.y);
     let cells = params.water.yz;
     let c = min(max(p - 0.5, vec2<f32>(0.0)), n - 1.0);
     let below = vec2<u32>(c);
     *lo = select(cells - 2u, below, below < cells - 1u);
     *t = c - vec2<f32>(*lo);
-    return true;
 }
 
 // mvfxWaterShare: a corner's weight (1 the X, 2 the Z neighbor's).
@@ -219,10 +229,12 @@ fn waterMeet(touch: Touch, start: vec3<f32>, end: vec3<f32>) -> Crossing {
     }
     out.t = above / (above - below);
     out.point = start + out.t * (end - start);
-    let at = touch.at + out.t * (to - touch.at);
+    // Held between the move's ends, both on the grid: with t rounded to 1
+    // and to - from inexact, from + t (to - from) can pass to. Its cells
+    // held to the grid too, whatever the rounding.
+    let at = clamp(touch.at + out.t * (to - touch.at), min(touch.at, to), max(touch.at, to));
     out.at = at.xz;
-    // Within the grid, between two places on it.
-    _ = waterCorners(at.x, at.z, &lo, &t);
+    waterCornersHeld(at.x, at.z, &lo, &t);
     waterHeightOf(lo, t, &height, &ground);
     out.crossed = !isShallowWater() || height > ground;
     return out;
@@ -234,14 +246,14 @@ fn waterSurfaceAt(x: u32, z: u32) -> f32 {
     return select(u, waterField(1u, x, z) + u, isShallowWater());
 }
 
-// mvfxWaterNormal at a point (X and Z) of the surface's frame on the
-// grid: the four cells' normals (their heights' central differences,
-// one-sided at the edges) weighed bilinearly, made unit, turned into the
-// particles' space.
+// mvfxWaterNormalOf at a point (X and Z) of the surface's frame, its
+// cells held to the grid: the four cells' normals (their heights'
+// central differences, one-sided at the edges) weighed bilinearly, made
+// unit, turned into the particles' space.
 fn waterNormal(at: vec2<f32>) -> vec3<f32> {
     var lo = vec2<u32>(0u);
     var t = vec2<f32>(0.0);
-    _ = waterCorners(at.x, at.y, &lo, &t);
+    waterCornersHeld(at.x, at.y, &lo, &t);
     let n = params.water.yz;
     let h = params.waterNumbers.w;
     var sum = vec3<f32>(0.0);

@@ -251,13 +251,22 @@ bool mvfxWaterCorners(const mvfxCompiledWater* water, float x, float z, int32_t 
     {
         return false;
     }
+    mvfxWaterCornersHeld(water, x, z, lo, t);
+    return true;
+}
+
+void mvfxWaterCornersHeld(const mvfxCompiledWater* water, float x, float z, int32_t lo[2],
+                          float t[2])
+{
+    const int32_t* n = water->def.size;
+    float h = water->def.cellSize;
+    const float p[2] = {x / h + 0.5f * (float)n[0], z / h + 0.5f * (float)n[1]};
     for (int32_t k = 0; k < 2; ++k)
     {
         float c = fminf(fmaxf(p[k] - 0.5f, 0.0f), (float)(n[k] - 1));
         lo[k] = (int32_t)c < n[k] - 1 ? (int32_t)c : n[k] - 2;
         t[k] = c - (float)lo[k];
     }
-    return true;
 }
 
 bool mvfxWaterHeight(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
@@ -290,21 +299,6 @@ void mvfxWaterHeightOf(const mvfxCompiledWater* water, const mvfxWaterState* sta
     }
 }
 
-void mvfxWaterVelocity(const mvfxCompiledWater* water, const mvfxWaterState* state, float x,
-                       float z, float velocity[3])
-{
-    int32_t lo[2];
-    float t[2];
-    if (!mvfxWaterCorners(water, x, z, lo, t))
-    {
-        velocity[0] = 0.0f;
-        velocity[1] = 0.0f;
-        velocity[2] = 0.0f;
-        return;
-    }
-    mvfxWaterVelocityOf(water, state, lo, t, velocity);
-}
-
 void mvfxWaterVelocityOf(const mvfxCompiledWater* water, const mvfxWaterState* state,
                          const int32_t lo[2], const float t[2], float velocity[3])
 {
@@ -324,19 +318,9 @@ void mvfxWaterVelocityOf(const mvfxCompiledWater* water, const mvfxWaterState* s
     }
 }
 
-void mvfxWaterNormal(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
-                     float normal[3])
+void mvfxWaterNormalOf(const mvfxCompiledWater* water, const mvfxWaterState* state,
+                       const int32_t lo[2], const float t[2], float normal[3])
 {
-    int32_t lo[2];
-    float t[2];
-    if (!mvfxWaterCorners(water, x, z, lo, t))
-    {
-        // Off the grid, the rest plane's.
-        normal[0] = 0.0f;
-        normal[1] = 1.0f;
-        normal[2] = 0.0f;
-        return;
-    }
     float sum[3] = {0.0f, 0.0f, 0.0f};
     for (int32_t corner = 0; corner < 4; ++corner)
     {
@@ -369,11 +353,14 @@ static void SampleOne(const mvfxInstance* live, int32_t water, const mvfxSpaceMa
     const mvfxCompiledWater* compiled = &live->effect->waters[water];
     const mvfxWaterState* state = &live->waters[water];
     float ground = 0.0f;
-    out->inside = mvfxWaterHeight(compiled, state, local[0], local[2], &height, &ground);
+    int32_t lo[2];
+    float t[2];
+    out->inside = mvfxWaterCorners(compiled, local[0], local[2], lo, t);
     if (out->inside)
     {
-        mvfxWaterVelocity(compiled, state, local[0], local[2], velocity);
-        mvfxWaterNormal(compiled, state, local[0], local[2], normal);
+        mvfxWaterHeightOf(compiled, state, lo, t, &height, &ground);
+        mvfxWaterVelocityOf(compiled, state, lo, t, velocity);
+        mvfxWaterNormalOf(compiled, state, lo, t, normal);
     }
     const float surface[3] = {local[0], height, local[2]};
     mvfxUnmapPoint(map, surface, out->surface);

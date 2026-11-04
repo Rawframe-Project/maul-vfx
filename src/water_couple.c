@@ -163,10 +163,17 @@ void mvfxMeetWater(mvfxInstance* instance, int32_t emitter, int32_t i, const mvf
     for (int32_t k = 0; k < 3; ++k)
     {
         point[k] = start[k] + t * (end[k] - start[k]);
-        at[k] = from[k] + t * (to[k] - from[k]);
+        // Held between the move's ends, both on the grid: with t rounded to
+        // 1 and to - from inexact, from + t (to - from) can pass to.
+        at[k] = fminf(fmaxf(from[k] + t * (to[k] - from[k]), fminf(from[k], to[k])),
+                      fmaxf(from[k], to[k]));
     }
+    // Its cells held to the grid too, whatever the rounding above.
+    int32_t lo[2];
+    float share[2];
+    mvfxWaterCornersHeld(water->water, at[0], at[2], lo, share);
     float met[2];
-    (void)mvfxWaterHeight(water->water, state, at[0], at[2], &met[0], &met[1]);
+    mvfxWaterHeightOf(water->water, state, lo, share, &met[0], &met[1]);
     if (!(met[0] > met[1]))
     {
         return;
@@ -187,7 +194,7 @@ void mvfxMeetWater(mvfxInstance* instance, int32_t emitter, int32_t i, const mvf
     // kept.
     float normal[3];
     float turned[3];
-    mvfxWaterNormal(water->water, state, at[0], at[2], normal);
+    mvfxWaterNormalOf(water->water, state, lo, share, normal);
     mvfxMapVector(&water->map, normal, 1.0f, turned);
     int64_t when = tick + (int64_t)floor((double)t * seconds * (double)MVFX_TICKS_PER_SECOND + 0.5);
     mvfxRecordEvent(instance, emitter,

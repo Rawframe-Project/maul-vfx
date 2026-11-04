@@ -6,7 +6,9 @@
 // least normal at it, its instance still or moving; drag
 // slowing one in still water and carrying one with a flow; crossings met
 // once each where and when they cross, their events, and the pushes they
-// leave with the volume kept; once a step through substeps; through water
+// leave with the volume kept; at a surface's edge, the crossing point
+// held on it where rounding would pass it, and one aslant met half way;
+// once a step through substeps; through water
 // into the floor, not over dry ground; pours adding exactly their
 // particles' volume and killing them, and one past binary32's range held
 // at MVFX_MAX_WATER_DEPTH; room for crossings held, 20 bytes a particle,
@@ -563,6 +565,87 @@ static void TestCrossings(void)
     Close();
 }
 
+// Opens an emitter pushing 0.02 where it crosses, without gravity, over a
+// shallow surface of 24 by 16 cells of 1 centered at X 0.1, filled to
+// level by a first step.
+static void OpenOffCenter(float level)
+{
+    mvfxWaterCoupling coupling = Coupling();
+    coupling.push = 0.02f;
+    mvfxEmitterDef emitter = Coupled(&coupling);
+    emitter.motion.gravity[1] = 0.0f;
+    mvfxWaterDef shallow = Surface(mvfx_waterShallow);
+    shallow.size[0] = 24;
+    shallow.cellSize = 1.0f;
+    shallow.center[0] = 0.1f;
+    shallow.fillLevel = level;
+    CHECK(Open(&emitter, 1, &shallow), "opened");
+    CHECK(mvfxContext_Step(s_context, 1.0 / 64.0) == mvfx_success, "filled");
+}
+
+// The column of the off-center surface's lowest cell a step after its
+// crossings, their pushes taken, and that cell's height.
+static int32_t LowestColumn(float* height)
+{
+    CHECK(mvfxContext_Step(s_context, 1.0 / 64.0) == mvfx_success, "pushed");
+    static float heights[24 * 16];
+    const mvfxWaterRead read = {
+        .field = mvfx_waterHeight, .format = mvfx_formatFloat32, .size = {24, 16}};
+    CHECK(mvfxInstance_ReadWater(s_context, s_instance, 0, &read, heights, sizeof heights) ==
+              mvfx_success,
+          "read");
+    int32_t lowest = 0;
+    for (int32_t i = 1; i < 24 * 16; ++i)
+    {
+        lowest = heights[i] < heights[lowest] ? i : lowest;
+    }
+    *height = heights[lowest];
+    return lowest % 24;
+}
+
+// A surface centered off 0 maps a particle's start and end into its frame
+// each rounded alone, so the crossing point between them, at the share of
+// the move t, can round past the end. Two particles high over the
+// off-center surface, filled to just over where they end, cross it with t
+// rounded to 1 into its west edge (X -12 in its frame): one met exactly
+// at the edge, one where from + t (to - from) rounds an ulp past it. Each
+// crossing is met once, where it ends, the normal up, and sinks the
+// surface at the edge (the values found by searching starts and speeds).
+// A particle crossing it aslant, half way along its move, sinks it there,
+// neither where it starts nor where it ends.
+static void TestAtEdge(void)
+{
+    // The particles end at 0.25 (1000 + vy / 64 rounded), just below it.
+    const float vy = (0.25f - 1000.0f) * 64.0f;
+    OpenOffCenter(0x1.000002p-2f);
+    Place(0x1.0a017ep+1, 1000.0, 0.0, -0x1.bf4d2cp+9f, vy, 0.0f);
+    Place(0x1.72a182p+2, 1000.0, 0.0, -0x1.1b0ec6p+10f, vy, 0.0f);
+    CHECK(mvfxContext_Step(s_context, 0.0) == mvfx_success, "born");
+    CHECK(mvfxContext_Step(s_context, 1.0 / 64.0) == mvfx_success, "stepped");
+    const mvfxEvent* events[16];
+    int32_t found = Events(mvfx_eventWater, events);
+    CHECK(found == 2, "both crossings met");
+    for (int32_t e = 0; e < found; ++e)
+    {
+        CHECK(fabs(events[e]->place[0] - (double)-0x1.7cccccp+3f) < 1e-5, "where it ends");
+        CHECK(events[e]->normal[0] == 0.0f && events[e]->normal[1] == 1.0f &&
+                  events[e]->normal[2] == 0.0f,
+              "its normal up");
+    }
+    float height = 0.0f;
+    CHECK(LowestColumn(&height) == 0 && height < 0x1.000002p-2f, "sunk at the edge");
+    Close();
+    // From X -4.5 and 0.5 above the surface (0.2) to X -0.5 and 0.5 below
+    // it in its frame: met at X -2.5, cell 9's center.
+    OpenOffCenter(0.2f);
+    Place(-4.4, 0.7, 0.0, 256.0f, -64.0f, 0.0f);
+    CHECK(mvfxContext_Step(s_context, 0.0) == mvfx_success, "born aslant");
+    CHECK(mvfxContext_Step(s_context, 1.0 / 64.0) == mvfx_success, "stepped aslant");
+    CHECK(Events(mvfx_eventWater, events) == 1, "the crossing aslant met");
+    CHECK(LowestColumn(&height) == 9 && height < 0.2f, "sunk half way");
+    Close();
+}
+
 static void TestOnce(void)
 {
     // A liquid's particle let go 0.3 above a still surface at buoyancy 4
@@ -853,6 +936,7 @@ int main(void)
     TestDrag();
     TestFlow();
     TestCrossings();
+    TestAtEdge();
     TestOnce();
     TestRecorded();
     TestOnSurface();

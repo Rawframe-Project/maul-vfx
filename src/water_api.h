@@ -25,6 +25,11 @@ mvfxBounds mvfxWaterBounds(const mvfxInstance* instance, int32_t w);
 // grid.
 bool mvfxWaterCorners(const mvfxCompiledWater* water, float x, float z, int32_t lo[2], float t[2]);
 
+// The corners mvfxWaterCorners finds, a point off the grid held to its
+// edge: every point reads cells of the grid.
+void mvfxWaterCornersHeld(const mvfxCompiledWater* water, float x, float z, int32_t lo[2],
+                          float t[2]);
+
 static inline float mvfxWaterShare(const float t[2], int32_t corner)
 {
     return ((corner & 1) != 0 ? t[0] : 1.0f - t[0]) * ((corner >> 1) != 0 ? t[1] : 1.0f - t[1]);
@@ -37,11 +42,6 @@ static inline float mvfxWaterShare(const float t[2], int32_t corner)
 bool mvfxWaterHeight(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
                      float* height, float* ground);
 
-// The water's velocity over a point (x, z) of a surface's frame, bilinear
-// likewise; 0 off the grid.
-void mvfxWaterVelocity(const mvfxCompiledWater* water, const mvfxWaterState* state, float x,
-                       float z, float velocity[3]);
-
 // The surface's height and ground, and the water's velocity, at the
 // corners mvfxWaterCorners found for a point.
 void mvfxWaterHeightOf(const mvfxCompiledWater* water, const mvfxWaterState* state,
@@ -49,9 +49,9 @@ void mvfxWaterHeightOf(const mvfxCompiledWater* water, const mvfxWaterState* sta
 void mvfxWaterVelocityOf(const mvfxCompiledWater* water, const mvfxWaterState* state,
                          const int32_t lo[2], const float t[2], float velocity[3]);
 
-// The surface's unit normal over a point (x, z) of its frame: its cells'
-// normals, bilinear, normalized; off the grid, up.
-void mvfxWaterNormal(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
-                     float normal[3]);
+// The surface's unit normal at the corners mvfxWaterCorners found for a
+// point: its cells' normals, bilinear, normalized.
+void mvfxWaterNormalOf(const mvfxCompiledWater* water, const mvfxWaterState* state,
+                       const int32_t lo[2], const float t[2], float normal[3]);
 
 #endif
