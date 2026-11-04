@@ -104,7 +104,7 @@ static mvfxResult ThroughFile(mvfxContext* context, const mvfxEffectDef* def,
 
 // Expects no body of the scene to have met more bodies than the cap lets
 // it: the scene's pairs are those of an uncapped search.
-static void ExpectUncapped(const mvfxContext* context)
+static void ExpectUncapped(mvfxContext* context)
 {
     const Scene* scene = SceneOf(context);
     for (int32_t i = 0; i < scene->count; ++i)
