@@ -6,10 +6,12 @@
 // host's particles' memory, each call that changes the simulation is
 // refused with mvfx_errorBusy and changes nothing, a second destruction
 // does nothing, a reading call still answers, and the destruction then
-// gives back all the memory taken. And its creation failing at each of
-// its allocations in turn, for an effect with a liquid gas (whose split
-// steps keep lanes): refused, all it took given back. And the part's calls
-// that take a const context run no host code.
+// gives back all the memory taken. And the part's calls that take the
+// context mutable refused from the context's host code, and taken outside
+// it. And its creation failing at each of its allocations in turn, for an
+// effect with a liquid gas (whose split steps keep lanes): refused, all it
+// took given back. And the part's calls that take a const context run no
+// host code.
 
 #include "test_harness.h"
 
@@ -23,6 +25,7 @@
 #include "maul-vfx/grid.h"
 #include "maul-vfx/instance.h"
 #include "maul-vfx/mesh.h"
+#include "maul-vfx/modules.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -347,6 +350,165 @@ static void TestConstCalls(void)
     mvfxDestroyContext(context);
 }
 
+// The part's calls that take the context mutable, each called back in
+// from a host module of another instance of the context through one
+// table: refused as busy, one misuse counted, the planned instance's mesh
+// and its gas's and water surface's reports left as they were. Each is
+// called with arguments it takes, so its refusal is the host code's.
+// tools/check_host_calls.py refuses such a call of the part's headers that
+// the table lacks.
+typedef mvfxResult (*Change)(mvfxContext* context);
+
+static mvfxGpuSim* s_sim;
+static mvfxMeshId s_mesh;
+static const uint32_t s_gasRecord[MVFX_GPU_GAS_STATISTICS_WORDS];
+static const uint32_t s_waterRecord[MVFX_GPU_WATER_STATISTICS_WORDS];
+
+static mvfxResult SetEmitterMesh(mvfxContext* context)
+{
+    return mvfxGpuSim_SetEmitterMesh(s_sim, context, 0, s_mesh);
+}
+
+static mvfxResult ReportGas(mvfxContext* context)
+{
+    return mvfxGpuSim_ReportGas(s_sim, context, 0, s_gasRecord);
+}
+
+static mvfxResult ReportWater(mvfxContext* context)
+{
+    return mvfxGpuSim_ReportWater(s_sim, context, 0, s_waterRecord);
+}
+
+// Each call by its public name, which tools/check_host_calls.py reads.
+static const struct
+{
+    Change call;
+    const char* name;
+} s_changes[] = {
+    {SetEmitterMesh, "mvfxGpuSim_SetEmitterMesh"},
+    {ReportGas, "mvfxGpuSim_ReportGas"},
+    {ReportWater, "mvfxGpuSim_ReportWater"},
+};
+
+enum
+{
+    CHANGES = (int32_t)(sizeof s_changes / sizeof s_changes[0])
+};
+
+static mvfxContext* s_changing;
+static mvfxResult s_changed[CHANGES];
+static uint64_t s_changeMisuse[CHANGES];
+
+static void ChangeBack(const mvfxModuleCall* call, void* user)
+{
+    (void)call;
+    (void)user;
+    mvfxContext* context = s_changing;
+    if (context == NULL)
+    {
+        return;
+    }
+    s_changing = NULL;
+    for (int32_t c = 0; c < CHANGES; ++c)
+    {
+        uint64_t before = mvfxContext_GetMisuse(context);
+        s_changed[c] = s_changes[c].call(context);
+        s_changeMisuse[c] = mvfxContext_GetMisuse(context) - before;
+    }
+}
+
+static const mvfxHostModule s_changeBack = {.stage = mvfx_stageAfterMotion, .function = ChangeBack};
+
+static void TestContextChangesRefused(mvfxGpu* kernels)
+{
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const float corners[12] = {0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1};
+    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
+    meshDef.positions = corners;
+    meshDef.vertexCount = 4;
+    CHECK(mvfxCreateMesh(context, &meshDef, &s_mesh) == mvfx_success, "mesh");
+    // A planned instance spawning from the mesh, with a gas and a water
+    // surface, and its simulation.
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.shape.kind = mvfx_shapeMesh;
+    emitter.shape.mesh = s_mesh;
+    emitter.shape.meshMode = mvfx_meshVertices;
+    mvfxGasDef gas = mvfxDefaultGasDef();
+    gas.size[0] = 8;
+    gas.size[1] = 8;
+    gas.size[2] = 1;
+    gas.cellSize = 0.1f;
+    mvfxWaterDef water = mvfxDefaultWaterDef();
+    water.size[0] = 8;
+    water.size[1] = 8;
+    water.cellSize = 0.1f;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    effectDef.gases = &gas;
+    effectDef.gasCount = 1;
+    effectDef.waters = &water;
+    effectDef.waterCount = 1;
+    mvfxEffectId planned;
+    CHECK(mvfxCreateEffect(context, &effectDef, &planned, NULL) == mvfx_success,
+          "a planned effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = planned;
+    instanceDef.planned = true;
+    mvfxInstanceId instance;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &instance) == mvfx_success, "instance");
+    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+    simDef.gpu = kernels;
+    simDef.context = context;
+    simDef.effect = planned;
+    simDef.instance = instance;
+    mvfxGpuRefusal refusal;
+    CHECK(mvfxCreateGpuSim(&simDef, &s_sim, &refusal) == mvfx_success, "simulation");
+    // Another instance, stepped on the CPU, whose host module calls back in.
+    mvfxEmitterDef hosted = mvfxDefaultEmitterDef();
+    hosted.hostModules = &s_changeBack;
+    hosted.hostModuleCount = 1;
+    mvfxEffectDef hostedDef = mvfxDefaultEffectDef();
+    hostedDef.emitters = &hosted;
+    hostedDef.emitterCount = 1;
+    mvfxEffectId stepped;
+    CHECK(mvfxCreateEffect(context, &hostedDef, &stepped, NULL) == mvfx_success,
+          "a stepped effect");
+    instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = stepped;
+    mvfxInstanceId steppedInstance;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &steppedInstance) == mvfx_success,
+          "a stepped instance");
+    for (int32_t c = 0; c < CHANGES; ++c)
+    {
+        s_changed[c] = mvfx_success;
+        s_changeMisuse[c] = 0;
+    }
+    s_changing = context;
+    CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success &&
+              s_changing == NULL,
+          "the host module called back in");
+    for (int32_t c = 0; c < CHANGES; ++c)
+    {
+        if (s_changed[c] != mvfx_errorBusy || s_changeMisuse[c] != 1)
+        {
+            printf("%s from a host module: %d, %llu misuse\n", s_changes[c].name, (int)s_changed[c],
+                   (unsigned long long)s_changeMisuse[c]);
+        }
+        CHECK(s_changed[c] == mvfx_errorBusy && s_changeMisuse[c] == 1,
+              "a change from a host module refused as busy and counted");
+    }
+    // Outside host code each is taken, so the refusals were the host code's.
+    CHECK(SetEmitterMesh(context) == mvfx_success && ReportGas(context) == mvfx_success &&
+              ReportWater(context) == mvfx_success,
+          "the same calls taken outside host code");
+    mvfxDestroyGpuSim(s_sim);
+    s_sim = NULL;
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     Gpu gpu;
@@ -358,6 +520,7 @@ int main(void)
     TestCallsBackIn(&gpu, kernels);
     TestFailedMemory(kernels);
     TestConstCalls();
+    TestContextChangesRefused(kernels);
     mvfxDestroyGpu(kernels);
     Close(&gpu);
     return s_failures == 0 ? 0 : 1;
