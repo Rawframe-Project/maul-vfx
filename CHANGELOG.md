@@ -6,6 +6,19 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.11.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.10.0...v0.11.0) (2026-11-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **collide:** EPA ends a search whose nearest face has the origin just outside it once a step gains no more than a millionth of the face's distance, so mvfxEmitterStats.rigidSearchStopCount no longer counts such searches in overlaps shallow to rounding, and a contact found there can differ in rounding.
+* **step:** a contact's turn is taken in the body's frame from its body-frame point, on the CPU path and the GPU part, so every rigid body that meets a collider or another body turns differently in rounding, and a thin one by far more: the spin about its length a contact gave it by rounding falls by up to 150 times. The golden hashes change.
+
+### Fixed
+
+* **collide:** end EPA in an overlap shallow to rounding ([#283](https://github.com/Rawframe-Project/maul-vfx/issues/283)) ([9f4f547](https://github.com/Rawframe-Project/maul-vfx/commit/9f4f54704b03c5fa3a7d2fab6a7ce55a9b54c859)), closes [#280](https://github.com/Rawframe-Project/maul-vfx/issues/280) [#281](https://github.com/Rawframe-Project/maul-vfx/issues/281)
+* **step:** take a contact's turn in the body's frame ([#281](https://github.com/Rawframe-Project/maul-vfx/issues/281)) ([6a82da1](https://github.com/Rawframe-Project/maul-vfx/commit/6a82da151673c578ba8b2546d0196210c5c5cb37))
+
 ## [0.10.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.9.0...v0.10.0) (2026-11-03)
 
 This release changes rigid hulls' mass properties and refuses hulls too
