@@ -25,9 +25,11 @@
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
 // they are kept out of, and born into a box; capsules of the largest
 // size on grids; bodies near the ends of sizes and densities, in their
-// own units, tumbling and thrown on a floor; spheres and capsules sized
-// by a parameter of unequal axes or inheriting unequal sizes, their axes
-// the shape does not set taking X; what is still refused (kills
+// own units, tumbling and thrown on a floor; capsules and boxes 1e-8 of
+// their length across landing on a level floor, a bounded number apart
+// as they take their spin about their length from rounding; spheres and
+// capsules sized by a parameter of unequal axes or inheriting unequal
+// sizes, their axes the shape does not set taking X; what is still refused (kills
 // within a step; bodies meeting each other are rhi_pairs'). Skips (77)
 // without an adapter, unless MVFX_RHI_REQUIRED is set.
 
@@ -891,6 +893,53 @@ static void TestRods(Gpu* gpu, mvfxGpu* kernels)
     }
 }
 
+static void TestFloorNeedles(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Capsules and boxes 0.3 to 0.5 long on a level floor, 0.1 and 4e-9
+    // across: lying along X and rolling about it as they fall, or dropped
+    // upright turning slowly. They agree step by step until they land.
+    // There a needle takes its spin about its length from rounding
+    // (mvfxRigidDef), and up to 102 of 256 go apart (87 and 102 capsules,
+    // 9 and 89 boxes, measured on lavapipe; 185 to 256 with the contacts'
+    // turns taken in the world, and boxes 4e-9 across rolling then parted
+    // away from the floor too); 0.1 across, none or one does. Each bound is
+    // half again the count measured, at least 4.
+    static const mvfxCollider floor = {
+        .kind = mvfx_colliderPlane, .center = {0, -0.7f, 0}, .normal = {0, 1, 0}};
+    static const float across[2] = {0.1f, 4e-9f};
+    static const int32_t most[2][2][2] = {{{4, 4}, {131, 153}}, {{4, 4}, {14, 134}}};
+    for (int32_t shape = 1; shape < 3; ++shape)
+    {
+        for (int32_t w = 0; w < 2; ++w)
+        {
+            for (int32_t upright = 0; upright < 2; ++upright)
+            {
+                mvfxEmitterDef emitter = Thrown((mvfxRigidShape)shape, &floor, 1);
+                emitter.size = (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                                  .min = {across[w], 0.3f, across[w]},
+                                                  .max = {across[w], 0.5f, across[w]}};
+                emitter.orientationMode = mvfx_orientationEuler;
+                float turn = upright != 0 ? 0.0f : 1.5707964f;
+                emitter.orientation = (mvfxVectorSource){
+                    .kind = mvfx_sourceRange, .min = {0, 0, turn}, .max = {0, 0, turn}};
+                emitter.angularVelocity = upright != 0
+                                              ? (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                                                   .min = {-0.3f, -0.3f, -0.3f},
+                                                                   .max = {0.3f, 0.3f, 0.3f}}
+                                              : (mvfxVectorSource){.kind = mvfx_sourceRange,
+                                                                   .min = {-3, 0, 0},
+                                                                   .max = {3, 0, 0}};
+                char what[96];
+                (void)snprintf(what, sizeof what, "%s %g across %s on a level floor",
+                               shape == 1 ? "capsules" : "boxes", (double)across[w],
+                               upright != 0 ? "dropped upright" : "rolling about their length");
+                Met(gpu, kernels,
+                    &(Run){.mostApart = most[shape - 1][w][upright], .emitters = &emitter}, what);
+            }
+        }
+    }
+}
+
 // Needle hulls 1 long along (1, 1, 1) of their mesh, a ring of six
 // points about their middle, from 1e-5 to 0.04 of their length across
 // (below about 3e-6 their hulls are too thin to resolve and refused).
@@ -1018,6 +1067,7 @@ static void Suite(Gpu* gpu, mvfxGpu* kernels)
     TestFreeBoxes(gpu, kernels);
     TestRods(gpu, kernels);
     TestNeedleHulls(gpu, kernels);
+    TestFloorNeedles(gpu, kernels);
     TestTiedSizes(gpu, kernels);
     TestHeldSpeed(gpu, kernels);
 }

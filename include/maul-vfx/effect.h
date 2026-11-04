@@ -685,7 +685,19 @@ extern "C"
     // substep), the event its first of a step; its restitution, friction,
     // rest speed and radius are not read. A body takes at most
     // MVFX_MAX_RIGID_CONTACTS contacts a substep, the shallowest past them
-    // dropped and counted (mvfxEmitterStats.rigidContactsDropped).
+    // dropped and counted (mvfxEmitterStats.rigidContactsDropped). A
+    // contact's turn is taken in the body's frame, from its point on the
+    // body, so a capsule's push along a normal through its axis turns it
+    // about none of it. Still, a body thinner than about 1/40 of its length
+    // takes its spin about its length on contact from rounding: friction
+    // holds or slides and twists or not by thresholds, and its small moment
+    // there turns a small torque into a large spin. One unit in the last
+    // place of every contact's lever parted 30 to 39 of 419 capsules and
+    // boxes 1/40 of their length across landing on a floor by more than
+    // 1e-3, and at most 7 of those 1/4 across. The CPU path and the GPU part
+    // agree on such bodies only statistically: of 256 capsules and boxes
+    // 1e-8 of their length across landing on a floor, 9 to 102 part at
+    // their first contacts, against none or one 1/4 across.
     typedef struct mvfxRigidDef
     {
         // Rigid bodies are plain particles: never units (mvfxUnitDef) or a
