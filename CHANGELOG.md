@@ -30,8 +30,9 @@ tolerances are unchanged.
   rigid body that meets a collider or another body turns differently in
   rounding, and a thin one by far more: of 419 capsules and boxes
   landing on a floor, those that one unit in the last place of every
-  contact's lever parted by more than 1e-3 fell from 263 to 8 for boxes
-  1e-6 across, and from 114 to 39 for capsules 1/40 of their length
+  contact's lever parted by more than 1e-3 fell, rolling onto it and
+  dropped upright, from 263 and 122 to 8 and 49 for boxes 1e-6 across,
+  and from 114 and 44 to 39 and 32 for capsules 1/40 of their length
   across. The golden hashes change
   ([#281](https://github.com/Rawframe-Project/maul-vfx/pull/281)).
 - **Breaking: EPA ends a search whose nearest face has the origin just
