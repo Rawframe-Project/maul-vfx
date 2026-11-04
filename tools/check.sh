@@ -7,8 +7,10 @@
 #   tools/check.sh changed    the files changed against origin/main: the
 #                             source rules, the generated files' checks,
 #                             formatting, the documentation checks,
-#                             clang-tidy on the changed library sources,
-#                             and the linux-clang-20-asan preset's tests.
+#                             clang-tidy on the changed library sources
+#                             (on all of them when a library header
+#                             changed), and the linux-clang-20-asan
+#                             preset's tests.
 #                             Under two minutes; run it before every push.
 #   tools/check.sh pr         what the pull request check runs on Linux:
 #                             every check, clang-tidy, both parts built
@@ -104,19 +106,21 @@ source_checks() {
 # clang-tidy on library sources, as CI's: in a Release tree, where an
 # assertion's condition is not evaluated, and in a Debug one, where the
 # analyzer reads it. Each hides findings the other shows. The header filter
-# is given, anchored at the checkout: clang-tidy-20 run from the root took
-# none from .clang-tidy and dropped every finding in the library's
-# headers, and unanchored it would report a fetched dependency's.
+# is given because clang-tidy-20, run from the root, takes none from
+# .clang-tidy and drops every finding in a header; tools/tidy_filter.sh
+# anchors it where the tree was configured from, so that headers fetched
+# under out/ are not taken for the library's.
 tidy() { # files
-    local build
+    local build filter
     for build in Release Debug; do
         configure "tidy-$build" -DCMAKE_C_COMPILER=clang-20 -DCMAKE_BUILD_TYPE=$build \
             -DMAUL_VFX_RHI=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
         # rhi/src/kernels.c includes the containers' arrays the build writes.
         build "tidy-$build" --target mvfx-rhi-kernels
+        filter=$("$root/tools/tidy_filter.sh" "$out/check-tidy-$build")
         printf '%s\n' "$@" |
             xargs -P "$jobs" -n 4 clang-tidy-20 -p "$out/check-tidy-$build" --quiet \
-                --warnings-as-errors='*' --header-filter="^$root/(src|include)/" 2>/dev/null
+                --warnings-as-errors='*' --header-filter="$filter" 2>/dev/null
     done
 }
 
@@ -148,13 +152,26 @@ if [ "$tier" = changed ]; then
         clang-format --dry-run -Werror "${present[@]}"
     fi
     # The library sources changed, as the pr tier reads them (the kernel
-    # table left to the full tier).
+    # table left to the full tier); all of them when a library header
+    # changed, which reaches sources that did not.
     tidy_files=()
+    headers=0
     for f in "${changed[@]}"; do
         if [[ -f "$f" && "$f" =~ ^(src|rhi/src)/[^/]+\.c$ && "$f" != rhi/src/kernels.c ]]; then
             tidy_files+=("$f")
         fi
+        if [[ "$f" =~ ^(rhi/)?(src|include)/.+\.h$ ]]; then
+            headers=1
+        fi
     done
+    if [ $headers -eq 1 ]; then
+        tidy_files=()
+        for f in src/*.c rhi/src/*.c; do
+            if [[ "$f" != rhi/src/kernels.c ]]; then
+                tidy_files+=("$f")
+            fi
+        done
+    fi
     if [ ${#tidy_files[@]} -gt 0 ]; then
         step "clang-tidy on ${#tidy_files[@]} changed library files"
         tidy "${tidy_files[@]}"

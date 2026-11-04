@@ -112,10 +112,11 @@ jobs:
         # and on a Debug one, where the analyzer reads it: each hides findings
         # the other shows. rhi/src/kernels.c includes 70 MB of kernel
         # containers and takes clang-tidy minutes, so pull requests leave it
-        # to main and the night. The header filter is given, anchored at the
-        # checkout: clang-tidy-20 run from the root took none from
-        # .clang-tidy and dropped every finding in the library's headers, and
-        # unanchored it would report a fetched dependency's.
+        # to main and the night. The header filter is given because
+        # clang-tidy-20, run from the root, takes none from .clang-tidy and
+        # drops every finding in a header; tools/tidy_filter.sh anchors it
+        # where the tree was configured from, so that headers fetched under
+        # out/ are not taken for the library's.
         env:
           EVENT: ${{ github.event_name }}
         run: |
@@ -129,9 +130,10 @@ jobs:
               -DMAUL_VFX_RHI=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >/dev/null
             # rhi/src/kernels.c includes the containers' arrays the build writes.
             cmake --build "out/tidy-$build" --target mvfx-rhi-kernels >/dev/null
+            filter=$(tools/tidy_filter.sh "out/tidy-$build")
             printf '%s\n' "${files[@]}" |
               xargs -P 4 -n 4 clang-tidy-20 -p "out/tidy-$build" --quiet --warnings-as-errors='*' \
-                --header-filter="^$PWD/(src|include)/"
+                --header-filter="$filter"
           done
       - name: No stack frame over 64 KB, unoptimized
         # Both parts at -O0, where every temporary stays on the stack: the
