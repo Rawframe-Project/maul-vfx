@@ -633,7 +633,7 @@ static bool Expand(Epa* e, const Point* p)
     {
         return false;
     }
-    bool seen[EPA_FACES];
+    bool seen[EPA_FACES] = {0};
     for (int32_t f = 0; f < e->faceCount; ++f)
     {
         seen[f] =

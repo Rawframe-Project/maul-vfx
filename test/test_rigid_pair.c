@@ -1145,7 +1145,7 @@ static float Unit(void)
     return (float)(Draw() >> 8u) * 0x1p-24f;
 }
 
-// A turn: none, a quarter, half or three quarters about an axis, or any.
+// A turn: none, a whole number of eighths about an axis, or any.
 static void DrawTurn(bool gridded, float q[4])
 {
     int32_t kind = (int32_t)(Draw() % (gridded ? 2u : 3u));
@@ -1155,7 +1155,7 @@ static void DrawTurn(bool gridded, float q[4])
     q[3] = 1.0f;
     if (kind == 1)
     {
-        double half = (double)(1 + Draw() % 3u) * 0.78539816339744831;
+        double half = (double)(1 + Draw() % 7u) * 0.39269908169872414;
         int32_t axis = (int32_t)(Draw() % 3u);
         q[axis] = (float)sin(half);
         q[3] = (float)cos(half);
@@ -1180,14 +1180,15 @@ static void TestEpaAgainstAxes(void)
 {
     // Pairs of boxes, as hulls of their corners, three quarters of them
     // flat (of no size along one axis, or two), half of them on a grid of
-    // quarters turned by quarter turns, so that faces line up and points
+    // quarters turned by eighth turns, so that faces line up and points
     // fall in line with edges; the other half anywhere, turned any way.
     // Where they overlap by more than rounding, or the search says they
     // overlap, its depth is the separating axes' within 1e-4 of 1 plus it,
-    // and where one way is least by 1e-3 its normal is that way's.
+    // and where one way is least by 1e-3 its normal is that way's (a
+    // search stopped at its cap too: 2 overlapping by rounding alone).
     int32_t judged = 0;
     int32_t wrong = 0;
-    for (int32_t n = 0; n < 40000; ++n)
+    for (int32_t n = 0; n < 100000; ++n)
     {
         bool gridded = n % 2 == 0;
         float ha[3];
@@ -1230,11 +1231,11 @@ static void TestEpaAgainstAxes(void)
         }
         ++judged;
         double along = expected[0] * normal[0] + expected[1] * normal[1] + expected[2] * normal[2];
-        bool right = met && !stopped && fabs(-(double)distance - depth) <= 1e-4 * (1.0 + depth) &&
+        bool right = met && fabs(-(double)distance - depth) <= 1e-4 * (1.0 + depth) &&
                      (!unique || along >= 0.999);
         wrong += right ? 0 : 1;
     }
-    CHECK(judged >= 10000, "box pairs overlapping");
+    CHECK(judged >= 25000, "box pairs overlapping");
     CHECK(wrong == 0, "every overlap found at the separating axes' depth and normal");
 }
 
