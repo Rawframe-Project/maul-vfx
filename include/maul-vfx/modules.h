@@ -161,13 +161,13 @@ extern "C"
 
     // A rotation speed over life: a sprite's spin and a mesh particle's
     // angular velocity times scale at its age, each step (an angle sums
-    // over steps, so this one is not taken where it is read). A particle
-    // reads it once a step, at its age at the step's start (a newborn's at
-    // its birth); one that moves in substeps (a rigid body, a rope's or
-    // cloth's point, a particle of an mvfx_liquidParticles liquid) reads it
-    // at its age at each substep's start; the CPU path and the GPU part
-    // alike. The scale changes the turn, not the spin or angular velocity
-    // stored.
+    // over steps, so this one is not taken where it is read). A particle,
+    // and a particle of an mvfx_liquidGrid liquid, reads it once a step,
+    // at its age at the step's start (a newborn's at its birth); one that
+    // moves in substeps (a rigid body, a rope's or cloth's point, a
+    // particle of an mvfx_liquidParticles liquid) reads it at its age at
+    // each substep's start; the CPU path and the GPU part alike. The scale
+    // changes the turn, not the spin or angular velocity stored.
     typedef struct mvfxRotationOverLife
     {
         bool enable;
