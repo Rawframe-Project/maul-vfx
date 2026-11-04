@@ -8,7 +8,8 @@
 // core's and solved colour by colour, their pair strikes' events; bodies
 // ending within the run (pairs' priorities of the bodies' ranks); boxes of
 // sizes apart (the pair grid's levels); a pool too small for them, its
-// contacts past the room dropped and counted; capsules by their cores and
+// contacts past the room dropped and counted; a burst overlapping at one
+// place, each body meeting at most the candidates' cap; capsules by their cores and
 // hulls as polytopes; sleeping by islands and waking by touch; spheres,
 // capsules and boxes meeting each other with the scene at 2^-40 and
 // density 1e-30, in the lighter body's units.
@@ -158,6 +159,19 @@ static void TestMeeting(Gpu* gpu, mvfxGpu* kernels)
     emitter.events = 0;
     Met(gpu, kernels, &(Run){.emitters = &emitter, .leastRigidCapped = 1},
         "boxes meeting each other, the pool's contacts dropped");
+    // A burst of 100 spheres born overlapping at one place: a body meets
+    // at most MVFX_MAX_BODY_CANDIDATES of the bodies after it, the first,
+    // and one with more is counted (35 a substep while all overlap).
+    static const mvfxBurst burst = {
+        .time = 0.0f, .minCount = 100, .maxCount = 100, .cycles = 1, .probability = 1.0f};
+    emitter = Thrown(mvfx_rigidSphere, &s_floor, 8);
+    emitter.rate = 0.0f;
+    emitter.bursts = &burst;
+    emitter.burstCount = 1;
+    emitter.shape.radius = 0.05f;
+    emitter.lifetime = mvfxMakeRangeSource(10.0f, 10.0f);
+    Met(gpu, kernels, &(Run){.steps = 3, .emitters = &emitter, .leastCandidatesCapped = 35},
+        "spheres born at one place, each meeting the first of those within reach");
 }
 
 static void TestUnits(Gpu* gpu, mvfxGpu* kernels)

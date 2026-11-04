@@ -21,28 +21,30 @@ typedef struct PairBudget
 } PairBudget;
 
 static const PairBudget s_pairBudgets[] = {
-    // 0 3 7 3 8
-    {"spheres meeting the floor and each other", 16},
-    // 68 37 60 43 61
-    {"boxes meeting the floor and each other", 106},
-    // 0 1 0 1 1
-    {"spheres meeting each other, some ending within the run", 6},
-    // 9 17 16 52 35
-    {"boxes of sizes apart meeting each other", 82},
-    // 40 37 41 43 46
-    {"capsules meeting the floor and each other", 73},
-    // 15 17 19 16 18
-    {"hulls meeting the floor and each other", 33},
-    // 1 4 3 6 4
-    {"boxes meeting each other, sleeping by islands and woken by touch", 13},
-    // 7 27 8 37 58
-    {"boxes meeting each other, the pool's contacts dropped", 91},
-    // 0 1 0 1 0
+    // 0 1 0 1 2
+    {"spheres meeting the floor and each other", 7},
+    // 1 6 30 23 40
+    {"boxes meeting the floor and each other", 64},
+    // 0 3 0 3 0
+    {"spheres meeting each other, some ending within the run", 9},
+    // 22 72 53 56 54
+    {"boxes of sizes apart meeting each other", 112},
+    // 15 22 18 22 33
+    {"capsules meeting the floor and each other", 54},
+    // 22 19 23 11 25
+    {"hulls meeting the floor and each other", 42},
+    // 1 4 5 6 9
+    {"boxes meeting each other, sleeping by islands and woken by touch", 18},
+    // 4 9 6 22 15
+    {"boxes meeting each other, the pool's contacts dropped", 37},
+    // 96 96 96 96 96
+    {"spheres born at one place, each meeting the first of those within reach", 148},
+    // 0 1 1 1 1
     {"spheres meeting each other at 2^-40", 6},
-    // 33 51 45 58 57
-    {"capsules meeting each other at 2^-40", 91},
-    // 3 10 20 10 30
-    {"boxes meeting each other at 2^-40", 49},
+    // 22 29 39 40 44
+    {"capsules meeting each other at 2^-40", 70},
+    // 29 31 33 44 52
+    {"boxes meeting each other at 2^-40", 82},
 };
 
 #endif

@@ -200,6 +200,10 @@ typedef struct Run
     // the most a body takes the first emitter must have dropped over the
     // run (none needed for 0).
     int32_t leastRigidCapped;
+    // For an emitter of rigid particles that meet each other, the bodies
+    // with more candidates than MVFX_MAX_BODY_CANDIDATES the first emitter
+    // must have counted over the run (none needed for 0).
+    int32_t leastCandidatesCapped;
     // For an emitter of rigid particles that sleep, the most bodies the
     // first emitter must have held asleep at some step, and those it must
     // have woken over the run (asleep at a step, awake at the next; none

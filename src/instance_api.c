@@ -299,6 +299,7 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterStatsWork(mvfxContext* co
         .selfContactCappedPointCount = state->selfContactCappedPointCount,
         .rigidContactsDropped = state->rigidContactsDropped,
         .rigidSearchStopCount = state->rigidSearchStopCount,
+        .rigidCandidateCappedBodyCount = state->rigidCandidateCappedBodyCount,
     };
     return mvfx_success;
 }

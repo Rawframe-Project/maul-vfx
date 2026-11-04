@@ -274,6 +274,7 @@ typedef struct mvfxEmitterState
     uint64_t selfContactCappedPointCount;
     uint64_t rigidContactsDropped;
     uint64_t rigidSearchStopCount;
+    uint64_t rigidCandidateCappedBodyCount;
     // Its liquid's room.
     mvfxLiquidRoom liquid;
     // The id of its current ribbon by the counter: breaks advance it.

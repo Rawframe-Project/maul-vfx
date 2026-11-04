@@ -597,6 +597,10 @@ extern "C"
 // substep, a body.
 #define MVFX_MAX_BODY_CONTACTS 64
 
+// The most other bodies within reach an emitter's rigid particle meets in
+// a substep.
+#define MVFX_MAX_BODY_CANDIDATES 64
+
 // The longest a rigid particle must be still before it sleeps, in seconds.
 #define MVFX_MAX_SLEEP_TIME 3600.0f
 
@@ -724,9 +728,13 @@ extern "C"
         // a substep for each body (pooled over the emitter's live bodies),
         // from 0 (they pass through each other) to MVFX_MAX_BODY_CONTACTS.
         // Pairs are found by the neighbor grid at the predicted poses, each
-        // pair met as a body meets a sphere or a box (two capsules by their
-        // cores) and solved with both bodies' masses from their densities;
-        // those past the pool dropped and counted
+        // by one of its bodies, which finds at most MVFX_MAX_BODY_CANDIDATES
+        // of those within its reach, first in the particles' order (one
+        // with more counted, mvfxEmitterStats.rigidCandidateCappedBodyCount:
+        // this bounds a substep's work when many overlap, as a burst born
+        // at one point does); each pair met as a body meets a sphere or a
+        // box (two capsules by their cores) and solved with both bodies' masses from their
+        // densities; those past the pool dropped and counted
         // (mvfxEmitterStats.rigidContactsDropped). A body born in a step
         // meets the others from its next. Mass ratios show: at rest a body
         // under one N times heavier sinks about N / 50 mm into what holds

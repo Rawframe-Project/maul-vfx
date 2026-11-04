@@ -27,7 +27,8 @@
 // contact caps (MVFX_GPU_CONTACT_CAPPED_PARTICLE_COUNT), the step's links and the links
 // dropped (MVFX_GPU_LINKS, MVFX_GPU_LINKS_DROPPED), the tears
 // (MVFX_GPU_TEAR_COUNT), the self-contacts' caps (MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT) and the
-// rigid contacts' (MVFX_GPU_RIGID_CONTACTS_DROPPED). The layout plan budgets the
+// rigid contacts' (MVFX_GPU_RIGID_CONTACTS_DROPPED, MVFX_GPU_RIGID_SEARCH_STOP_COUNT,
+// MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT). The layout plan budgets the
 // record at 64 words.
 static_assert(MVFX_GPU_STATISTICS_WORDS <= 64, "the statistics record within its 64 words");
 
