@@ -160,4 +160,15 @@ bool mvfxTestWaterReach(const mvfxContext* context, mvfxInstanceId instance, int
 // no public call gives a CPU instance's.
 int32_t mvfxTestLiquidSubsteps(const mvfxContext* context, mvfxInstanceId instance, int64_t ticks);
 
+// Runs the convex search rigid hulls meet by between the hulls of a's and
+// b's points (x, y and z each, countA and countB of them, from 1 to
+// MVFX_MAX_HULL_VERTICES, already where they meet) within margin: whether
+// they meet, and when they do, whether a search stopped at its limit
+// (stopped), EPA's steps and their distance (below 0 overlapping). Returns
+// false too for a count out of range. A step counts its stopped searches
+// (mvfxEmitterStats.rigidSearchStopCount) but no public call gives one's
+// steps.
+bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b, int32_t countB,
+                        float margin, bool* stopped, int32_t* epaSteps, float* distance);
+
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H
