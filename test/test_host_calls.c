@@ -4,9 +4,10 @@
 // Host code calling back into the context it serves: from the allocator's
 // alloc and free, the task hooks' enqueue and finish, and a host module,
 // each of the context's calls that take it mutable is refused with
-// mvfx_errorBusy and counted as misuse, a reading call still answers, and
-// the context is whole after: a step, a creation and a destruction work
-// again, the callbacks then calling nothing. Under a host's float setting
+// mvfx_errorBusy and counted as misuse (a planned instance's setters among
+// them, each before it looks at its arguments), a reading call still
+// answers, and the context is whole after: a step, a creation and a
+// destruction work again, the callbacks then calling nothing. Under a host's float setting
 // (src/fpenv.h): the allocator and the task hooks, which compute nothing
 // of the library's, run in the host's own, even when the library calls
 // them from inside its environment; a host module, whose results feed the
@@ -429,6 +430,117 @@ static void TestBusyLeavesBuffers(void)
     mvfxDestroyContext(context);
 }
 
+// The calls that change the context, each called back in from a host
+// module through one table: refused as busy before they look at their
+// arguments or the instance, each refusal counted as misuse. The instance
+// is not planned and its effect has no gas or water surface, so a setter
+// of a planned instance's gas or water that went on would answer
+// mvfx_errorInvalid or mvfx_errorUnsupported instead.
+typedef mvfxResult (*Change)(mvfxContext* context);
+
+static mvfxResult SetGasHolds(mvfxContext* context)
+{
+    return mvfxInstance_SetGasHolds(context, s_instance, 0, 0, true);
+}
+
+static mvfxResult SetLiquidSpeed(mvfxContext* context)
+{
+    return mvfxInstance_SetLiquidSpeed(context, s_instance, 0, 0, 1.0f);
+}
+
+static mvfxResult SetWaterHolds(mvfxContext* context)
+{
+    return mvfxInstance_SetWaterHolds(context, s_instance, 0, 0, true);
+}
+
+static mvfxResult SetWaterSpeed(mvfxContext* context)
+{
+    return mvfxInstance_SetWaterSpeed(context, s_instance, 0, 0, 1.0f);
+}
+
+static mvfxResult SetWaterCounts(mvfxContext* context)
+{
+    return mvfxInstance_SetWaterCounts(context, s_instance, 0, 0, 1.0f, 1, 1.0);
+}
+
+static const struct
+{
+    Change call;
+    const char* name;
+} s_changes[] = {
+    {SetGasHolds, "mvfxInstance_SetGasHolds"},
+    {SetLiquidSpeed, "mvfxInstance_SetLiquidSpeed"},
+    {SetWaterHolds, "mvfxInstance_SetWaterHolds"},
+    {SetWaterSpeed, "mvfxInstance_SetWaterSpeed"},
+    {SetWaterCounts, "mvfxInstance_SetWaterCounts"},
+};
+
+enum
+{
+    CHANGES = (int32_t)(sizeof s_changes / sizeof s_changes[0])
+};
+
+// Each call's result from the host module, and the misuse it counted.
+static mvfxResult s_changed[CHANGES];
+static uint64_t s_changeMisuse[CHANGES];
+
+static void ChangeBack(const mvfxModuleCall* call, void* user)
+{
+    (void)call;
+    (void)user;
+    mvfxContext* target = s_target;
+    if (target == NULL)
+    {
+        return;
+    }
+    s_target = NULL;
+    for (int32_t c = 0; c < CHANGES; ++c)
+    {
+        uint64_t before = mvfxContext_GetMisuse(target);
+        s_changed[c] = s_changes[c].call(target);
+        s_changeMisuse[c] = mvfxContext_GetMisuse(target) - before;
+    }
+}
+
+static const mvfxHostModule s_changeBack = {.stage = mvfx_stageAfterMotion, .function = ChangeBack};
+
+static void TestChangesRefused(void)
+{
+    mvfxContextDef def = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&def, &context) == mvfx_success, "context");
+    mvfxEmitterDef emitter = mvfxDefaultEmitterDef();
+    emitter.hostModules = &s_changeBack;
+    emitter.hostModuleCount = 1;
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    CHECK(mvfxCreateInstance(context, &instanceDef, &s_instance) == mvfx_success, "instance");
+    for (int32_t c = 0; c < CHANGES; ++c)
+    {
+        s_changed[c] = mvfx_success;
+        s_changeMisuse[c] = 0;
+    }
+    s_target = context;
+    CHECK(mvfxContext_StepTicks(context, 1) == mvfx_success && s_target == NULL,
+          "the host module called back in");
+    for (int32_t c = 0; c < CHANGES; ++c)
+    {
+        if (s_changed[c] != mvfx_errorBusy || s_changeMisuse[c] != 1)
+        {
+            printf("%s from a host module: %d, %llu misuse\n", s_changes[c].name, (int)s_changed[c],
+                   (unsigned long long)s_changeMisuse[c]);
+        }
+        CHECK(s_changed[c] == mvfx_errorBusy && s_changeMisuse[c] == 1,
+              "a change from a host module refused as busy and counted");
+    }
+    mvfxDestroyContext(context);
+}
+
 static void TestHostSettings(void)
 {
     // An effect's compile allocates inside the library's environment, a
@@ -569,6 +681,7 @@ int main(void)
 {
     TestCallsBackIn();
     TestBusyLeavesBuffers();
+    TestChangesRefused();
     TestHostSettings();
     TestFreedAfterItsId();
     return s_failures == 0 ? 0 : 1;

@@ -265,6 +265,10 @@ mvfxResult mvfxInstance_SetGasHolds(mvfxContext* context, mvfxInstanceId instanc
     {
         return mvfx_errorInvalid;
     }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
     {
@@ -292,6 +296,10 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetLiquidSpeedWork(mvfxContext* con
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
