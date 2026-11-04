@@ -163,11 +163,15 @@ extern "C"
     // angular velocity times scale at its age, each step (an angle sums
     // over steps, so this one is not taken where it is read). A particle,
     // and a particle of an mvfx_liquidGrid liquid, reads it once a step,
-    // at its age at the step's start (a newborn's at its birth); one that
-    // moves in substeps (a rigid body, a rope's or cloth's point, a
-    // particle of an mvfx_liquidParticles liquid) reads it at its age at
-    // each substep's start; the CPU path and the GPU part alike. The scale
-    // changes the turn, not the spin or angular velocity stored.
+    // at its age at the step's start. One that moves in substeps (a rigid
+    // body, a rope's or cloth's point, a particle of an
+    // mvfx_liquidParticles liquid) reads it at its age at each substep's
+    // start. A newborn reads it at its age at its birth: a rigid one then
+    // again at the start of each substep left in its step; any other once,
+    // for its whole birth step (a newborn rope's or cloth's point or
+    // liquid particle moves as a particle, and its unit or liquid is
+    // solved from the next step). The CPU path and the GPU part alike. The
+    // scale changes the turn, not the spin or angular velocity stored.
     typedef struct mvfxRotationOverLife
     {
         bool enable;
