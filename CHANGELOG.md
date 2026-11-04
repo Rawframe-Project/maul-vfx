@@ -6,6 +6,29 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.13.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.12.0...v0.13.0) (2026-11-04)
+
+This release closes a gap in the rule that host code may not change a
+context while it runs: five setters of a planned instance, and the GPU
+part's two reports that call them, did not refuse it. A host that calls
+them only outside its allocator, task hooks and host modules sees no
+change. The simulation's results, the golden hashes, the effect file
+format and the GPU part's tolerances are unchanged.
+
+### Fixed
+
+- **Breaking: `mvfxInstance_SetGasHolds`, `mvfxInstance_SetLiquidSpeed`,
+  `mvfxInstance_SetWaterHolds`, `mvfxInstance_SetWaterSpeed` and
+  `mvfxInstance_SetWaterCounts` now return `mvfx_errorBusy` when called
+  from the context's host code** (its allocator, task hooks or host
+  modules), count it as misuse and change nothing, as every other call
+  that changes a context does. Before, called from a host module, each
+  changed a gas's or water surface's state in the middle of the step,
+  and no misuse was counted. `mvfxGpuSim_ReportGas` and
+  `mvfxGpuSim_ReportWater` call them, so they now return
+  `mvfx_errorBusy` there too
+  ([#294](https://github.com/Rawframe-Project/maul-vfx/pull/294)).
+
 ## [0.12.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.11.0...v0.12.0) (2026-11-04)
 
 This release bounds the work of rigid bodies that meet each other: a
