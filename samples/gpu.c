@@ -9,7 +9,8 @@
 // (skipped) when the adapter search finds none, and 1 on any failure,
 // which says what failed. As the tests do, it fails rather than skips
 // when MVFX_RHI_REQUIRED is set, and fails on an adapter of another
-// driver than the one it names ("vulkan" or "d3d12").
+// driver than the one it names ("vulkan" or "d3d12"), and at once on any
+// other value.
 
 // getenv is standard C; MSVC's runtime deprecates it for its own.
 #define _CRT_SECURE_NO_WARNINGS
@@ -71,9 +72,20 @@ static double Seconds(void)
 
 // A device on the first adapter, software ones allowed, and the part's
 // GPU object with its pipelines ready (a minute at most): 0, 77 when the
-// search finds no adapter, or 1.
+// search finds no adapter, or 1, at once when MVFX_RHI_REQUIRED names no
+// driver.
 static int Open(Gpu* gpu)
 {
+    const char* required = getenv("MVFX_RHI_REQUIRED");
+    bool vulkan = required != NULL && strcmp(required, "vulkan") == 0;
+    bool d3d12 = required != NULL && strcmp(required, "d3d12") == 0;
+    if (required != NULL && !vulkan && !d3d12)
+    {
+        printf("MVFX_RHI_REQUIRED is \"%s\", which names no driver: set it to vulkan or d3d12, "
+               "or leave it unset\n",
+               required);
+        return 1;
+    }
     mrhiInstanceDef def = mrhiDefaultInstanceDef();
     mrhiAdapterRequestDef search = mrhiDefaultAdapterRequestDef();
     search.allowSoftware = true;
@@ -97,7 +109,6 @@ static int Open(Gpu* gpu)
         printf("the adapter search failed: %s\n", mrhiGetResultName(found));
         return 1;
     }
-    const char* required = getenv("MVFX_RHI_REQUIRED");
     if (count == 0)
     {
         printf(required != NULL ? "no adapter, and MVFX_RHI_REQUIRED is set\n"
@@ -105,10 +116,9 @@ static int Open(Gpu* gpu)
         return required != NULL ? 1 : 77;
     }
     mrhiAdapterInfo info = {0};
-    if (required != NULL &&
-        (mrhiAdapter_GetInfo(gpu->instance, adapter, &info) != mrhi_success ||
-         (strcmp(required, "vulkan") == 0 && info.driver != mrhi_driverVulkan) ||
-         (strcmp(required, "d3d12") == 0 && info.driver != mrhi_driverD3d12)))
+    if (required != NULL && (mrhiAdapter_GetInfo(gpu->instance, adapter, &info) != mrhi_success ||
+                             (vulkan && info.driver != mrhi_driverVulkan) ||
+                             (d3d12 && info.driver != mrhi_driverD3d12)))
     {
         printf("the adapter is not the %s driver's, which MVFX_RHI_REQUIRED names\n", required);
         return 1;

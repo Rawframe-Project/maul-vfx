@@ -17,22 +17,41 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Whether the adapter is the driver MVFX_RHI_REQUIRED names, "vulkan" or
-// "d3d12", so that a cell meant for one driver cannot pass on another; any
-// other value takes any adapter.
+// The driver MVFX_RHI_REQUIRED names, "vulkan" or "d3d12", into *driver,
+// and *required whether it is set; false for any other value, which fails
+// the run, so that a typo cannot turn the driver check off.
+static inline bool RequiredDriver(bool* required, mrhiDriverKind* driver)
+{
+    const char* value = getenv("MVFX_RHI_REQUIRED");
+    *required = value != NULL;
+    *driver = mrhi_driverVulkan;
+    if (value == NULL || strcmp(value, "vulkan") == 0)
+    {
+        return true;
+    }
+    if (strcmp(value, "d3d12") == 0)
+    {
+        *driver = mrhi_driverD3d12;
+        return true;
+    }
+    printf("FAIL: MVFX_RHI_REQUIRED is \"%s\", which names no driver: set it to vulkan or "
+           "d3d12, or leave it unset\n",
+           value);
+    return false;
+}
+
+// Whether the adapter is the driver MVFX_RHI_REQUIRED names, so that a cell
+// meant for one driver cannot pass on another; any adapter when it is not
+// set, none when it names no driver.
 static inline bool IsRequiredDriver(mrhiInstance* instance, mrhiAdapterId adapter)
 {
-    const char* required = getenv("MVFX_RHI_REQUIRED");
+    bool required = false;
     mrhiDriverKind driver;
-    if (required != NULL && strcmp(required, "vulkan") == 0)
+    if (!RequiredDriver(&required, &driver))
     {
-        driver = mrhi_driverVulkan;
+        return false;
     }
-    else if (required != NULL && strcmp(required, "d3d12") == 0)
-    {
-        driver = mrhi_driverD3d12;
-    }
-    else
+    if (!required)
     {
         return true;
     }
@@ -40,7 +59,7 @@ static inline bool IsRequiredDriver(mrhiInstance* instance, mrhiAdapterId adapte
     if (mrhiAdapter_GetInfo(instance, adapter, &info) != mrhi_success || info.driver != driver)
     {
         printf("FAIL: the adapter is not the %s driver's, which MVFX_RHI_REQUIRED names\n",
-               required);
+               driver == mrhi_driverVulkan ? "vulkan" : "d3d12");
         return false;
     }
     return true;
@@ -58,15 +77,22 @@ static inline bool IsWarp(mrhiInstance* instance, mrhiAdapterId adapter)
 // Opens a device as def asks on the first adapter the instance's drivers
 // find, software ones allowed: 0 with *instance, *adapter and *device made;
 // 77 when the search succeeds and finds no adapter, so the test skips,
-// unless MVFX_RHI_REQUIRED is set (1); 1 when the instance is not made, the
-// search fails, the adapter is not the driver MVFX_RHI_REQUIRED names, or
-// its device is not made. Each result but 0 says why. The caller destroys
-// what was made, whatever the result.
+// unless MVFX_RHI_REQUIRED is set (1); 1 when MVFX_RHI_REQUIRED names no
+// driver (before any search, so with or without an adapter), the instance
+// is not made, the search fails, the adapter is not the driver
+// MVFX_RHI_REQUIRED names, or its device is not made. Each result but 0
+// says why. The caller destroys what was made, whatever the result.
 static inline int OpenDevice(mrhiDeviceDef def, mrhiInstance** instance, mrhiAdapterId* adapter,
                              mrhiDevice** device)
 {
     *instance = NULL;
     *device = NULL;
+    bool required = false;
+    mrhiDriverKind driver;
+    if (!RequiredDriver(&required, &driver))
+    {
+        return 1;
+    }
     mrhiInstanceDef instanceDef = mrhiDefaultInstanceDef();
     mrhiResult made = mrhiCreateInstance(&instanceDef, instance);
     if (made != mrhi_success)
@@ -90,7 +116,7 @@ static inline int OpenDevice(mrhiDeviceDef def, mrhiInstance** instance, mrhiAda
     }
     if (count == 0)
     {
-        if (getenv("MVFX_RHI_REQUIRED") != NULL)
+        if (required)
         {
             printf("FAIL: no adapter, and MVFX_RHI_REQUIRED is set\n");
             return 1;

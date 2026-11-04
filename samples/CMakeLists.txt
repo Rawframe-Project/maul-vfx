@@ -31,5 +31,12 @@ if(MAUL_VFX_RHI)
                              FAIL_REGULAR_EXPRESSION "Validation Error|VUID-"
                              LABELS "sample;integration"
                              ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+        # A value of MVFX_RHI_REQUIRED that names no driver fails it before
+        # any adapter search, so this needs no device.
+        add_test(NAME sample_gpu_required_unknown COMMAND sample_gpu)
+        set_tests_properties(sample_gpu_required_unknown PROPERTIES
+                             ENVIRONMENT "MVFX_RHI_REQUIRED=vulcan"
+                             PASS_REGULAR_EXPRESSION "MVFX_RHI_REQUIRED is \"vulcan\", which names no driver"
+                             LABELS sample)
     endif()
 endif()
