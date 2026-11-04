@@ -3,11 +3,12 @@
 //
 // Meshes: their refusals, edges built once, normals, each mode's choice
 // in proportion to length, area, count or volume within five standard
-// deviations, points inside their elements and uniform there, moving a
-// mesh, and meshes bound to effects and instances through the step. The
-// meshes are read through their views, and where a mode places particles
-// through the birth events of an emitter born on it: each event's place,
-// and its velocity, the normal there at a speed of 1.
+// deviations, points inside their elements and uniform there, the normal
+// a zero given normal leaves, moving a mesh, and meshes bound to effects
+// and instances through the step. The meshes are read through their
+// views, and where a mode places particles through the birth events of an
+// emitter born on it: each event's place, and its velocity, the normal
+// there at a speed of 1.
 
 #include "particles.h"
 #include "test_harness.h"
@@ -324,6 +325,47 @@ static void TestVerticesAndGivenNormals(void)
         blended = blended && fabs(length - 1.0) <= 1e-5;
     }
     CHECK(blended, "blended normals of unit length");
+    Free(mesh);
+}
+
+// Given normals of zero length: a vertex or an edge takes +Z, a point on
+// the surface its triangle's normal by the winding, and a point on a
+// triangle of no area +Z, as no normal is left to take.
+static void TestZeroNormals(void)
+{
+    static const float zero[9] = {0};
+    static const uint32_t triangle[] = {0, 1, 2};
+    // A triangle in the XZ plane, wound to face -Y.
+    static const float upright[] = {0, 0, 0, 1, 0, 0, 0, 0, 1};
+    static const mvfxMeshMode modes[3] = {mvfx_meshVertices, mvfx_meshEdges, mvfx_meshSurface};
+    static const float expected[3][3] = {{0, 0, 1}, {0, 0, 1}, {0, -1, 0}};
+    static const char* names[3] = {"a vertex's zero normal +Z", "an edge's zero normal +Z",
+                                   "a zero normal on the surface the triangle's"};
+    mvfxMeshId mesh = Build(upright, zero, 3, triangle, 1, NULL, 0);
+    for (int32_t m = 0; m < 3; ++m)
+    {
+        int32_t n = Sample(mesh, modes[m], 100);
+        bool taken = true;
+        for (int32_t i = 0; i < n; ++i)
+        {
+            for (int32_t k = 0; k < 3; ++k)
+            {
+                taken = taken && s_normals[i][k] == expected[m][k];
+            }
+        }
+        CHECK(taken, names[m]);
+    }
+    Free(mesh);
+    // Three points on a line: the triangle's sides give no normal either.
+    static const float line[] = {0, 0, 0, 1, 0, 0, 2, 0, 0};
+    mesh = Build(line, zero, 3, triangle, 1, NULL, 0);
+    int32_t n = Sample(mesh, mvfx_meshSurface, 100);
+    bool up = true;
+    for (int32_t i = 0; i < n; ++i)
+    {
+        up = up && s_normals[i][0] == 0.0f && s_normals[i][1] == 0.0f && s_normals[i][2] == 1.0f;
+    }
+    CHECK(up, "a zero normal on a triangle of no area +Z");
     Free(mesh);
 }
 
@@ -777,6 +819,7 @@ int main(void)
     TestSurfaceByArea();
     TestEdgesByLength();
     TestVerticesAndGivenNormals();
+    TestZeroNormals();
     TestVolumeByVolume();
     TestMoving();
     mvfxDestroyContext(s_context);
