@@ -6,6 +6,17 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.13.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.12.0...v0.13.0) (2026-11-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** mvfxInstance_SetGasHolds, mvfxInstance_SetLiquidSpeed, mvfxInstance_SetWaterHolds, mvfxInstance_SetWaterSpeed and mvfxInstance_SetWaterCounts now return mvfx_errorBusy, counted as misuse, when called from the context's host code (its allocator, task hooks or host modules), and change nothing; so do mvfxGpuSim_ReportGas and mvfxGpuSim_ReportWater, which call them.
+
+### Fixed
+
+* **api:** refuse a planned instance's setters from host code ([#294](https://github.com/Rawframe-Project/maul-vfx/issues/294)) ([e1e0fdb](https://github.com/Rawframe-Project/maul-vfx/commit/e1e0fdb3274e5073c4d08d453fe47aa8dfc1c4f6)), closes [#293](https://github.com/Rawframe-Project/maul-vfx/issues/293)
+
 ## [0.12.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.11.0...v0.12.0) (2026-11-04)
 
 This release bounds the work of rigid bodies that meet each other: a
