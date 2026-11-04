@@ -1347,8 +1347,13 @@ extern "C"
     ///         model file's vertices may well be flat);
     ///         `mvfx_errorStale` for a mesh shape's mesh that names no live
     ///         mesh, `mvfx_errorInvalid` too for a mesh without the elements
-    ///         its mode needs; `mvfx_errorCapacity` when the context holds as
-    ///         many effects as its def allows, or when the allocator fails.
+    ///         its mode needs; likewise `mvfx_errorStale`, which counts no
+    ///         misuse, for a grid that names no live grid (an emitter's
+    ///         force field or collider, a gas obstacle, a gas force field, a
+    ///         water terrain), and `mvfx_errorInvalid`, counted as misuse,
+    ///         for a grid of the wrong shape for its use;
+    ///         `mvfx_errorCapacity` when the context holds as many effects as
+    ///         its def allows, or when the allocator fails.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxCreateEffect(mvfxContext* context,
