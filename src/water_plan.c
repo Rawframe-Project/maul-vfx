@@ -247,6 +247,10 @@ mvfxResult mvfxInstance_SetWaterHolds(mvfxContext* context, mvfxInstanceId insta
     {
         return mvfx_errorInvalid;
     }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
+    }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
     {
@@ -275,6 +279,10 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetWaterCountsWork(mvfxContext* con
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)
@@ -321,6 +329,10 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_SetWaterSpeedWork(mvfxContext* cont
     if (context == nullptr)
     {
         return mvfx_errorInvalid;
+    }
+    if (mvfxRefusesHostCall(context))
+    {
+        return mvfx_errorBusy;
     }
     mvfxInstance* live = mvfxContextInstance(context, instance);
     if (live == nullptr)

@@ -1178,7 +1178,9 @@ extern "C"
     ///         gas out of range or a tick past the clock or below 0, which
     ///         counts as misuse when the context is given;
     ///         `mvfx_errorStale` for an instance that is gone;
-    ///         `mvfx_errorUnsupported` for an instance that is not planned.
+    ///         `mvfx_errorUnsupported` for an instance that is not planned;
+    ///         `mvfx_errorBusy` from the context's host code, counted as
+    ///         misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetGasHolds(mvfxContext* context,
@@ -1208,7 +1210,9 @@ extern "C"
     ///         below 0 or a speed not finite or below 0, which counts as
     ///         misuse when the context is given; `mvfx_errorStale` for an
     ///         instance that is gone; `mvfx_errorUnsupported` for an
-    ///         instance that is not planned.
+    ///         instance that is not planned;
+    ///         `mvfx_errorBusy` from the context's host code, counted as
+    ///         misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetLiquidSpeed(mvfxContext* context,
@@ -1294,7 +1298,9 @@ extern "C"
     ///         surface out of range or a tick past the clock or below 0,
     ///         which counts as misuse when the context is given;
     ///         `mvfx_errorStale` for an instance that is gone;
-    ///         `mvfx_errorUnsupported` for an instance that is not planned.
+    ///         `mvfx_errorUnsupported` for an instance that is not planned;
+    ///         `mvfx_errorBusy` from the context's host code, counted as
+    ///         misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterHolds(mvfxContext* context,
@@ -1324,7 +1330,9 @@ extern "C"
     ///         clock or below 0 or a speed not finite or below 0, which
     ///         counts as misuse when the context is given;
     ///         `mvfx_errorStale` for an instance that is gone;
-    ///         `mvfx_errorUnsupported` for an instance that is not planned.
+    ///         `mvfx_errorUnsupported` for an instance that is not planned;
+    ///         `mvfx_errorBusy` from the context's host code, counted as
+    ///         misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterSpeed(mvfxContext* context,
@@ -1357,7 +1365,9 @@ extern "C"
     ///         reach or volume not finite or below 0, which counts as
     ///         misuse when the context is given; `mvfx_errorStale` for an
     ///         instance that is gone; `mvfx_errorUnsupported` for an
-    ///         instance that is not planned.
+    ///         instance that is not planned;
+    ///         `mvfx_errorBusy` from the context's host code, counted as
+    ///         misuse.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetWaterCounts(
