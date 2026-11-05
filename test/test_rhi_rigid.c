@@ -401,7 +401,7 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     // they are born on both paths.
     static const double edge[12] = {0,    151040016.0, 0, 4e8, 151040016.0, 0,
                                     -4e8, 2e8,         0, 0,   2e8,         4e8};
-    static const float down[12] = {0, -20, 0, 0, -20, 0, 0, -20, 0, 0, -20, 0};
+    static const float down[12] = {0, -100, 0, 0, -100, 0, 0, -100, 0, 0, -100, 0};
     static const float edgeSizes[12] = {2.95e5f, 2.95e5f, 2.95e5f, 2.95e5f, 2.95e5f, 2.95e5f,
                                         3.1e5f,  3.1e5f,  3.1e5f,  3.1e5f,  3.1e5f,  3.1e5f};
     static const mvfxSpawnRequest atEdge = {

@@ -1063,7 +1063,7 @@ static void TestLargestReach(void)
     mvfxEmitterStats stats[3];
     for (int32_t e = 0; e < 3; ++e)
     {
-        alive[e] = Bodies(e, body);
+        alive[e] = ReadParticles(s_scene.context, s_scene.instance, e, body, 8);
         CHECK(mvfxInstance_GetEmitterStats(s_scene.context, s_scene.instance, e, &stats[e]) ==
                   mvfx_success,
               "stats");
