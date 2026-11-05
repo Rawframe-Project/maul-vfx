@@ -399,35 +399,36 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
                                       .center = {0, -1e6f, 0},
                                       .halfExtents = {1e6f, 1e6f, 1e6f},
                                       .rotation = {0, 0, 0, 1}};
-    // Measuring: hulls 2e6 across on a local emitter's world box, 1e9 and
-    // 1e10 in half size in their space.
+    // Hulls 2e6 across (the 1,024 cube at size 2e3) placed 100 above a
+    // world box of the largest half size, 1e6, of a local emitter at a
+    // scale of 3.8e-3, moving down onto it at 1e4: in the emitter's space
+    // the box is 2.6e8 in half size, 2% short of
+    // MVFX_MAX_PLANNED_COLLIDER, its top face at the origin. (On a box 1e10
+    // in half size, at a scale of 1e-4, the search's products passed
+    // binary32's largest value and the paths parted by half the reach.)
     static const double perch[12] = {0, 1024100, 0,   3e6, 1024100, 0,
                                      0, 1024100, 3e6, 0,   1024100, -3e6};
     static const float fall[12] = {0, -1e4f, 0, 0, -1e4f, 0, 0, -1e4f, 0, 0, -1e4f, 0};
-    static const float big[12] = {2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f,
-                                  2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f};
-    static const mvfxSpawnRequest bigPerched = {
-        .count = 4, .positions = perch, .velocities = fall, .sizes = big};
-    static const float measured[2] = {1e-3f, 1e-4f};
-    for (int32_t m = 0; m < 2; ++m)
-    {
-        emitter = Thrown(mvfx_rigidHull, &wide, 1);
-        emitter.space = mvfx_spaceLocal;
-        emitter.rate = 0.0f;
-        emitter.burstCount = 0;
-        emitter.hostSpawnCapacity = 8;
-        emitter.orientationMode = mvfx_orientationEuler;
-        emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
-        emitter.angularVelocity = (mvfxVectorSource){.kind = mvfx_sourceRange};
-        Met(gpu, kernels,
-            &(Run){.mostApart = 4,
-                   .emitters = &emitter,
-                   .spawn = &bigPerched,
-                   .least = -1,
-                   .mesh = &s_wide,
-                   .scale = measured[m]},
-            m == 0 ? "MEASURE big hulls on a box 1e9" : "MEASURE big hulls on a box 1e10");
-    }
+    static const float large[12] = {2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f,
+                                    2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f};
+    static const mvfxSpawnRequest perched = {
+        .count = 4, .positions = perch, .velocities = fall, .sizes = large};
+    emitter = Thrown(mvfx_rigidHull, &wide, 1);
+    emitter.space = mvfx_spaceLocal;
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.hostSpawnCapacity = 8;
+    emitter.orientationMode = mvfx_orientationEuler;
+    emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
+    emitter.angularVelocity = (mvfxVectorSource){.kind = mvfx_sourceRange};
+    Met(gpu, kernels,
+        &(Run){.mostApart = 4,
+               .emitters = &emitter,
+               .spawn = &perched,
+               .least = -1,
+               .mesh = &s_wide,
+               .scale = 3.8e-3f},
+        "hulls on a box 2.6e8 in half size in their space");
     // Hulls at the edge of MVFX_MAX_HULL_REACH (2^28): two of size 2.95e5,
     // 1.5104e8 in half size and reaching 2.5% short of it, placed upright
     // 16 above the origin and moving down at 1e4 (binary32's places 16
