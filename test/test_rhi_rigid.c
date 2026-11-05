@@ -24,10 +24,11 @@
 // keeps them within; spheres, capsules, boxes and hulls on heightfields
 // and distance grids, the emitter's and the instance's, and on a depth
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
-// they are kept out of, and born into a box; capsules of the largest
-// size on grids; bodies near the ends of sizes and densities, in their
-// own units, tumbling and thrown on a floor; capsules and boxes 1e-8 of
-// their length across landing on a level floor, a bounded number apart
+// they are kept out of, and born into a box; hulls of no width placed in
+// a box; capsules of the largest size on grids; bodies near the ends of
+// sizes and densities, in their own units, tumbling and thrown on a
+// floor; capsules and boxes 1e-8 of their length across landing on a
+// level floor, a bounded number apart
 // as they take their spin about their length from rounding; spheres and
 // capsules sized by a parameter of unequal axes or inheriting unequal
 // sizes, their axes the shape does not set taking X; what is still refused (kills
@@ -73,6 +74,13 @@ static mvfxEmitterDef Bodies(mvfxRigidShape shape)
 // The lopsided hull's mesh.
 static const mvfxMeshDef s_hull = {
     .cookie = MVFX_MESH_DEF_COOKIE, .positions = s_lopsided, .vertexCount = 7};
+
+// A unit cube's mesh.
+static const float s_cubePoints[24] = {-0.5f, -0.5f, -0.5f, 0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,
+                                       -0.5f, 0.5f,  0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,  0.5f,
+                                       -0.5f, 0.5f,  -0.5f, 0.5f,  0.5f,  0.5f,  0.5f,  0.5f};
+static const mvfxMeshDef s_cube = {
+    .cookie = MVFX_MESH_DEF_COOKIE, .positions = s_cubePoints, .vertexCount = 8};
 
 static void Tumbled(Gpu* gpu, mvfxGpu* kernels, const mvfxEmitterDef* emitter, bool moving,
                     const char* what)
@@ -300,6 +308,33 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter = Thrown(mvfx_rigidHull, core, 2);
     Met(gpu, kernels, &(Run){.mostApart = 15, .emitters = &emitter, .mesh = &s_hull},
         "hulls born into a box");
+    // Hulls of no width (a cube's of size 0 along X) turned a quarter about
+    // X, placed at rest on a grid of quarters in a box turned a quarter
+    // about Z that they are kept out of: the faces across the no width
+    // take a normal scaled by 1 / 1e-30 before it is made unit.
+    static const mvfxCollider flatBox = {.kind = mvfx_colliderBox,
+                                         .halfExtents = {1.25f, 0.75f, 1.25f},
+                                         .rotation = {0, 0, 0.70710678f, 0.70710678f}};
+    static const double flatPlaces[24] = {-0.25, 0.5,   -1,   0.75,  0.75, -0.75, 0,    0,
+                                          -0.25, 0,     0.25, -0.5,  0,    -0.5,  0.75, 0,
+                                          0,     -1.25, 0.25, -0.75, 1,    -0.25, 1,    1};
+    static const float flatSizes[24] = {0,     0.5f,  0.5f, 0,     1,     1,     0,     0.25f,
+                                        0.25f, 0,     0.5f, 0.25f, 0,     0.75f, 0.25f, 0,
+                                        1,     0.25f, 0,    0.25f, 0.25f, 0,     0.25f, 0.25f};
+    static const float flatStill[24] = {0};
+    static const mvfxSpawnRequest flats = {
+        .count = 8, .positions = flatPlaces, .velocities = flatStill, .sizes = flatSizes};
+    emitter = Thrown(mvfx_rigidHull, &flatBox, 1);
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.hostSpawnCapacity = 8;
+    emitter.orientationMode = mvfx_orientationEuler;
+    emitter.orientation = (mvfxVectorSource){
+        .kind = mvfx_sourceRange, .min = {1.5707964f, 0, 0}, .max = {1.5707964f, 0, 0}};
+    emitter.angularVelocity = (mvfxVectorSource){.kind = mvfx_sourceRange};
+    Met(gpu, kernels,
+        &(Run){.mostApart = 4, .emitters = &emitter, .spawn = &flats, .least = -1, .mesh = &s_cube},
+        "flat hulls placed within a box");
     // Spheres the host places at rest well within it, each near one face
     // (a tenth from it, a quarter from those beside): each leaves by that
     // face. (A capsule there lies nearly flat on the face, its deepest
