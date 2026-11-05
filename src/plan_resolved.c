@@ -176,23 +176,3 @@ void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, const mvfxT
         plan->killRules[r] = PlannedKillRule(&state->killRules[r]);
     }
 }
-
-bool mvfxPlannedCollidersHeld(const mvfxInstance* live, int32_t emitter,
-                              const mvfxEmitterPlan* plan)
-{
-    const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];
-    bool hulls = compiled->rigid.enable && compiled->rigid.shape == mvfx_rigidHull;
-    bool held = true;
-    for (int32_t c = 0; hulls && c < plan->colliderCount; ++c)
-    {
-        const mvfxPlannedCollider* collider = &plan->colliders[c];
-        bool box = collider->kind == mvfx_colliderBox && !collider->inside;
-        bool sphere = collider->kind == mvfx_colliderSphere && !collider->inside;
-        held = held && (!sphere || collider->radius <= MVFX_MAX_PLANNED_COLLIDER);
-        for (int32_t k = 0; box && k < 3; ++k)
-        {
-            held = held && collider->halfExtents[k] <= MVFX_MAX_PLANNED_COLLIDER;
-        }
-    }
-    return held;
-}

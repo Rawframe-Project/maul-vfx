@@ -632,8 +632,8 @@ static void TestColliderBound(Gpu* gpu, mvfxGpu* kernels)
     // Hulls kept out of a world box of half size 1e6, the instance scaled
     // so that the box is 2% short of MVFX_MAX_PLANNED_COLLIDER in the
     // particles' space (3.8e-3), then 2% past it (3.65e-3), then short of
-    // it again: the step past it is refused, the next given again; and an
-    // instance past it from its creation has its first step refused.
+    // it again: the step past it is refused, the next given again; and a
+    // simulation made after a step past it is made, its first step refused.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -676,19 +676,23 @@ static void TestColliderBound(Gpu* gpu, mvfxGpu* kernels)
     }
     CHECK(right == 3, "a step past the largest collider refused, the next given");
     mvfxDestroyGpuSim(sim);
-    // An instance past it from its creation: its simulation is made, and
-    // its first step refused.
+    // An instance stepped past it before its simulation is made (made late,
+    // or again after a device was lost): the simulation is made, its first
+    // step refused, and the next given once the scale comes back.
     instanceDef.scale = 3.65e-3f;
     mvfxInstanceId past = {0};
-    CHECK(mvfxCreateInstance(context, &instanceDef, &past) == mvfx_success, "instance past it");
+    CHECK(mvfxCreateInstance(context, &instanceDef, &past) == mvfx_success &&
+              mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success,
+          "an instance stepped past it");
     simDef.instance = past;
     sim = NULL;
     mvfxResult made = mvfxCreateGpuSim(&simDef, &sim, &refusal);
     mvfxResult first = made == mvfx_success ? PassesAt(gpu, context, past, sim, 3.65e-3f) : made;
-    printf("  an instance past it from its creation: made %d, its first step %d\n", (int)made,
-           (int)first);
-    CHECK(made == mvfx_success && first == mvfx_errorLimit,
-          "an instance past it from its creation refused its first step");
+    mvfxResult back = made == mvfx_success ? PassesAt(gpu, context, past, sim, 3.8e-3f) : made;
+    printf("  an instance stepped past it: made %d, its first step %d, then %d\n", (int)made,
+           (int)first, (int)back);
+    CHECK(made == mvfx_success && first == mvfx_errorLimit && back == mvfx_success,
+          "a simulation made past it, its first step refused, the next given");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(context);
 }

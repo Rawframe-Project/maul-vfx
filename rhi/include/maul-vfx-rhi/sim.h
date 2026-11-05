@@ -456,8 +456,8 @@ extern "C"
     ///         hostGridBytes, or a mesh shape's mesh its room;
     ///         `mvfx_errorLimit` for an emitter of rigid hulls kept out of a
     ///         box or a sphere past MVFX_MAX_PLANNED_COLLIDER in the
-    ///         particles' space at the step, whose plan is refused (the
-    ///         frame is the host's to drop).
+    ///         particles' space at the step, checked at every step (the
+    ///         frame is the host's to drop; the step after is taken again).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);

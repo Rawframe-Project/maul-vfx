@@ -51,7 +51,8 @@ extern "C"
 // about its width to the fourth near a contact, past binary32's
 // largest value beyond a width of about 4.3e9; within this bound and
 // MVFX_MAX_HULL_REACH the widest difference is near 1.5e9, its fourth
-// power some 68 times under it. A plan past it is refused. It bounds
+// power some 68 times under it. The GPU part refuses such a step
+// (mvfxGpuSim_AddPasses); the plan itself is given. It bounds
 // only the products: binary32 holds a length there to about 16, so a
 // body far smaller than such a collider meets it to that.
 #define MVFX_MAX_PLANNED_COLLIDER 0x1p28f
@@ -1085,10 +1086,7 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, an
     ///         emitter or a step out of range; `mvfx_errorStale` for an
     ///         instance that is gone; `mvfx_errorUnsupported` for an
-    ///         instance that is not planned; `mvfx_errorLimit` for an
-    ///         emitter of rigid hulls kept out of a box or a sphere past
-    ///         MVFX_MAX_PLANNED_COLLIDER in the particles' space at the
-    ///         step, checked at every step's plan.
+    ///         instance that is not planned.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context,
@@ -1110,9 +1108,7 @@ extern "C"
     ///         that is gone; `mvfx_errorUnsupported` for an instance that
     ///         is not planned; `mvfx_errorState` for one whose plans hold
     ///         more than one step (mvfxInstance_GetPlanSteps), each with
-    ///         its own plan; `mvfx_errorLimit` for an emitter of rigid
-    ///         hulls kept out of a box or a sphere past
-    ///         MVFX_MAX_PLANNED_COLLIDER in the particles' space.
+    ///         its own plan.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context,

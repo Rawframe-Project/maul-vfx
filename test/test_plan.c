@@ -9,8 +9,7 @@
 // and after; the plan's room at one tick and in a plan; finishing at the
 // latest death; clears; the forces, colliders, velocity modules, kill
 // rules and depth image resolved for each step, against binary64 oracles
-// of their meaning in plan.h; a beam's strikes; the refusals, a hull's
-// plan past the largest collider at every step among them. The
+// of their meaning in plan.h; a beam's strikes; and the refusals. The
 // CPU twin is read as a host reads it: its births and deaths as events,
 // its particles' birth ticks, serials and inverse lives by a host module
 // after motion (peek.h), its live count from its statistics.
@@ -1928,87 +1927,6 @@ static void TestDepthBounds(void)
     mvfxDestroyContext(context);
 }
 
-static void TestColliderBounds(void)
-{
-    // Rigid hulls kept out of a world box of half size 1e6 and a world
-    // sphere of radius 1e6, and rigid spheres out of the box, of a local
-    // emitter: in the particles' space they are 1e6 over the instance's
-    // scale. At a scale of 3.8e-3 (2.6e8, 2% short of
-    // MVFX_MAX_PLANNED_COLLIDER) every plan is given; at 3.65e-3 (2.74e8,
-    // 2% past it) the hulls' are refused, at every step's plan, the
-    // spheres' given; at 3.8e-3 again all are given.
-    mvfxContextDef contextDef = mvfxDefaultContextDef();
-    mvfxContext* context = NULL;
-    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
-    static const float cube[24] = {-0.5f, -0.5f, -0.5f, 0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,
-                                   -0.5f, 0.5f,  0.5f,  -0.5f, -0.5f, -0.5f, 0.5f,  0.5f,
-                                   -0.5f, 0.5f,  -0.5f, 0.5f,  0.5f,  0.5f,  0.5f,  0.5f};
-    mvfxMeshDef meshDef = mvfxDefaultMeshDef();
-    meshDef.positions = cube;
-    meshDef.vertexCount = 8;
-    mvfxMeshId mesh = {0};
-    CHECK(mvfxCreateMesh(context, &meshDef, &mesh) == mvfx_success, "a mesh");
-    static const mvfxCollider box = {.kind = mvfx_colliderBox,
-                                     .space = mvfx_spaceWorld,
-                                     .center = {0, -1e6f, 0},
-                                     .halfExtents = {1e6f, 1e6f, 1e6f},
-                                     .rotation = {0, 0, 0, 1}};
-    static const mvfxCollider ball = {.kind = mvfx_colliderSphere,
-                                      .space = mvfx_spaceWorld,
-                                      .center = {0, -1e6f, 0},
-                                      .radius = 1e6f};
-    mvfxEmitterDef emitters[3];
-    const mvfxCollider* colliders[3] = {&box, &ball, &box};
-    for (int32_t e = 0; e < 3; ++e)
-    {
-        emitters[e] = Emitter(64);
-        emitters[e].space = mvfx_spaceLocal;
-        emitters[e].rigid = (mvfxRigidDef){.enable = true,
-                                           .shape = e < 2 ? mvfx_rigidHull : mvfx_rigidSphere,
-                                           .density = 1.0f,
-                                           .substeps = 2,
-                                           .hull = mesh};
-        emitters[e].collision = (mvfxCollision){.enable = true};
-        emitters[e].colliders = colliders[e];
-        emitters[e].colliderCount = 1;
-    }
-    mvfxEffectDef def = mvfxDefaultEffectDef();
-    def.emitters = emitters;
-    def.emitterCount = 3;
-    mvfxEffectId effect = {0};
-    CHECK(mvfxCreateEffect(context, &def, &effect, NULL) == mvfx_success, "effect");
-    mvfxInstanceId instance = Instance(context, effect, true);
-    static const double origin[3] = {0, 0, 0};
-    static const float still[4] = {0, 0, 0, 1};
-    static const float scales[3] = {3.8e-3f, 3.65e-3f, 3.8e-3f};
-    int32_t right = 0;
-    for (int32_t c = 0; c < 3; ++c)
-    {
-        CHECK(mvfxInstance_SetTransform(context, instance, origin, still, scales[c], true) ==
-                  mvfx_success,
-              "scaled");
-        for (int32_t s = 0; s < 3; ++s)
-        {
-            CHECK(mvfxContext_StepTicks(context, MVFX_TICKS_PER_SECOND / 60) == mvfx_success,
-                  "step");
-            for (int32_t e = 0; e < 3; ++e)
-            {
-                bool refused = c == 1 && e < 2;
-                mvfxEmitterPlan plan;
-                mvfxResult whole = mvfxInstance_GetEmitterPlan(context, instance, e, &plan);
-                bool zeroed = plan.colliderCount == 0;
-                mvfxResult first = mvfxInstance_GetEmitterStepPlan(context, instance, e, 0, &plan);
-                right += refused ? whole == mvfx_errorLimit && first == mvfx_errorLimit && zeroed &&
-                                       plan.colliderCount == 0
-                                 : whole == mvfx_success && first == mvfx_success &&
-                                       plan.colliderCount == 1;
-            }
-        }
-    }
-    CHECK(right == 27, "a hull's plan past the largest collider refused at every step");
-    mvfxDestroyContext(context);
-}
-
 int main(void)
 {
     TestBirths();
@@ -2030,6 +1948,5 @@ int main(void)
     TestOverLifeView();
     TestDepth();
     TestDepthBounds();
-    TestColliderBounds();
     return s_failures == 0 ? 0 : 1;
 }

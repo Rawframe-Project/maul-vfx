@@ -18,12 +18,6 @@
 void mvfxPlanResolved(const mvfxInstance* instance, int32_t emitter, const mvfxTransform* from,
                       mvfxEmitterPlan* plan);
 
-// Whether a planned emitter of rigid hulls is kept out of no box or
-// sphere past MVFX_MAX_PLANNED_COLLIDER in the particles' space, which the
-// GPU part's search could not carry.
-MVFX_NODISCARD bool mvfxPlannedCollidersHeld(const mvfxInstance* live, int32_t emitter,
-                                             const mvfxEmitterPlan* plan);
-
 // A resolved collider as a plan hands it over, with its def's grid.
 mvfxPlannedCollider mvfxPlannedColliderOf(const mvfxResolvedCollider* c, mvfxGridId grid);
 
