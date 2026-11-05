@@ -310,11 +310,14 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
         "hulls born into a box");
     // Hulls of no width (a cube's of size 0 along X) turned a quarter about
     // X, placed at rest on a grid of quarters in a box turned a quarter
-    // about Z that they are kept out of: the faces across the no width
-    // take a normal scaled by 1 / 1e-30 before it is made unit.
-    static const mvfxCollider flatBox = {.kind = mvfx_colliderBox,
-                                         .halfExtents = {1.25f, 0.75f, 1.25f},
-                                         .rotation = {0, 0, 0.70710678f, 0.70710678f}};
+    // about Z that they are kept out of, then falling to a floor below it:
+    // the faces across the no width take a normal scaled by 1 / 1e-30
+    // before it is made unit.
+    static const mvfxCollider flatBox[2] = {
+        {.kind = mvfx_colliderPlane, .center = {0, -1.5f, 0}, .normal = {0, 1, 0}},
+        {.kind = mvfx_colliderBox,
+         .halfExtents = {1.25f, 0.75f, 1.25f},
+         .rotation = {0, 0, 0.70710678f, 0.70710678f}}};
     static const double flatPlaces[24] = {-0.25, 0.5,   -1,   0.75,  0.75, -0.75, 0,    0,
                                           -0.25, 0,     0.25, -0.5,  0,    -0.5,  0.75, 0,
                                           0,     -1.25, 0.25, -0.75, 1,    -0.25, 1,    1};
@@ -324,7 +327,7 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     static const float flatStill[24] = {0};
     static const mvfxSpawnRequest flats = {
         .count = 8, .positions = flatPlaces, .velocities = flatStill, .sizes = flatSizes};
-    emitter = Thrown(mvfx_rigidHull, &flatBox, 1);
+    emitter = Thrown(mvfx_rigidHull, flatBox, 2);
     emitter.rate = 0.0f;
     emitter.burstCount = 0;
     emitter.hostSpawnCapacity = 8;
