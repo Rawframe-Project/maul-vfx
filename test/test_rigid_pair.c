@@ -1178,6 +1178,67 @@ static void DrawTurn(bool gridded, float q[4])
     }
 }
 
+// Whether two faces across an edge of an EPA polytope lie folded onto
+// each other: one's third point on the other's plane (within 1e-9 of the
+// reach), their normals opposed. A convex polytope has none; two faces in
+// one plane have the same normal.
+static bool AnyFold(const double points[][3], int32_t pointCount, const uint8_t faces[][3],
+                    int32_t faceCount)
+{
+    double reach = 0.0;
+    for (int32_t i = 0; i < pointCount; ++i)
+    {
+        reach = fmax(reach, sqrt(points[i][0] * points[i][0] + points[i][1] * points[i][1] +
+                                 points[i][2] * points[i][2]));
+    }
+    double normals[MVFX_TEST_EPA_FACES][3];
+    for (int32_t f = 0; f < faceCount; ++f)
+    {
+        const double* p = points[faces[f][0]];
+        const double* q = points[faces[f][1]];
+        const double* r = points[faces[f][2]];
+        double u[3] = {q[0] - p[0], q[1] - p[1], q[2] - p[2]};
+        double v[3] = {r[0] - p[0], r[1] - p[1], r[2] - p[2]};
+        double n[3] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2],
+                       u[0] * v[1] - u[1] * v[0]};
+        double length = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            normals[f][k] = n[k] / length;
+        }
+    }
+    for (int32_t f = 0; f < faceCount; ++f)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            uint8_t from = faces[f][k];
+            uint8_t to = faces[f][(k + 1) % 3];
+            const double* third = points[faces[f][(k + 2) % 3]];
+            for (int32_t g = 0; g < faceCount; ++g)
+            {
+                for (int32_t m = 0; m < 3; ++m)
+                {
+                    if (faces[g][m] != to || faces[g][(m + 1) % 3] != from)
+                    {
+                        continue;
+                    }
+                    const double* on = points[faces[g][0]];
+                    const double* n = normals[g];
+                    double off = n[0] * (third[0] - on[0]) + n[1] * (third[1] - on[1]) +
+                                 n[2] * (third[2] - on[2]);
+                    double along =
+                        n[0] * normals[f][0] + n[1] * normals[f][1] + n[2] * normals[f][2];
+                    if (fabs(off) <= 1e-9 * reach && along < 0.0)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
 static void TestEpaAgainstAxes(void)
 {
     // Pairs of boxes, as hulls of their corners, three quarters of them
@@ -1188,8 +1249,11 @@ static void TestEpaAgainstAxes(void)
     // overlap, its depth is the separating axes' within 1e-4 of 1 plus it,
     // and where one way is least by 1e-3 its normal is that way's (a
     // search stopped at its cap too: 2 overlapping by rounding alone).
+    // Wherever EPA runs, its polytope after each step has no face folded
+    // back onto the face across an edge.
     int32_t judged = 0;
     int32_t wrong = 0;
+    int32_t folds = 0;
     for (int32_t n = 0; n < 100000; ++n)
     {
         bool gridded = n % 2 == 0;
@@ -1227,6 +1291,15 @@ static void TestEpaAgainstAxes(void)
         float distance = 0.0f;
         float normal[3] = {0.0f, 0.0f, 0.0f};
         bool met = mvfxTestConvexMeet(a, 8, b, 8, 0.01f, &stopped, &steps, &distance, normal);
+        // EPA's polytope after each step it took: no face folded.
+        for (int32_t k = 1; met && k <= steps; ++k)
+        {
+            double points[MVFX_TEST_EPA_POINTS][3];
+            uint8_t faces[MVFX_TEST_EPA_FACES][3];
+            int32_t pointCount = 0;
+            int32_t faceCount = mvfxTestEpaPolytope(a, 8, b, 8, k, points, &pointCount, faces);
+            folds += AnyFold(points, pointCount, faces, faceCount) ? 1 : 0;
+        }
         if (!(depth > 1e-6) && !(met && distance < 0.0f))
         {
             continue;
@@ -1240,6 +1313,7 @@ static void TestEpaAgainstAxes(void)
     }
     CHECK(judged >= 25000, "box pairs overlapping");
     CHECK(wrong == 0, "every overlap found at the separating axes' depth and normal");
+    CHECK(folds == 0, "no face EPA adds folded back onto the face across its edge");
 }
 
 int main(void)

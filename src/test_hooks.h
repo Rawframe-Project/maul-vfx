@@ -173,4 +173,19 @@ bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b, int32_t 
                         float margin, bool* stopped, int32_t* epaSteps, float* distance,
                         float normal[3]);
 
+// The most points and faces of EPA's polytope (as MVFX_EPA_POINTS and
+// MVFX_EPA_FACES).
+#define MVFX_TEST_EPA_POINTS 68
+#define MVFX_TEST_EPA_FACES  136
+
+// The polytope EPA grows in at most most steps for the hulls of a's and
+// b's points (as mvfxTestConvexMeet takes them), where they overlap: its
+// points (of the difference a less b) and their count, and its faces
+// (counterclockwise from outside, indices into points); their count, 0
+// when they are apart, the difference is flat or a count is out of range.
+// No public call gives the search's polytope, whose shape a test checks.
+int32_t mvfxTestEpaPolytope(const float* a, int32_t countA, const float* b, int32_t countB,
+                            int32_t most, double points[MVFX_TEST_EPA_POINTS][3],
+                            int32_t* pointCount, uint8_t faces[MVFX_TEST_EPA_FACES][3]);
+
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H

@@ -12,8 +12,8 @@
 #define MOST_STEPS MVFX_CONVEX_STEPS
 
 // The most vertices and faces EPA's polytope grows to.
-#define EPA_VERTICES (4 + MOST_STEPS)
-#define EPA_FACES    (2 * EPA_VERTICES)
+#define EPA_VERTICES MVFX_EPA_POINTS
+#define EPA_FACES    MVFX_EPA_FACES
 
 static double Dot(const double a[3], const double b[3])
 {
@@ -580,28 +580,6 @@ static bool Joins(const Epa* e, int32_t beyond, uint8_t from, uint8_t to, const 
     return !(onPlane && Dot(n, e->normals[beyond]) < 0.0);
 }
 
-// Whether new face f lies folded back onto the kept face across its first
-// edge (one of the first kept faces): its normal opposed to that face's,
-// its new point on that face's plane. Expand's checks leave none.
-[[maybe_unused]] static bool Folded(const Epa* e, int32_t kept, int32_t f)
-{
-    const uint8_t* face = e->faces[f];
-    const double* w = e->points[face[2]].w;
-    for (int32_t g = 0; g < kept; ++g)
-    {
-        for (int32_t k = 0; k < 3; ++k)
-        {
-            if (e->faces[g][k] == face[1] && e->faces[g][(k + 1) % 3] == face[0])
-            {
-                double off = Dot(e->normals[g], w) - e->distances[g];
-                return Dot(e->normals[f], e->normals[g]) < 0.0 &&
-                       fabs(off) <= 1e-12 * (fabs(e->distances[g]) + sqrt(Dot(w, w)));
-            }
-        }
-    }
-    return false;
-}
-
 // The horizon of the faces marked seen into edges: each edge of a seen
 // face whose twin is on no seen face, in the faces' order; their count.
 static int32_t Horizon(const Epa* e, const bool* seen, uint8_t edges[][2])
@@ -718,11 +696,26 @@ static bool Expand(Epa* e, const Point* p)
         // Each has area and room, as found above.
         (void)AddTriangle(e, edges[j][0], edges[j][1], at);
     }
-    for (int32_t f = kept; f < e->faceCount; ++f)
-    {
-        MVFX_ASSERT(!Folded(e, kept, f));
-    }
     return true;
+}
+
+// EPA's steps from its started polytope e, at most most, counted in
+// steps; the face nearest the origin it ends at.
+static int32_t Deepen(const mvfxPolytope* a, const mvfxPolytope* b, Epa* e, int32_t most,
+                      int32_t* steps)
+{
+    int32_t f = NearestFace(e);
+    for (*steps = 0; *steps < most; ++*steps)
+    {
+        Point p = Support(a, b, e->normals[f]);
+        double gain = Dot(e->normals[f], p.w) - e->distances[f];
+        if (gain <= 1e-6 * fmax(fabs(e->distances[f]), 1e-12) || !Expand(e, &p))
+        {
+            break;
+        }
+        f = NearestFace(e);
+    }
+    return f;
 }
 
 // EPA (van den Bergen 2003): of the difference holding the origin, the
@@ -746,17 +739,7 @@ static void Penetration(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s
     {
         return;
     }
-    int32_t f = NearestFace(&e);
-    for (*steps = 0; *steps < most; ++*steps)
-    {
-        Point p = Support(a, b, e.normals[f]);
-        double gain = Dot(e.normals[f], p.w) - e.distances[f];
-        if (gain <= 1e-6 * fmax(fabs(e.distances[f]), 1e-12) || !Expand(&e, &p))
-        {
-            break;
-        }
-        f = NearestFace(&e);
-    }
+    int32_t f = Deepen(a, b, &e, most, steps);
     // The face's point nearest the origin, by its triangle's weights.
     Simplex face = {.count = 3};
     for (int32_t i = 0; i < 3; ++i)
@@ -800,6 +783,29 @@ bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b, float m
     out->distance = (float)distance;
     out->capped = capped;
     return true;
+}
+
+int32_t mvfxEpaPolytope(const mvfxPolytope* a, const mvfxPolytope* b, int32_t most,
+                        double points[MVFX_EPA_POINTS][3], int32_t* pointCount,
+                        uint8_t faces[MVFX_EPA_FACES][3])
+{
+    Simplex s;
+    double v[3];
+    int32_t steps = 0;
+    Epa e;
+    *pointCount = 0;
+    if (Gjk(a, b, &s, v, MOST_STEPS, &steps) || !Blow(a, b, &s) || !StartEpa(&e, &s))
+    {
+        return 0;
+    }
+    (void)Deepen(a, b, &e, most < MOST_STEPS ? most : MOST_STEPS, &steps);
+    for (int32_t i = 0; i < e.pointCount; ++i)
+    {
+        memcpy(points[i], e.points[i].w, sizeof points[i]);
+    }
+    memcpy(faces, e.faces, (size_t)e.faceCount * sizeof e.faces[0]);
+    *pointCount = e.pointCount;
+    return e.faceCount;
 }
 
 bool mvfxConvexMeets(const mvfxPolytope* a, const mvfxPolytope* b, float margin,

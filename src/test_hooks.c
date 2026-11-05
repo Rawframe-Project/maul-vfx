@@ -298,6 +298,26 @@ int32_t mvfxTestLiquidSubsteps(const mvfxContext* context, mvfxInstanceId instan
     return live != nullptr ? mvfxLiquidSubsteps(live, ticks) : -1;
 }
 
+static_assert(MVFX_TEST_EPA_POINTS == MVFX_EPA_POINTS && MVFX_TEST_EPA_FACES == MVFX_EPA_FACES,
+              "the hooks' EPA sizes are convex.h's");
+
+int32_t mvfxTestEpaPolytope(const float* a, int32_t countA, const float* b, int32_t countB,
+                            int32_t most, double points[MVFX_TEST_EPA_POINTS][3],
+                            int32_t* pointCount, uint8_t faces[MVFX_TEST_EPA_FACES][3])
+{
+    *pointCount = 0;
+    if (countA < 1 || countA > MVFX_MAX_HULL_VERTICES || countB < 1 ||
+        countB > MVFX_MAX_HULL_VERTICES)
+    {
+        return 0;
+    }
+    mvfxPolytope pa = {.vertexCount = countA};
+    mvfxPolytope pb = {.vertexCount = countB};
+    memcpy(pa.vertices, a, (size_t)countA * 3 * sizeof(float));
+    memcpy(pb.vertices, b, (size_t)countB * 3 * sizeof(float));
+    return mvfxEpaPolytope(&pa, &pb, most, points, pointCount, faces);
+}
+
 bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b, int32_t countB,
                         float margin, bool* stopped, int32_t* epaSteps, float* distance,
                         float normal[3])
