@@ -1180,8 +1180,8 @@ static void DrawTurn(bool gridded, float q[4])
 
 // Whether two faces across an edge of an EPA polytope lie folded onto
 // each other: one's third point on the other's plane (within 1e-9 of the
-// reach), their normals opposed. A convex polytope has none; two faces in
-// one plane have the same normal.
+// reach), their normals opposed (over 120 degrees apart). A convex
+// polytope has none; two faces in one plane have the same normal.
 static bool AnyFold(const double points[][3], int32_t pointCount, const uint8_t faces[][3],
                     int32_t faceCount)
 {
@@ -1228,7 +1228,7 @@ static bool AnyFold(const double points[][3], int32_t pointCount, const uint8_t 
                                  n[2] * (third[2] - on[2]);
                     double along =
                         n[0] * normals[f][0] + n[1] * normals[f][1] + n[2] * normals[f][2];
-                    if (fabs(off) <= 1e-9 * reach && along < 0.0)
+                    if (fabs(off) <= 1e-9 * reach && along < -0.5)
                     {
                         return true;
                     }
