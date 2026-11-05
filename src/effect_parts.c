@@ -13,7 +13,7 @@
 #include <math.h>
 
 // Whether low <= x <= high; false for NaN.
-static bool IsWithin(float x, float low, float high)
+MVFX_NODISCARD static bool IsWithin(float x, float low, float high)
 {
     return x >= low && x <= high;
 }
@@ -352,7 +352,7 @@ static mvfxResult CheckAttach(const mvfxFieldPath* emitterAt, const mvfxEffectDe
     }
 }
 
-static bool IsSameCurve(const mvfxCurve* a, const mvfxCurve* b)
+MVFX_NODISCARD static bool IsSameCurve(const mvfxCurve* a, const mvfxCurve* b)
 {
     bool same = a->keyCount == b->keyCount && a->tangents == b->tangents;
     for (int32_t i = 0; same && i < a->keyCount; ++i)

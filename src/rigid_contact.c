@@ -466,8 +466,8 @@ static mvfxBodyContact SampleContact(const mvfxBodyPose* b, const mvfxBodyShape*
 // On a flat surface the corners carry a face; a fifth contact amid them
 // shifts the load the one pass gives each and unsettled a box held on a
 // slope.
-static bool CenterMet(const mvfxBodyShape* s, const float* depths, const bool* found, int32_t i,
-                      float depth, float clear)
+MVFX_NODISCARD static bool CenterMet(const mvfxBodyShape* s, const float* depths, const bool* found,
+                                     int32_t i, float depth, float clear)
 {
     bool met = true;
     if (s->kind == mvfx_rigidBox)
@@ -503,8 +503,9 @@ typedef struct Probe
 } Probe;
 
 // Whether a sample meets the probe's surface, and its contact.
-static bool ProbeSample(const Probe* p, const mvfxBodyPose* b, const mvfxBodyShape* s,
-                        const float sample[3], mvfxBodyContact* out)
+MVFX_NODISCARD static bool ProbeSample(const Probe* p, const mvfxBodyPose* b,
+                                       const mvfxBodyShape* s, const float sample[3],
+                                       mvfxBodyContact* out)
 {
     float world[3];
     SampleAt(b, sample, world);

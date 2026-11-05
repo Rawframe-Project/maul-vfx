@@ -223,7 +223,7 @@ mvfxResult mvfxInstance_GetWaterStepPlan(const mvfxContext* context, mvfxInstanc
 // Whether nothing moves surface w after tick but its own motion: the
 // instance stopped by then (shallow water's sources pour while it plays),
 // and every emitter whose particles meet it had its last death.
-static bool IsStirringOver(const mvfxInstance* live, int32_t w, int64_t tick)
+MVFX_NODISCARD static bool IsStirringOver(const mvfxInstance* live, int32_t w, int64_t tick)
 {
     if (tick < live->stopTick)
     {

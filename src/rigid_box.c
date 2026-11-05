@@ -67,7 +67,7 @@ static float Separation(const BoxPair* p, const float l[3])
 // the body's 3 to 5, edge pairs 6 on), unit and from the collider toward
 // the body; false when one parts them by more than margin. Edges win only
 // by a clear margin, so resting faces keep face contacts.
-static bool LeastAxis(const BoxPair* p, float margin, float n[3], int32_t* axis)
+MVFX_NODISCARD static bool LeastAxis(const BoxPair* p, float margin, float n[3], int32_t* axis)
 {
     float best = -INFINITY;
     for (int32_t i = 0; i < 6; ++i)

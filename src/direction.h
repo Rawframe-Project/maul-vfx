@@ -6,6 +6,8 @@
 #ifndef MAUL_VFX_SRC_DIRECTION_H
 #define MAUL_VFX_SRC_DIRECTION_H
 
+#include "maul-vfx/base.h"
+
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,7 +16,7 @@
 void mvfxRandomDirection(uint32_t a, uint32_t b, float out[3]);
 
 // v normalized; false (and v left) when its length is 0 or not finite.
-bool mvfxNormalize(float v[3]);
+MVFX_NODISCARD bool mvfxNormalize(float v[3]);
 
 // v's length, as sqrtf of its squares' sum in x, y, z order. A vector
 // whose largest component reaches 2^63, where that sum may pass binary32's

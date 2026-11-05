@@ -15,7 +15,7 @@
 #include <stdbool.h>
 
 // Whether an allocator is usable: both functions set, or neither.
-bool mvfxIsAllocatorValid(const mvfxAllocator* allocator);
+MVFX_NODISCARD bool mvfxIsAllocatorValid(const mvfxAllocator* allocator);
 
 // size bytes aligned to alignment, a power of two, or NULL.
 void* mvfxAllocate(const mvfxAllocator* allocator, size_t size, size_t alignment);

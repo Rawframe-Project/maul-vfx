@@ -152,7 +152,7 @@ typedef struct Family
 // Whether family kind's constraint from point q (at place c and row r) is
 // broken by a torn edge: a stretch constraint torn; a quad's diagonals
 // with any of its four edges; a bending pair with either edge it spans.
-static bool IsBroken(const Points* p, int32_t kind, int32_t q)
+MVFX_NODISCARD static bool IsBroken(const Points* p, int32_t kind, int32_t q)
 {
     if (p->torn == nullptr)
     {
@@ -236,8 +236,8 @@ static void SolveAll(const Points* p, const Family families[6], Pass pass, float
 // Tears the edge from point a to point b (bit of a's torn edges) if it is
 // longer than rest: counted, and an event at its middle along it, held to
 // the substeps' end (event.h).
-static bool TearEdge(mvfxInstance* instance, int32_t emitter, const Points* p, int32_t a, int32_t b,
-                     uint32_t bit, float longest, int64_t tick)
+MVFX_NODISCARD static bool TearEdge(mvfxInstance* instance, int32_t emitter, const Points* p,
+                                    int32_t a, int32_t b, uint32_t bit, float longest, int64_t tick)
 {
     float d[3];
     float square = 0.0f;

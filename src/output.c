@@ -235,7 +235,7 @@ void mvfxWriteRecord(const mvfxRecordSource* source, const mvfxOutputLayout* lay
 
 // Whether a field counts (a frame, serial, mesh or ribbon), so a point
 // between particles takes the nearer one's.
-static bool IsCounted(mvfxField field)
+MVFX_NODISCARD static bool IsCounted(mvfxField field)
 {
     return field == mvfx_recordFrame || field == mvfx_recordSerial || field == mvfx_recordMesh ||
            field == mvfx_recordRibbon || field == mvfx_recordNeighborCount;
@@ -429,13 +429,13 @@ bool mvfxIsViewValid(const mvfxView* view)
 }
 
 // Whether an emitter sorts by place, needing scratch.
-static bool SortsByPlace(const mvfxCompiledEmitter* compiled)
+MVFX_NODISCARD static bool SortsByPlace(const mvfxCompiledEmitter* compiled)
 {
     return compiled->sortMode == mvfx_sortBackToFront || compiled->sortMode == mvfx_sortFrontToBack;
 }
 
 // Whether an emitter's output needs scratch: a sort by place, or ribbons.
-static bool NeedsScratch(const mvfxCompiledEmitter* compiled)
+MVFX_NODISCARD static bool NeedsScratch(const mvfxCompiledEmitter* compiled)
 {
     return SortsByPlace(compiled) || compiled->ribbonIds != mvfx_ribbonNone;
 }

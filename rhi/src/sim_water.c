@@ -44,7 +44,7 @@
 // a dimension; water_read.wgsl's ROW invocations).
 #define READ_ROW 32768u
 
-static bool IsShallow(const SimWater* water)
+MVFX_NODISCARD static bool IsShallow(const SimWater* water)
 {
     return water->view.def.model == mvfx_waterShallow;
 }
@@ -69,7 +69,8 @@ mvfxResult mvfxReadSimWaters(mvfxGpuSim* sim, mvfxEffectId effect)
 }
 
 // Creates a buffer of size bytes and usages; false when the device refuses.
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -434,7 +435,7 @@ mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w)
 
 // Records the copies of the coupled emitters' crossings' lists, each its
 // room whole (its count the device's).
-static bool CopyCrossings(mvfxGpuSim* sim, mrhiPassId pass, const SimWater* water)
+MVFX_NODISCARD static bool CopyCrossings(mvfxGpuSim* sim, mrhiPassId pass, const SimWater* water)
 {
     bool copied = true;
     for (int32_t k = 0; copied && k < water->couplings; ++k)
@@ -453,7 +454,7 @@ static bool CopyCrossings(mvfxGpuSim* sim, mrhiPassId pass, const SimWater* wate
 // rest shallow water's), the record and the terrain's grid when it
 // changed, the coupled emitters' crossings, and the fields emptied after a
 // clear.
-static bool RecordWrite(mvfxGpuSim* sim, SimWater* water)
+MVFX_NODISCARD static bool RecordWrite(mvfxGpuSim* sim, SimWater* water)
 {
     mrhiPassId pass = water->passes[0];
     const mrhiResourceId* r = water->resources;
@@ -475,7 +476,7 @@ static bool RecordWrite(mvfxGpuSim* sim, SimWater* water)
 }
 
 // Records the step's dispatches.
-static bool RecordStep(mvfxGpuSim* sim, SimWater* water)
+MVFX_NODISCARD static bool RecordStep(mvfxGpuSim* sim, SimWater* water)
 {
     bool recorded = RecordWrite(sim, water);
     mrhiBinding bindings[WATER_BUFFERS];
@@ -502,7 +503,7 @@ static bool RecordStep(mvfxGpuSim* sim, SimWater* water)
 }
 
 // Records a read's passes: its numbers' write, then its words.
-static bool RecordRead(mvfxGpuSim* sim, const SimWater* water, const WaterRead* read)
+MVFX_NODISCARD static bool RecordRead(mvfxGpuSim* sim, const SimWater* water, const WaterRead* read)
 {
     bool recorded = mrhiPass_Begin(sim->device, read->passes[0]) == mrhi_success &&
                     mvfxUpload(sim->device, &sim->uploaded, read->passes[0], read->resource, 0,
@@ -571,8 +572,8 @@ static uint32_t FormatBytes(mvfxFormat format)
 // A read's numbers, false for one out of range for the surface or its
 // buffer (as the core's IsReadValid, and its bytes within 32-bit
 // addresses).
-static bool ReadWords(const SimWater* water, const mvfxGpuWaterReadDef* def,
-                      uint32_t words[WATER_READ_WORDS], uint32_t* written)
+MVFX_NODISCARD static bool ReadWords(const SimWater* water, const mvfxGpuWaterReadDef* def,
+                                     uint32_t words[WATER_READ_WORDS], uint32_t* written)
 {
     const mvfxWaterRead* read = &def->read;
     const int32_t* n = water->view.def.size;

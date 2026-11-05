@@ -63,6 +63,7 @@ void mvfxStoreGridBox(mvfxGrid* grid, const int32_t first[3], const int32_t size
 // Samples the grid's components trilinearly at u, the box's own place with
 // [0, 1] from face to face, under a border; false (and nothing) outside
 // the box under the none border.
-bool mvfxSampleGrid(const mvfxGrid* grid, const float u[3], mvfxGridBorder border, float out[4]);
+MVFX_NODISCARD bool mvfxSampleGrid(const mvfxGrid* grid, const float u[3], mvfxGridBorder border,
+                                   float out[4]);
 
 #endif

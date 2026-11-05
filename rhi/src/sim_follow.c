@@ -165,7 +165,7 @@ bool mvfxImportSimFollow(mvfxGpuSim* sim, const Emitter* emitter, mrhiAccess* ac
 
 // Records the copies of a coupled emitter's surface's fields, or its
 // region cleared.
-static bool CopyWater(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
+MVFX_NODISCARD static bool CopyWater(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter)
 {
     const SimWater* water = &sim->waters[emitter->water];
     mrhiResourceId grids = emitter->resources[BUFFER_GRIDS];

@@ -14,8 +14,8 @@
 
 // Whether a tick lies where the emitter spawns: from its delay, within its
 // loops, not past a stop.
-static bool IsSpawning(const mvfxInstance* instance, const mvfxCompiledEmitter* emitter,
-                       int64_t tick)
+MVFX_NODISCARD static bool IsSpawning(const mvfxInstance* instance,
+                                      const mvfxCompiledEmitter* emitter, int64_t tick)
 {
     int64_t end = emitter->delay + (int64_t)emitter->loops * emitter->duration;
     return tick >= emitter->delay && tick <= instance->stopTick &&
@@ -101,7 +101,7 @@ static mvfxHostBirth BirthOf(const mvfxInstance* instance, int32_t emitter,
     return birth;
 }
 
-static bool Before(const mvfxHostBirth* a, const mvfxHostBirth* b)
+MVFX_NODISCARD static bool Before(const mvfxHostBirth* a, const mvfxHostBirth* b)
 {
     return a->tick < b->tick || (a->tick == b->tick && a->order < b->order);
 }
@@ -133,8 +133,8 @@ static void SiftDown(mvfxHostBirth* births, int32_t root, int32_t count)
 // Adds a birth to a heap with its latest on top, keeping the earliest
 // capacity of them: false when the birth or the one it displaces is left
 // out.
-static bool KeepEarliest(mvfxHostBirth* heap, int32_t* count, int32_t capacity,
-                         const mvfxHostBirth* birth)
+MVFX_NODISCARD static bool KeepEarliest(mvfxHostBirth* heap, int32_t* count, int32_t capacity,
+                                        const mvfxHostBirth* birth)
 {
     if (*count < capacity)
     {

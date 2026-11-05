@@ -20,7 +20,7 @@
 #include <string.h>
 
 // Makes a uniform buffer of a read's or a query's numbers.
-static bool CreateNumbers(mvfxGpuSim* sim, uint64_t words, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateNumbers(mvfxGpuSim* sim, uint64_t words, mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = 4u * words;
@@ -65,8 +65,8 @@ void mvfxDestroySimGasReads(mvfxGpuSim* sim, SimGas* gas)
 // Adds a read's or a query's passes: a transfer pass writing its
 // numbers, then a compute pass of its accesses; false when the device
 // refuses one.
-static bool AddPasses(mvfxGpuSim* sim, mrhiResourceId numbers, const mrhiAccess* used,
-                      uint32_t count, mrhiPassId passes[2])
+MVFX_NODISCARD static bool AddPasses(mvfxGpuSim* sim, mrhiResourceId numbers,
+                                     const mrhiAccess* used, uint32_t count, mrhiPassId passes[2])
 {
     const mrhiAccess written = {.resource = numbers, .kind = mrhi_accessCopyDestination};
     mrhiPassDef pass = mrhiDefaultPassDef();
@@ -82,7 +82,7 @@ static bool AddPasses(mvfxGpuSim* sim, mrhiResourceId numbers, const mrhiAccess*
 }
 
 // Dispatches a pass over points, in rows past GAS_ROW workgroups.
-static bool Dispatch(mvfxGpuSim* sim, mrhiPassId pass, uint32_t points)
+MVFX_NODISCARD static bool Dispatch(mvfxGpuSim* sim, mrhiPassId pass, uint32_t points)
 {
     uint32_t groups = (points + GAS_GROUP - 1u) / GAS_GROUP;
     return groups == 0 || mrhiPass_Dispatch(sim->device, pass, groups < GAS_ROW ? groups : GAS_ROW,
@@ -90,7 +90,7 @@ static bool Dispatch(mvfxGpuSim* sim, mrhiPassId pass, uint32_t points)
 }
 
 // Records a read's passes: its numbers' write, then its words.
-static bool RecordRead(mvfxGpuSim* sim, const SimGas* gas, const GasRead* read)
+MVFX_NODISCARD static bool RecordRead(mvfxGpuSim* sim, const SimGas* gas, const GasRead* read)
 {
     bool recorded = mrhiPass_Begin(sim->device, read->passes[0]) == mrhi_success &&
                     mvfxUpload(sim->device, &sim->uploaded, read->passes[0], read->resource, 0,
@@ -112,7 +112,7 @@ static bool RecordRead(mvfxGpuSim* sim, const SimGas* gas, const GasRead* read)
 }
 
 // Records a sample query's passes: its numbers' write, then its samples.
-static bool RecordQuery(mvfxGpuSim* sim, const SimGas* gas, const GasSamples* query)
+MVFX_NODISCARD static bool RecordQuery(mvfxGpuSim* sim, const SimGas* gas, const GasSamples* query)
 {
     bool recorded = mrhiPass_Begin(sim->device, query->passes[0]) == mrhi_success &&
                     mvfxUpload(sim->device, &sim->uploaded, query->passes[0], query->resource, 0,
@@ -176,8 +176,8 @@ static uint32_t FormatBytes(mvfxFormat format)
 
 // A read's numbers, false for one out of range for the gas or its buffer
 // (as the core's IsReadValid, and its bytes within 32-bit addresses).
-static bool ReadWords(const SimGas* gas, const mvfxGpuGasReadDef* def, uint32_t words[20],
-                      uint32_t* written)
+MVFX_NODISCARD static bool ReadWords(const SimGas* gas, const mvfxGpuGasReadDef* def,
+                                     uint32_t words[20], uint32_t* written)
 {
     const mvfxGasRead* read = &def->read;
     const int32_t* n = gas->view.def.size;

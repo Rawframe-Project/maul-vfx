@@ -55,6 +55,6 @@ void mvfxLeaveHost(mvfxContext* context);
 
 // Whether a call of the context's comes from host code it is calling, and
 // is refused: one misuse counted. False for NULL.
-bool mvfxRefusesHostCall(mvfxContext* context);
+MVFX_NODISCARD bool mvfxRefusesHostCall(mvfxContext* context);
 
 #endif

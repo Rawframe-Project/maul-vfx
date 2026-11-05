@@ -13,7 +13,7 @@
 #include <stddef.h>
 
 // Whether an allocator has both its functions or neither.
-bool mvfxRhiIsAllocatorValid(const mvfxAllocator* allocator);
+MVFX_NODISCARD bool mvfxRhiIsAllocatorValid(const mvfxAllocator* allocator);
 
 // size bytes aligned to alignment, a power of two; NULL when the allocator
 // fails, or for a zeroed one an alignment the C library's does not give.

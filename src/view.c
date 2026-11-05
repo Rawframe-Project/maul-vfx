@@ -89,7 +89,7 @@ mvfxResult mvfxInstance_GetBounds(mvfxContext* context, mvfxInstanceId instance,
 
 // Whether a box lies wholly outside one of a frustum's planes: its corner
 // farthest along the plane's normal is behind it.
-static bool IsOutside(const mvfxFrustum* frustum, const mvfxBounds* box)
+MVFX_NODISCARD static bool IsOutside(const mvfxFrustum* frustum, const mvfxBounds* box)
 {
     for (int32_t p = 0; frustum != nullptr && p < frustum->planeCount; ++p)
     {
@@ -108,7 +108,7 @@ static bool IsOutside(const mvfxFrustum* frustum, const mvfxBounds* box)
 }
 
 // Whether a comes before b in the draw order.
-static bool Before(const mvfxDrawItem* a, const mvfxDrawItem* b)
+MVFX_NODISCARD static bool Before(const mvfxDrawItem* a, const mvfxDrawItem* b)
 {
     if (a->priority != b->priority)
     {

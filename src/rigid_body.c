@@ -540,7 +540,7 @@ float mvfxBounceTarget(const mvfxRigidSolve* s, float speed)
 
 // The life a collision takes: its share of the life left, the particle
 // killed past its age.
-static bool LoseLife(const mvfxRigidSolve* s, int32_t i, float loss)
+MVFX_NODISCARD static bool LoseLife(const mvfxRigidSolve* s, int32_t i, float loss)
 {
     mvfxInstance* instance = s->instance;
     float* inverseLife = mvfxAttributeArray(instance, s->emitter, mvfx_attributeInverseLife);

@@ -72,7 +72,7 @@ static void StoreWord(mvfxInstance* instance, int32_t emitter, mvfxAttribute att
 }
 
 // Whether the emitter stores an attribute.
-static bool Has(const mvfxCompiledEmitter* emitter, mvfxAttribute attribute)
+MVFX_NODISCARD static bool Has(const mvfxCompiledEmitter* emitter, mvfxAttribute attribute)
 {
     return mvfxHasAttribute(&emitter->plan, attribute);
 }

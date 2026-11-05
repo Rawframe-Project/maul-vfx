@@ -16,8 +16,8 @@
 // stands now, and its grid: the def's, or the instance's first
 // heightfield collider when the def takes the host's; false for the
 // floor.
-bool mvfxResolveWaterTerrain(const mvfxInstance* instance, int32_t w,
-                             mvfxResolvedCollider* terrainOut, mvfxGridId* gridOut);
+MVFX_NODISCARD bool mvfxResolveWaterTerrain(const mvfxInstance* instance, int32_t w,
+                                            mvfxResolvedCollider* terrainOut, mvfxGridId* gridOut);
 
 // Reads shallow water surface w's ground at its cells' centers, in its
 // frame: its terrain (the def's, or the instance's first heightfield

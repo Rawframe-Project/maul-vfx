@@ -61,10 +61,10 @@ void mvfxWriteRibbonRecord(const mvfxRecordSource* source, const mvfxOutputLayou
                            const mvfxRibbonPoint* point, unsigned char* record);
 
 // Whether a view is within its bounds.
-bool mvfxIsViewValid(const mvfxView* view);
+MVFX_NODISCARD bool mvfxIsViewValid(const mvfxView* view);
 
 // Whether a host buffer of bytes is NULL only when empty, and aligned.
-bool mvfxIsBufferValid(const void* buffer, int64_t bytes, uintptr_t alignment);
+MVFX_NODISCARD bool mvfxIsBufferValid(const void* buffer, int64_t bytes, uintptr_t alignment);
 
 // The order records follow: indices into the pool, or the pool's own
 // order of live particles, or its reverse.
@@ -77,8 +77,9 @@ typedef struct mvfxRecordOrder
 
 // The order an emitter's records follow for a view, the sort its def
 // asks on scratch; false when the scratch is too small.
-bool mvfxOrderRecords(const mvfxInstance* instance, int32_t emitter, const mvfxView* view,
-                      void* scratch, int64_t scratchBytes, mvfxRecordOrder* orderOut);
+MVFX_NODISCARD bool mvfxOrderRecords(const mvfxInstance* instance, int32_t emitter,
+                                     const mvfxView* view, void* scratch, int64_t scratchBytes,
+                                     mvfxRecordOrder* orderOut);
 
 // The particle of an order's r-th record.
 int32_t mvfxOrderAt(const mvfxRecordOrder* order, int64_t r);

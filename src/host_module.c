@@ -71,7 +71,8 @@ static mvfxParticleArrays ArraysOf(mvfxInstance* instance, int32_t emitter, bool
 
 // Whether particle i's values in n arrays (NULL for one not stored) are
 // each finite and at most bound in size, bound per array.
-static bool AreWithin(float* const* arrays, int32_t n, int32_t i, const float* bounds)
+MVFX_NODISCARD static bool AreWithin(float* const* arrays, int32_t n, int32_t i,
+                                     const float* bounds)
 {
     bool within = true;
     for (int32_t k = 0; k < n; ++k)
@@ -83,7 +84,7 @@ static bool AreWithin(float* const* arrays, int32_t n, int32_t i, const float* b
 
 // Whether any of count values is not finite or past bound in size: a
 // reduction over one array, which vectorizes.
-static bool AnyPast(const float* values, int32_t count, float bound)
+MVFX_NODISCARD static bool AnyPast(const float* values, int32_t count, float bound)
 {
     uint32_t past = 0;
     for (int32_t i = 0; values != nullptr && i < count; ++i)
@@ -95,7 +96,7 @@ static bool AnyPast(const float* values, int32_t count, float bound)
 
 // Whether particle i's size (NULL arrays for none stored) keeps the axes
 // past the first axes equal to X, as a rigid shape takes them.
-static bool IsTied(float* const* size, int32_t axes, int32_t i)
+MVFX_NODISCARD static bool IsTied(float* const* size, int32_t axes, int32_t i)
 {
     bool tied = true;
     for (int32_t k = axes; size[0] != nullptr && k < 3; ++k)
@@ -106,7 +107,7 @@ static bool IsTied(float* const* size, int32_t axes, int32_t i)
 }
 
 // Whether any of count sizes is not tied (IsTied), as AnyPast.
-static bool AnyUntied(float* const* size, int32_t axes, int32_t count)
+MVFX_NODISCARD static bool AnyUntied(float* const* size, int32_t axes, int32_t count)
 {
     uint32_t untied = 0;
     for (int32_t k = axes; size[0] != nullptr && k < 3; ++k)
@@ -142,8 +143,8 @@ static bool AnyUntied(float* const* size, int32_t axes, int32_t count)
 // (mvfxBodyExtent) turned within RIGID_SPIN_SPEEDS times the speed bound
 // (a sphere 1e-20 across rolling at 1e-9 lengths a second turns at 1e11
 // radians a second, past the cap).
-static bool IsSpinWithin(mvfxInstance* instance, int32_t emitter, const mvfxParticleArrays* a,
-                         int32_t i, double fastest)
+MVFX_NODISCARD static bool IsSpinWithin(mvfxInstance* instance, int32_t emitter,
+                                        const mvfxParticleArrays* a, int32_t i, double fastest)
 {
     if (a->angularVelocity[0] == nullptr)
     {
@@ -196,7 +197,7 @@ static bool IsSpinWithin(mvfxInstance* instance, int32_t emitter, const mvfxPart
 
 // Whether particle i's speed is within fastest, its hold's rounding
 // allowed, in binary64 (a NaN component is not).
-static bool IsSpeedWithin(const mvfxParticleArrays* a, int32_t i, double fastest)
+MVFX_NODISCARD static bool IsSpeedWithin(const mvfxParticleArrays* a, int32_t i, double fastest)
 {
     double v[3] = {(double)a->velocity[0][i], (double)a->velocity[1][i], (double)a->velocity[2][i]};
     double most = fastest * (1.0 + SPEED_ROUNDING);
@@ -204,7 +205,7 @@ static bool IsSpeedWithin(const mvfxParticleArrays* a, int32_t i, double fastest
 }
 
 // Whether any particle's speed is past fastest (IsSpeedWithin).
-static bool AnySpeedPast(const mvfxParticleArrays* a, double fastest)
+MVFX_NODISCARD static bool AnySpeedPast(const mvfxParticleArrays* a, double fastest)
 {
     bool past = false;
     for (int32_t i = 0; !past && i < a->count; ++i)
@@ -216,8 +217,8 @@ static bool AnySpeedPast(const mvfxParticleArrays* a, double fastest)
 
 // Whether any of an emitter's rigid bodies spins past its bound
 // (IsSpinWithin).
-static bool AnySpinPast(mvfxInstance* instance, int32_t emitter, const mvfxParticleArrays* a,
-                        double fastest)
+MVFX_NODISCARD static bool AnySpinPast(mvfxInstance* instance, int32_t emitter,
+                                       const mvfxParticleArrays* a, double fastest)
 {
     bool past = false;
     for (int32_t i = 0; !past && i < a->count; ++i)
@@ -228,7 +229,8 @@ static bool AnySpinPast(mvfxInstance* instance, int32_t emitter, const mvfxParti
 }
 
 // Whether any of n arrays holds a value past its bound.
-static bool AnyArrayPast(float* const* arrays, int32_t n, int32_t count, const float* bounds)
+MVFX_NODISCARD static bool AnyArrayPast(float* const* arrays, int32_t n, int32_t count,
+                                        const float* bounds)
 {
     bool past = false;
     for (int32_t k = 0; k < n; ++k)

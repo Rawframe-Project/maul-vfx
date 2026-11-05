@@ -25,13 +25,13 @@
 #include <math.h>
 
 // Whether a gradient has no keys, so is white.
-static bool IsWhite(const mvfxGradient* gradient)
+MVFX_NODISCARD static bool IsWhite(const mvfxGradient* gradient)
 {
     return gradient->colorKeyCount == 0 && gradient->alphaKeyCount == 0;
 }
 
 // Whether low <= x <= high; false for NaN.
-static bool IsWithin(float x, float low, float high)
+MVFX_NODISCARD static bool IsWithin(float x, float low, float high)
 {
     return x >= low && x <= high;
 }

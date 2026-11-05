@@ -59,7 +59,7 @@ void mvfxEmptyGasSolids(const mvfxCompiledGas* gas, const mvfxGasState* state,
 
 // Whether two resolved obstacles are one moved: the same kind, sizes and
 // grid (a grid's scale goes with its half sizes).
-static bool IsMoved(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b)
+MVFX_NODISCARD static bool IsMoved(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b)
 {
     bool same = a->kind == b->kind && a->inside == b->inside && a->radius == b->radius &&
                 a->grid == b->grid;

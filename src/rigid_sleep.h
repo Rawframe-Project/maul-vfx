@@ -10,7 +10,7 @@
 #include "rigid_body.h"
 
 // Whether body i sleeps.
-static inline bool mvfxBodyAsleep(const mvfxRigidSolve* s, int32_t i)
+MVFX_NODISCARD static inline bool mvfxBodyAsleep(const mvfxRigidSolve* s, int32_t i)
 {
     return s->sleep != nullptr && s->sleep[i] < 0.0f;
 }

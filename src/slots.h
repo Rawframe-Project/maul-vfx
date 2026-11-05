@@ -33,7 +33,8 @@ typedef struct mvfxSlots
 
 // Allocates a table of capacity free slots, every generation 1; false
 // when the allocator fails.
-bool mvfxInitSlots(mvfxSlots* slots, const mvfxAllocator* allocator, uint32_t capacity);
+MVFX_NODISCARD bool mvfxInitSlots(mvfxSlots* slots, const mvfxAllocator* allocator,
+                                  uint32_t capacity);
 
 // Returns a table's memory.
 void mvfxReleaseSlots(mvfxSlots* slots, const mvfxAllocator* allocator);

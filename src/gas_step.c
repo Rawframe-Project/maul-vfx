@@ -164,7 +164,7 @@ static void Carry(const mvfxCompiledGas* gas, float* const velocity[3], const mv
 
 // Whether an array of count values is all +0: carrying it, by either
 // advection, gives +0 everywhere.
-static bool IsEmpty(const float* values, int64_t count)
+MVFX_NODISCARD static bool IsEmpty(const float* values, int64_t count)
 {
     for (int64_t i = 0; i < count; ++i)
     {
@@ -255,7 +255,7 @@ static void CarryCells(const mvfxCompiledGas* gas, float* const velocity[3],
 }
 
 // Whether a source holds a place in the box's frame.
-static bool Holds(const mvfxGasSource* source, const float local[3])
+MVFX_NODISCARD static bool Holds(const mvfxGasSource* source, const float local[3])
 {
     float d[3];
     float square = 0.0f;
@@ -418,7 +418,7 @@ static void Substep(const mvfxCompiledGas* gas, mvfxGasState* state, const mvfxG
 }
 
 // Whether any scalar holds more than nothing.
-static bool HoldsAny(const mvfxCompiledGas* gas, const mvfxGasState* state)
+MVFX_NODISCARD static bool HoldsAny(const mvfxCompiledGas* gas, const mvfxGasState* state)
 {
     for (int32_t f = 0; f < 3; ++f)
     {

@@ -153,8 +153,8 @@ static float FieldAt(const mvfxCompiledWater* water, const mvfxWaterState* state
 
 // Whether a read is in range for a surface, its row pitch resolved and
 // the bytes it reaches into end.
-static bool IsReadValid(const mvfxWaterRead* read, const mvfxCompiledWater* water, int64_t* pitch,
-                        int64_t* end)
+MVFX_NODISCARD static bool IsReadValid(const mvfxWaterRead* read, const mvfxCompiledWater* water,
+                                       int64_t* pitch, int64_t* end)
 {
     uint32_t bytes = mvfxReadFormatBytes(read->format);
     bool valid = mvfxIsKind(read->field, mvfx_waterDepth) && bytes > 0 &&

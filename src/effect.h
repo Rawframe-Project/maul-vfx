@@ -156,7 +156,7 @@ static inline size_t mvfxArrayBytes(int32_t capacity)
 }
 
 // Whether a plan stores an attribute.
-static inline bool mvfxHasAttribute(const mvfxAttributePlan* plan, int32_t attribute)
+MVFX_NODISCARD static inline bool mvfxHasAttribute(const mvfxAttributePlan* plan, int32_t attribute)
 {
     return ((plan->present[attribute >> 6] >> (attribute & 63)) & 1u) != 0;
 }
@@ -350,7 +350,7 @@ void mvfxAddParameterReach(const mvfxEmitterDef* def, double reach[MVFX_MAX_PARA
 // The order an effect's emitters step in: repeatedly the lowest index
 // whose source (if any) has stepped; false for a cycle or a source out of
 // range.
-bool mvfxOrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITTERS]);
+MVFX_NODISCARD bool mvfxOrderEmitters(const mvfxEffectDef* def, int32_t order[MVFX_MAX_EMITTERS]);
 
 // Compiles a valid def into a block from allocator, each mesh shape's
 // emitter i spawning from meshes[i]; NULL when the allocator fails or the
@@ -361,7 +361,7 @@ mvfxEffect* mvfxCompileEffect(const mvfxEffectDef* def, struct mvfxMesh* const* 
 // Whether an emitter holds its units' contacts or its rigid bodies'
 // strikes over their substeps (event.h): an emitter of units or of rigid
 // particles that collides and writes collision events.
-static inline bool mvfxHoldsContacts(const mvfxCompiledEmitter* emitter)
+MVFX_NODISCARD static inline bool mvfxHoldsContacts(const mvfxCompiledEmitter* emitter)
 {
     return (emitter->unitPoints > 1 || emitter->rigid.enable) && emitter->collision.enable &&
            (emitter->events & mvfx_eventMaskCollision) != 0;
@@ -369,7 +369,7 @@ static inline bool mvfxHoldsContacts(const mvfxCompiledEmitter* emitter)
 
 // Whether an emitter holds its units' tears over their substeps
 // (event.h): an emitter of units that tears and writes tear events.
-static inline bool mvfxHoldsTears(const mvfxCompiledEmitter* emitter)
+MVFX_NODISCARD static inline bool mvfxHoldsTears(const mvfxCompiledEmitter* emitter)
 {
     return emitter->unitPoints > 1 && emitter->unit.tearStrain > 0.0f &&
            (emitter->events & mvfx_eventMaskTear) != 0;
@@ -377,7 +377,8 @@ static inline bool mvfxHoldsTears(const mvfxCompiledEmitter* emitter)
 
 // Whether a unit's point (its index in its unit) is pinned: a pinned first
 // point, or one of a pinned first row.
-static inline bool mvfxIsPinnedPoint(const mvfxCompiledEmitter* emitter, int32_t point)
+MVFX_NODISCARD static inline bool mvfxIsPinnedPoint(const mvfxCompiledEmitter* emitter,
+                                                    int32_t point)
 {
     return (emitter->unit.pinFirst && point == 0) ||
            (emitter->unit.pinFirstRow && point < emitter->unitWidth);
@@ -386,7 +387,7 @@ static inline bool mvfxIsPinnedPoint(const mvfxCompiledEmitter* emitter, int32_t
 // Whether the quad from a unit's point q across and down, in a unit of a
 // width, is whole: none of its four edges torn (bit 0 of a point's torn
 // edges its edge across, bit 1 its edge down).
-static inline bool mvfxIsQuadWhole(const uint32_t* torn, int32_t q, int32_t width)
+MVFX_NODISCARD static inline bool mvfxIsQuadWhole(const uint32_t* torn, int32_t q, int32_t width)
 {
     return torn == nullptr ||
            (((torn[q] | torn[q + width]) & 1u) == 0 && ((torn[q] | torn[q + 1]) & 2u) == 0);
@@ -405,7 +406,7 @@ static inline int32_t mvfxSizeAxes(const mvfxRigidDef* rigid)
 }
 
 // Whether a size's axes past those its rigid shape takes are X's.
-static inline bool mvfxIsSizeTied(const mvfxRigidDef* rigid, const float size[3])
+MVFX_NODISCARD static inline bool mvfxIsSizeTied(const mvfxRigidDef* rigid, const float size[3])
 {
     bool tied = true;
     for (int32_t k = mvfxSizeAxes(rigid); k < 3; ++k)

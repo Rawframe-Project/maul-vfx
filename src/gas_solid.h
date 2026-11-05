@@ -20,7 +20,7 @@ void mvfxEmptyGasSolids(const mvfxCompiledGas* gas, const mvfxGasState* state,
 
 // Whether obstacle c is the step before's obstacle c moved: the step
 // before's is known, and it has the same kind, sizes and grid.
-bool mvfxGasObstacleMoved(const mvfxGasState* state, int32_t c);
+MVFX_NODISCARD bool mvfxGasObstacleMoved(const mvfxGasState* state, int32_t c);
 
 // Gives each face beside a solid cell the obstacle's velocity across it,
 // its motion over a step of seconds (0 when the step before's obstacle

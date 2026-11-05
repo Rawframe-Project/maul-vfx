@@ -130,7 +130,7 @@ mvfxResult mvfxReadSimWaters(mvfxGpuSim* sim, mvfxEffectId effect);
 
 // Makes a surface's buffers, a host's terrain's grid taking hostWords of
 // its grids' buffer; false when the device refuses or a grid is gone.
-bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords);
+MVFX_NODISCARD bool mvfxCreateSimWater(mvfxGpuSim* sim, SimWater* water, uint32_t hostWords);
 void mvfxDestroySimWater(mvfxGpuSim* sim, SimWater* water);
 
 // The fields a coupled emitter copies from buffer now: each one's first
@@ -140,17 +140,17 @@ void mvfxSimWaterFields(const SimWater* water, uint32_t now, uint32_t firsts[WAT
 
 // Adds surface w's step's passes for its plan, then records them.
 mvfxResult mvfxAddSimWaterPasses(mvfxGpuSim* sim, int32_t w);
-bool mvfxRecordSimWater(mvfxGpuSim* sim, SimWater* water);
+MVFX_NODISCARD bool mvfxRecordSimWater(mvfxGpuSim* sim, SimWater* water);
 
 // Imports a surface's buffers into the frame open, once a frame; false
 // when the device refuses.
-bool mvfxImportSimWater(mvfxGpuSim* sim, SimWater* water);
+MVFX_NODISCARD bool mvfxImportSimWater(mvfxGpuSim* sim, SimWater* water);
 
 // A surface's sample queries (sim_water_sample.c): their numbers' buffers
 // made with it (false when the device refuses) and destroyed, and a
 // frame's recorded, after its step and reads.
-bool mvfxCreateSimWaterSamples(mvfxGpuSim* sim, SimWater* water);
+MVFX_NODISCARD bool mvfxCreateSimWaterSamples(mvfxGpuSim* sim, SimWater* water);
 void mvfxDestroySimWaterSamples(mvfxGpuSim* sim, SimWater* water);
-bool mvfxRecordSimWaterSamples(mvfxGpuSim* sim, SimWater* water);
+MVFX_NODISCARD bool mvfxRecordSimWaterSamples(mvfxGpuSim* sim, SimWater* water);
 
 #endif

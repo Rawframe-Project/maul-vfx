@@ -18,7 +18,7 @@
 // binary32's least normal is 0, as a device that flushes subnormals leaves
 // it, so the GPU part's crossEdges (rhi/kernels/shared/air.wgsl) gives the
 // same bits on every device.
-bool mvfxCrossEdges(const float e1[3], const float e2[3], float n[3]);
+MVFX_NODISCARD bool mvfxCrossEdges(const float e1[3], const float e2[3], float n[3]);
 
 // The share of a relative speed a triangle takes over a substep of h
 // seconds at a coefficient k: k A speed h over its three points, at most a

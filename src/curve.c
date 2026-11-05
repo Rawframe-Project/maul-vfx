@@ -16,7 +16,7 @@
 // Hermite form could overflow binary32.
 #define CURVE_FIELD_LIMIT 1e18f
 
-static bool IsFieldValid(float x)
+MVFX_NODISCARD static bool IsFieldValid(float x)
 {
     return x >= -CURVE_FIELD_LIMIT && x <= CURVE_FIELD_LIMIT;
 }

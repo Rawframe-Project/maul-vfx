@@ -53,7 +53,7 @@ mvfxGpuSimDef mvfxDefaultGpuSimDef(void)
 
 // Whether an emitter's rigid bodies meet each other: they collide and
 // keep body contacts.
-static bool MeetsBodies(const mvfxEmitterView* view)
+MVFX_NODISCARD static bool MeetsBodies(const mvfxEmitterView* view)
 {
     return (view->features & MVFX_FEATURE_COLLISION) != 0 && view->rigid.bodyContacts > 0;
 }
@@ -86,7 +86,7 @@ static uint64_t RigidPairWords(const mvfxEmitterView* view, int32_t capacity)
 }
 
 // Whether the part runs an emitter; what it does not, in refusal.
-static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
+MVFX_NODISCARD static bool Runs(const mvfxEmitterView* view, mvfxGpuRefusal* refusal)
 {
     *refusal = (mvfxGpuRefusal){
         .gas = -1,
@@ -139,7 +139,8 @@ static mvfxResult ReadViews(mvfxGpuSim* sim, mvfxEffectId effect, mvfxGpuRefusal
 }
 
 // Creates a buffer of size bytes and usages; false when the device refuses.
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -184,7 +185,7 @@ static uint64_t AcceptedWords(const Emitter* emitter)
 }
 
 // Creates an emitter's buffers for its capacity.
-static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
+MVFX_NODISCARD static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
 {
     uint64_t c = (uint64_t)emitter->capacity;
     mrhiBufferUsage particles =
@@ -216,7 +217,8 @@ static bool CreateBuffers(mvfxGpuSim* sim, Emitter* emitter)
 // lights' counts and offsets); one of sheets alone a sort buffer of two
 // words a particle and one (ribbon_records/sheets.wgsl's quads' places
 // and sheets' offsets, the sheets that fit).
-static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view, Emitter* emitter)
+MVFX_NODISCARD static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view,
+                                             Emitter* emitter)
 {
     bool ribbons = view->ribbon.ids != mvfx_ribbonNone;
     bool sheets = view->unitPoints > 1 && view->unit.kind == mvfx_unitSheet;
@@ -235,7 +237,7 @@ static bool CreateSortBuffers(mvfxGpuSim* sim, const mvfxEmitterView* view, Emit
 }
 
 // Creates the simulation's own 1-pixel textures.
-static bool CreateTextures(mvfxGpuSim* sim)
+MVFX_NODISCARD static bool CreateTextures(mvfxGpuSim* sim)
 {
     mrhiTextureDef def = mrhiDefaultTextureDef();
     def.width = 1;
@@ -335,7 +337,7 @@ static mvfxResult PrepareEmitter(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int3
 }
 
 // Whether a def is one a simulation can be made from.
-static bool IsDefValid(const mvfxGpuSimDef* def)
+MVFX_NODISCARD static bool IsDefValid(const mvfxGpuSimDef* def)
 {
     return def->cookie == MVFX_GPU_SIM_DEF_COOKIE && def->context != nullptr &&
            mvfxGpu_IsReady(def->gpu) && mvfxRhiIsAllocatorValid(&def->allocator);
@@ -568,7 +570,8 @@ static int32_t PassOrder(const Emitter* emitter, int32_t order[PASS_COUNT])
 // pass's halves with the step's accesses (used); the particle contacts'
 // after the scatter, on the pool it leaves; the plexus links' after the
 // bounds, of the places at the step's end.
-static bool AddPassesAfter(mvfxGpuSim* sim, Emitter* emitter, int32_t p, const mrhiAccess* used)
+MVFX_NODISCARD static bool AddPassesAfter(mvfxGpuSim* sim, Emitter* emitter, int32_t p,
+                                          const mrhiAccess* used)
 {
     return (p != PASS_ROOM || mvfxAddSimGridPasses(sim, emitter)) &&
            (p != PASS_KILL || !emitter->liquid ||
@@ -580,7 +583,7 @@ static bool AddPassesAfter(mvfxGpuSim* sim, Emitter* emitter, int32_t p, const m
 }
 
 // Adds an emitter's passes: one writing the plan's bytes, one a kernel.
-static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
+MVFX_NODISCARD static bool AddEmitterPasses(mvfxGpuSim* sim, Emitter* emitter)
 {
     const mrhiBufferId buffers[BUFFER_COUNT] = {emitter->step,
                                                 emitter->births,
@@ -767,7 +770,8 @@ mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim)
 }
 
 // Records the writes of the step's numbers its kernels read.
-static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, Emitter* emitter)
+MVFX_NODISCARD static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step,
+                                        Emitter* emitter)
 {
     bool written = true;
     for (int32_t s = 0; written && s < 4; ++s)
@@ -797,7 +801,7 @@ static bool WriteNumbers(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step, 
 // zeroed at the first step, its numbers, its births and its host births
 // after the births' room, the record's map (the whole record after a
 // clear and at the first step), the grids changed and the gases' faces.
-static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
+MVFX_NODISCARD static bool RecordWrites(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->passes[PASS_WRITE];
     const mrhiResourceId* r = emitter->resources;
@@ -858,7 +862,7 @@ bool mvfxRecordSimDispatch(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId p
 
 // Records an emitter's step passes, if added: the plan's writes and the
 // kernels; its particles are in the other buffer after.
-static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
+MVFX_NODISCARD static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
 {
     if (!emitter->added)
     {
@@ -898,7 +902,7 @@ static bool RecordStep(mvfxGpuSim* sim, Emitter* emitter)
 }
 
 // Records a step's emitters' passes, then its gases', then its surfaces'.
-static bool RecordSteps(mvfxGpuSim* sim)
+MVFX_NODISCARD static bool RecordSteps(mvfxGpuSim* sim)
 {
     bool recorded = true;
     for (int32_t n = 0; recorded && n < sim->emitterCount; ++n)

@@ -57,7 +57,7 @@ static mvfxResult CheckFalloff(const mvfxFieldPath* at, const mvfxFalloff* fallo
 }
 
 // Whether a unit quaternion within 0.001, finite.
-static bool IsRotation(const float q[4])
+MVFX_NODISCARD static bool IsRotation(const float q[4])
 {
     double square = 0.0;
     for (int32_t k = 0; k < 4; ++k)
@@ -425,7 +425,8 @@ float mvfxForceDrag(const mvfxResolvedForce* force)
 // an offset not finite on one axis makes every axis NaN, as the turn's
 // products do; and they leave the sample as it is, never -0, its sums
 // starting from +0.
-static bool SampleUnturned(const mvfxResolvedForce* force, const float d[3], float out[3])
+MVFX_NODISCARD static bool SampleUnturned(const mvfxResolvedForce* force, const float d[3],
+                                          float out[3])
 {
     const mvfxForce* source = force->source;
     bool finite = isfinite(d[0]) && isfinite(d[1]) && isfinite(d[2]);
@@ -449,7 +450,8 @@ static bool SampleUnturned(const mvfxResolvedForce* force, const float d[3], flo
 // A vector field's vector at a place in its force's space: the grid
 // sampled in the box's own space, turned out with the box; false outside
 // it under the none border.
-static bool SampleBox(const mvfxResolvedForce* force, const double place[3], float out[3])
+MVFX_NODISCARD static bool SampleBox(const mvfxResolvedForce* force, const double place[3],
+                                     float out[3])
 {
     const mvfxForce* source = force->source;
     const float* q = source->boxRotation;
@@ -481,7 +483,8 @@ static bool SampleBox(const mvfxResolvedForce* force, const double place[3], flo
 
 // A gas's velocity at a place in its box's frame, false outside the box
 // (a 2D gas's reaches along its Z without end).
-static bool SampleGas(const mvfxResolvedForce* force, const double place[3], float out[3])
+MVFX_NODISCARD static bool SampleGas(const mvfxResolvedForce* force, const double place[3],
+                                     float out[3])
 {
     const mvfxGasLattice* l = &force->gasLattice;
     float p[3];

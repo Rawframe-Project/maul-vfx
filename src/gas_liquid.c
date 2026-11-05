@@ -247,7 +247,7 @@ static void GatherCell(const Step* s, int64_t c, int32_t k, const float q[3], fl
 // The face of axis k at at: its velocity gathered from the cells about it
 // (two across k, three along the others, held in the box), in a fixed
 // order; whether any particle reached it.
-static bool GatherFace(const Step* s, int32_t k, const int32_t at[3], float* out)
+MVFX_NODISCARD static bool GatherFace(const Step* s, int32_t k, const int32_t at[3], float* out)
 {
     const int32_t* n = s->lattice.n;
     float q[3];
@@ -315,7 +315,7 @@ static void EachAxis(const Step* s, mvfxTaskFunction* pass, const mvfxTasks* tas
 }
 
 // Whether the cell at (cell coordinates) is liquid; false outside the box.
-static bool IsLiquidAt(const Step* s, const int32_t at[3])
+MVFX_NODISCARD static bool IsLiquidAt(const Step* s, const int32_t at[3])
 {
     const int32_t* n = s->lattice.n;
     for (int32_t k = 0; k < 3; ++k)
@@ -350,7 +350,8 @@ static void LiquidFaceRows(int32_t start, int32_t end, void* context)
 
 // The mean of the set faces beside face f of axis k (along each axis the
 // gas has), into out; whether any was set.
-static bool MeanAround(const Rows* r, const uint8_t* valid, const int32_t at[3], float* out)
+MVFX_NODISCARD static bool MeanAround(const Rows* r, const uint8_t* valid, const int32_t at[3],
+                                      float* out)
 {
     const Step* s = r->step;
     const int64_t step[3] = {1, r->m[0], (int64_t)r->m[0] * r->m[1]};

@@ -9,6 +9,7 @@
 #define MAUL_VFX_RHI_SRC_SAMPLES_H
 
 #include "maul-rhi/encoder.h"
+#include "maul-vfx/base.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -33,7 +34,7 @@ typedef struct SampleQuery
 
 // Whether a query of samples words long each is in range: its origin,
 // its count, its buffers and their bytes.
-bool mvfxIsSampleQueryValid(const SampleQuery* query, uint32_t words);
+MVFX_NODISCARD bool mvfxIsSampleQueryValid(const SampleQuery* query, uint32_t words);
 
 // A box's map from the world less origin into its frame (the core's
 // mvfxBoxMap of the world: the box's turn back, 1 / scale, its center),

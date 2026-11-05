@@ -43,7 +43,8 @@
 static_assert(SELF_GATHER + 1 == SELF_FIRST_PASSES, "a pass for each self kernel");
 
 // Creates a buffer of size bytes and usages; false when the device refuses.
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -102,7 +103,7 @@ void mvfxSimSelfNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan)
 
 // Whether substep s of the step has ticks, as the core's: those that have
 // none are skipped.
-static bool HasTicks(const Emitter* emitter, int32_t s)
+MVFX_NODISCARD static bool HasTicks(const Emitter* emitter, int32_t s)
 {
     int64_t ticks = emitter->selfTicks;
     int64_t substeps = emitter->selfSubsteps;
@@ -111,7 +112,7 @@ static bool HasTicks(const Emitter* emitter, int32_t s)
 
 // Whether self pass p runs this step: those of the emitter's substeps,
 // the part and commit of a substep with ticks.
-static bool Runs(const Emitter* emitter, int32_t p)
+MVFX_NODISCARD static bool Runs(const Emitter* emitter, int32_t p)
 {
     if (p < SELF_FIRST_PASSES)
     {
@@ -124,8 +125,8 @@ static bool Runs(const Emitter* emitter, int32_t p)
 }
 
 // Adds a pass of these accesses.
-static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass, const mrhiAccess* accesses,
-                    int32_t count, mrhiPassId* passOut)
+MVFX_NODISCARD static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass,
+                                   const mrhiAccess* accesses, int32_t count, mrhiPassId* passOut)
 {
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = passClass;
@@ -178,7 +179,7 @@ bool mvfxAddSimSelfPasses(mvfxGpuSim* sim, Emitter* emitter, const mrhiAccess* u
 
 // Records the write of the self numbers and the counts emptied, every
 // step.
-static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
+MVFX_NODISCARD static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->selfPasses[SELF_WRITE];
     const mrhiResourceId* c = emitter->selfResources;
@@ -192,9 +193,9 @@ static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 
 // Records a kernel's pass: its pipeline, bindings, root block and
 // workgroups.
-static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
-                         const mrhiResourceId* bound, int32_t count, const uint32_t root[4],
-                         uint32_t groups)
+MVFX_NODISCARD static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
+                                        const mrhiResourceId* bound, int32_t count,
+                                        const uint32_t root[4], uint32_t groups)
 {
     mrhiBinding bindings[SELF_BINDINGS];
     for (int32_t b = 0; b < count; ++b)
@@ -214,7 +215,7 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
 
 // Records the sort's radix passes over the self keys: each pass's
 // offsets in one workgroup, then its scatter over the blocks.
-static bool RecordRadix(mvfxGpuSim* sim, const Emitter* emitter)
+MVFX_NODISCARD static bool RecordRadix(mvfxGpuSim* sim, const Emitter* emitter)
 {
     const mrhiResourceId* c = emitter->selfResources;
     const mrhiResourceId bound[3] = {c[SELF_COUNT], c[SELF_SORT], c[SELF_DIGITS]};
@@ -232,8 +233,8 @@ static bool RecordRadix(mvfxGpuSim* sim, const Emitter* emitter)
 
 // Records substep s's passes: the unit pass's halves about the part and
 // commit (those only when it has ticks).
-static bool RecordSubstep(mvfxGpuSim* sim, const Emitter* emitter, const mrhiResourceId* bound,
-                          int32_t s)
+MVFX_NODISCARD static bool RecordSubstep(mvfxGpuSim* sim, const Emitter* emitter,
+                                         const mrhiResourceId* bound, int32_t s)
 {
     const mrhiPassId* passes = emitter->selfPasses + SELF_FIRST_PASSES + 4 * s;
     uint32_t groups = emitter->selfWords[3];

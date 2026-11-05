@@ -206,7 +206,7 @@ static void Turn(const double q[4], const double v[3], double out[3])
 // pair in binary64: binary32's pair is one only to rounding, the same at
 // each substep at one angle, which shrank or grew a body's momentum by
 // 0.15% over 24000 substeps. False past MOST_HALF_TURN.
-static bool HalfTurn(double half, double* sine, double* cosine)
+MVFX_NODISCARD static bool HalfTurn(double half, double* sine, double* cosine)
 {
     if (!(fabs(half) <= MOST_HALF_TURN))
     {
@@ -223,7 +223,7 @@ static bool HalfTurn(double half, double* sine, double* cosine)
 
 // Turns the body by theta about its principal axis i, and its momentum L
 // in its frame back by theta: the residual's exact flow.
-static bool TurnAbout(int32_t i, double theta, double q[4], double L[3])
+MVFX_NODISCARD static bool TurnAbout(int32_t i, double theta, double q[4], double L[3])
 {
     double sine = 0.0;
     double cosine = 1.0;

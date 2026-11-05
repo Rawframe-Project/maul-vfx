@@ -11,8 +11,8 @@
 // place p in cells, held within the array as sampling holds them, and
 // their trilinear weights (summing to 1). False for a place outside the
 // box (a 2D gas's Z not judged).
-static bool Nearest(const mvfxGasLattice* l, int32_t axis, const float p[3], int64_t at[8],
-                    float weight[8])
+MVFX_NODISCARD static bool Nearest(const mvfxGasLattice* l, int32_t axis, const float p[3],
+                                   int64_t at[8], float weight[8])
 {
     int32_t m[3];
     mvfxGasPoints(l, axis, m);

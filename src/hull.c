@@ -93,7 +93,7 @@ static double Above(const Build* b, int32_t f, int32_t i)
 }
 
 // Sets a face's plane from its points; false for a sliver of no area.
-static bool PlaneOf(const Build* b, Face* f)
+MVFX_NODISCARD static bool PlaneOf(const Build* b, Face* f)
 {
     double p[3][3];
     for (int32_t k = 0; k < 3; ++k)
@@ -259,7 +259,7 @@ static void Link(Build* b, const int32_t* faces, int32_t count)
 
 // The first tetrahedron, its faces turned outward, and the points outside
 // it given to its faces; false when the points span no volume.
-static bool Start(Build* b)
+MVFX_NODISCARD static bool Start(Build* b)
 {
     int32_t low[3];
     int32_t high[3];
@@ -366,7 +366,7 @@ static void SeeFrom(Build* b, int32_t first, int32_t eye)
 
 // Orders the horizon's edges into a loop, each starting where the one
 // before ends; false when they make none.
-static bool OrderHorizon(Build* b)
+MVFX_NODISCARD static bool OrderHorizon(Build* b)
 {
     for (int32_t i = 1; i < b->horizonCount; ++i)
     {
@@ -389,7 +389,7 @@ static bool OrderHorizon(Build* b)
 // Adds the eye to the hull: the faces it sees replaced by a cone from it
 // to the horizon, the points they held given to the new faces; false when
 // no slot is left or the horizon is broken.
-static bool AddPoint(Build* b, int32_t first, int32_t eye)
+MVFX_NODISCARD static bool AddPoint(Build* b, int32_t first, int32_t eye)
 {
     SeeFrom(b, first, eye);
     if (!OrderHorizon(b))
@@ -438,7 +438,7 @@ static bool AddPoint(Build* b, int32_t first, int32_t eye)
 
 // Whether the hull is more than LEAST_DEPTH tolerances deep behind each
 // triangle: its farthest vertex that far below the triangle's plane.
-static bool Thick(Build* b)
+MVFX_NODISCARD static bool Thick(Build* b)
 {
     for (int32_t i = 0; i < b->count; ++i)
     {
@@ -529,7 +529,7 @@ static int32_t VertexOf(Gather* g, int32_t i)
 // meets one face, so triangles of one plane are one face; by their
 // normals alone, two triangles 1e-3 apart in angle made a face with a
 // corner 3e-4 off its plane.
-static bool SameFace(const Build* b, int32_t first, int32_t f)
+MVFX_NODISCARD static bool SameFace(const Build* b, int32_t first, int32_t f)
 {
     const Face* plane = &b->faces[first];
     bool on = Dot(plane->n, b->faces[f].n) > 0.5;
@@ -681,7 +681,7 @@ static void Integrate(const double p0[3], const double p1[3], const double p2[3]
 // a body's inertia cannot be made of (a cube 1e-9 across had moments of 0).
 // Not over the faces: a face's corners may be four tolerances off its
 // plane, and a fan over them missed a needle's volume by half.
-static bool MassOf(const Build* b, const double ref[3], mvfxHull* out)
+MVFX_NODISCARD static bool MassOf(const Build* b, const double ref[3], mvfxHull* out)
 {
     double integral[10] = {0.0};
     for (int32_t f = 0; f < b->faceCount; ++f)

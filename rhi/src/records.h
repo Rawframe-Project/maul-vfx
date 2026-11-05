@@ -112,31 +112,32 @@ void mvfxDestroyRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes);
 // Adds a record pass of these numbers over these resources, its records'
 // workgroups for capacity records; false when the device refuses an
 // import or a pass.
-bool mvfxAddRecordPass(mrhiDevice* device, mvfxRecordPasses* passes,
-                       const mvfxRecordResources* resources, const uint32_t* words,
-                       int64_t capacity);
+MVFX_NODISCARD bool mvfxAddRecordPass(mrhiDevice* device, mvfxRecordPasses* passes,
+                                      const mvfxRecordResources* resources, const uint32_t* words,
+                                      int64_t capacity);
 
 // Adds a ribbon, sprite or sheet pass (its kind its ribbon numbers'
 // sink's) of these numbers over these resources, its workgroups for
 // capacity particles; false when the device refuses an import or a pass.
-bool mvfxAddRibbonPass(mrhiDevice* device, mvfxRecordPasses* passes,
-                       const mvfxRecordResources* resources, const uint32_t* words,
-                       const uint32_t* ribbonWords, int64_t capacity);
+MVFX_NODISCARD bool mvfxAddRibbonPass(mrhiDevice* device, mvfxRecordPasses* passes,
+                                      const mvfxRecordResources* resources, const uint32_t* words,
+                                      const uint32_t* ribbonWords, int64_t capacity);
 
 // Adds a lights pass of these numbers over these resources; false when
 // the device refuses an import or a pass.
-bool mvfxAddLightPass(mrhiDevice* device, mvfxRecordPasses* passes,
-                      const mvfxRecordResources* resources, const uint32_t* words);
+MVFX_NODISCARD bool mvfxAddLightPass(mrhiDevice* device, mvfxRecordPasses* passes,
+                                     const mvfxRecordResources* resources, const uint32_t* words);
 
 // Adds a pass writing counts of 0 (at most 4) from a word of the host's
 // count buffer, for an emitter without particles or one not drawn as
 // ribbons; false when the device refuses it.
-bool mvfxAddEmptyRecordPass(mrhiDevice* device, mvfxRecordPasses* passes, mrhiResourceId count,
-                            uint32_t word, uint32_t counts);
+MVFX_NODISCARD bool mvfxAddEmptyRecordPass(mrhiDevice* device, mvfxRecordPasses* passes,
+                                           mrhiResourceId count, uint32_t word, uint32_t counts);
 
 // Records the passes added and lets them go, the bytes they upload added
 // to uploaded; false when the device refuses a command.
-bool mvfxRecordRecordPasses(mrhiDevice* device, uint64_t* uploaded,
-                            const mvfxRecordPipelines* pipelines, mvfxRecordPasses* passes);
+MVFX_NODISCARD bool mvfxRecordRecordPasses(mrhiDevice* device, uint64_t* uploaded,
+                                           const mvfxRecordPipelines* pipelines,
+                                           mvfxRecordPasses* passes);
 
 #endif

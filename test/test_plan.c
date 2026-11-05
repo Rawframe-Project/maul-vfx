@@ -1786,7 +1786,9 @@ static void TestDepth(void)
     // set without pixels on a planned instance (refused on one that is
     // not): the plan's depth maps an emitter's places in either space,
     // under a moving, turning, growing instance, as the image resolved for
-    // each step.
+    // each step. Again under a scale of 1e5, the world emitter's view
+    // turned by a quaternion 0.0009 off unit (in range, and then not
+    // inverted by its transpose): the map back still inverts the map.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1801,8 +1803,15 @@ static void TestDepth(void)
         .projection = {1.2f, 0, 0, 0, 0, 1.6f, 0, 0, 0, 0, 0, -1, 0, 0, 0.1f, 0},
         .origin = {10000.0, 40.0, -3000.0},
         .rotation = {0, 0.28401534f, 0, 0.95881973f}};
-    for (int32_t space = 0; space < 2; ++space)
+    const float turn[4] = {0, 0.28401534f, 0, 0.95881973f};
+    for (int32_t run = 0; run < 4; ++run)
     {
+        int32_t space = run % 2;
+        bool stretched = run >= 2;
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            image.rotation[k] = turn[k] * (run == 2 ? 1.0009f : 1.0f);
+        }
         mvfxEmitterDef emitter = Emitter(256);
         emitter.space = (mvfxSimulationSpace)space;
         emitter.collision = (mvfxCollision){.enable = true,
@@ -1829,8 +1838,9 @@ static void TestDepth(void)
             mvfxInstanceId both[2] = {cpu, planned};
             for (int32_t i = 0; i < 2; ++i)
             {
-                CHECK(mvfxInstance_SetTransform(context, both[i], origin, rotation,
-                                                1.0f + 0.2f * (float)s, false) == mvfx_success,
+                float scale = (1.0f + 0.2f * (float)s) * (stretched ? 1e5f : 1.0f);
+                CHECK(mvfxInstance_SetTransform(context, both[i], origin, rotation, scale, false) ==
+                          mvfx_success,
                       "moved");
             }
             CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
@@ -1844,7 +1854,11 @@ static void TestDepth(void)
                 SameDepth(&plan.depth, &image, &toWorld, 0.05 * local.sigma, &emitter.collision) &&
                 plan.depth.killOutsideView == (space == 1);
         }
-        CHECK(same, space == 0 ? "a world emitter's depth" : "a local emitter's depth");
+        static const char* const names[4] = {
+            "a world emitter's depth", "a local emitter's depth",
+            "a world emitter's depth, stretched, the view's turn off unit",
+            "a local emitter's depth, stretched"};
+        CHECK(same, names[run]);
     }
     mvfxDestroyContext(context);
 }
