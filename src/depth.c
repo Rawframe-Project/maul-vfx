@@ -176,6 +176,19 @@ mvfxResult mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxD
         out->projection[k] = (double)image->projection[k];
     }
     out->image = *image;
+    // The turn normalized, as an instance's is: a quaternion off unit
+    // scales what it turns, and two such turns are not their product's,
+    // which a plan hands the GPU for normals.
+    double square = 0.0;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        square += (double)image->rotation[k] * (double)image->rotation[k];
+    }
+    double inverse = 1.0 / sqrt(square);
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        out->image.rotation[k] = (float)((double)image->rotation[k] * inverse);
+    }
     return mvfxRequire(Invert(out->projection, out->inverse) &&
                        Conditioned(out->projection, out->inverse));
 }
@@ -581,10 +594,9 @@ static void Compose(const float a[4], const float b[4], double out[4])
 }
 
 // The inverse of a planned view map m (ToView), by its adjugate. Its 3x3
-// is the map's turn, normalized, and the view's, within 0.001 of unit
-// (IsPoseValid), over sigma: neither turn shrinks an axis below 0.99, so
-// its determinant is near 1 / sigma^3, far from 0 and from rounding, and
-// nothing can fail.
+// is the map's turn and the view's, both normalized, over sigma: neither
+// turn shrinks an axis by more than rounding, so its determinant is near
+// 1 / sigma^3, far from 0 and from rounding, and nothing can fail.
 static void InvertView(const double m[16], double out[16])
 {
     double cofactor[9] = {

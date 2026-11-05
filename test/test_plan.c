@@ -1697,6 +1697,20 @@ static void TestOverLifeView(void)
     mvfxDestroyContext(context);
 }
 
+// A depth image's turn as the setter takes it: normalized.
+static void ViewTurn(const mvfxDepthImage* image, double out[4])
+{
+    double square = 0.0;
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        square += (double)image->rotation[k] * (double)image->rotation[k];
+    }
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        out[k] = (double)image->rotation[k] / sqrt(square);
+    }
+}
+
 // A particle's place in the view's clip space, in binary64: mapped back
 // to the world by the frame its world maps by, into the view, projected.
 static void OracleClip(const Frame* world, const mvfxDepthImage* image, const float x[3],
@@ -1706,8 +1720,9 @@ static void OracleClip(const Frame* world, const mvfxDepthImage* image, const fl
     double at[3];
     FrameBack(world, place, at);
     double d[3] = {at[0] - image->origin[0], at[1] - image->origin[1], at[2] - image->origin[2]};
-    const double back[4] = {-(double)image->rotation[0], -(double)image->rotation[1],
-                            -(double)image->rotation[2], (double)image->rotation[3]};
+    double turn[4];
+    ViewTurn(image, turn);
+    const double back[4] = {-turn[0], -turn[1], -turn[2], turn[3]};
     double v[3];
     Turn(back, d, v);
     for (int32_t r = 0; r < 4; ++r)
@@ -1763,8 +1778,8 @@ static bool SameDepth(const mvfxPlannedDepth* planned, const mvfxDepthImage* ima
         }
     }
     const double n[3] = {0.6, 0.0, 0.8};
-    const double view[4] = {(double)image->rotation[0], (double)image->rotation[1],
-                            (double)image->rotation[2], (double)image->rotation[3]};
+    double view[4];
+    ViewTurn(image, view);
     const double turn[4] = {(double)planned->normalTurn[0], (double)planned->normalTurn[1],
                             (double)planned->normalTurn[2], (double)planned->normalTurn[3]};
     double inWorld[3];
@@ -1786,9 +1801,10 @@ static void TestDepth(void)
     // set without pixels on a planned instance (refused on one that is
     // not): the plan's depth maps an emitter's places in either space,
     // under a moving, turning, growing instance, as the image resolved for
-    // each step. Again under a scale of 1e5, the world emitter's view
-    // turned by a quaternion 0.0009 off unit (in range, and then not
-    // inverted by its transpose): the map back still inverts the map.
+    // each step. Again under a scale of 1e5, the view turned by a
+    // quaternion 0.0009 off unit (in range, and taken normalized): the map
+    // back still inverts the map, and a local emitter's normals turn as
+    // the view's and the instance's turns one after the other.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -1810,7 +1826,7 @@ static void TestDepth(void)
         bool stretched = run >= 2;
         for (int32_t k = 0; k < 4; ++k)
         {
-            image.rotation[k] = turn[k] * (run == 2 ? 1.0009f : 1.0f);
+            image.rotation[k] = turn[k] * (stretched ? 1.0009f : 1.0f);
         }
         mvfxEmitterDef emitter = Emitter(256);
         emitter.space = (mvfxSimulationSpace)space;
@@ -1857,7 +1873,7 @@ static void TestDepth(void)
         static const char* const names[4] = {
             "a world emitter's depth", "a local emitter's depth",
             "a world emitter's depth, stretched, the view's turn off unit",
-            "a local emitter's depth, stretched"};
+            "a local emitter's depth, stretched, the view's turn off unit"};
         CHECK(same, names[run]);
     }
     mvfxDestroyContext(context);

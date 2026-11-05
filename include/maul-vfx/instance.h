@@ -468,8 +468,9 @@ extern "C"
         // orthographic, reversed or not.
         float projection[16];
         // The view's place in the world (each coordinate at most 2^52 in
-        // size) and its turn, a unit quaternion within 0.001: the world's
-        // point is origin + turn(rotation, the view's).
+        // size) and its turn, a unit quaternion within 0.001, normalized
+        // when set: the world's point is origin + turn(rotation, the
+        // view's).
         double origin[3];
         float rotation[4];
         // Optionally, the surface's normal at each pixel in the view's
