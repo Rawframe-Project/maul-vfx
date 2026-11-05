@@ -6,6 +6,28 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.14.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.13.0...v0.14.0) (2026-11-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **collide:** a rigid hull born reaching past MVFX_MAX_HULL_REACH (2^28) from its center, at the most its size over life scales it, is killed as it is born and counted in valueKillCount, and the GPU part's statistics record has a new word, MVFX_GPU_VALUE_KILL_COUNT, making MVFX_GPU_STATISTICS_WORDS 56.
+* **collide:** a depth image's turn given off unit (within 0.001) is now taken normalized, which changes the CPU path's collisions with it.
+* **collide:** mvfxInstance_SetDepthImage refuses a projection with an entry of it or of its inverse past 2^40 in size, or the largest of one times that of the other past 2^32.
+* **collide:** a convex search (rigid hull against a box collider, or two hulls) whose EPA step met a point in line with an edge of its horizon answered from a face it had removed, its depth and normal whatever the slot held; it now goes on to the depth and normal of the overlap. Every other search gives the same bits.
+* **water:** a water crossing whose point, from + t (to - from), rounded off the surface's grid (an ulp past the move's end, at the grid's low edge) is now decided by the water at the grid's edge on the CPU path, where its heights were read uninitialized, and its event's normal is read there on the GPU part instead of at cell (0, 0). Every other crossing, and every sample, is unchanged.
+
+### Fixed
+
+* **collide:** add each EPA step whole, or leave its polytope as it was ([#317](https://github.com/Rawframe-Project/maul-vfx/issues/317)) ([d26567b](https://github.com/Rawframe-Project/maul-vfx/commit/d26567be47fce5af7e7676161406762d4a2aa9c4)), closes [#312](https://github.com/Rawframe-Project/maul-vfx/issues/312)
+* **collide:** kill a rigid hull born past its largest reach ([#328](https://github.com/Rawframe-Project/maul-vfx/issues/328)) ([f2c89ac](https://github.com/Rawframe-Project/maul-vfx/commit/f2c89ac473d8e43d8f1c3bafca741c0ea9902b80)), closes [#327](https://github.com/Rawframe-Project/maul-vfx/issues/327) [#326](https://github.com/Rawframe-Project/maul-vfx/issues/326)
+* **collide:** normalize a depth image's turn when it is set ([#324](https://github.com/Rawframe-Project/maul-vfx/issues/324)) ([c87f411](https://github.com/Rawframe-Project/maul-vfx/commit/c87f41181e4bc0d1bc0c0e98ceec50928d2c2161)), closes [#321](https://github.com/Rawframe-Project/maul-vfx/issues/321)
+* **collide:** refuse a depth projection binary32 maps cannot carry ([#323](https://github.com/Rawframe-Project/maul-vfx/issues/323)) ([aa7321d](https://github.com/Rawframe-Project/maul-vfx/commit/aa7321d8b100e3653eaefd12cb9697b0c134ee75)), closes [#322](https://github.com/Rawframe-Project/maul-vfx/issues/322)
+* **kernels:** make a flat hull's face normals unit on the GPU part ([#325](https://github.com/Rawframe-Project/maul-vfx/issues/325)) ([f5e3d58](https://github.com/Rawframe-Project/maul-vfx/commit/f5e3d5851108265b544a95ac6af66b54a07daac6)), closes [#314](https://github.com/Rawframe-Project/maul-vfx/issues/314)
+* make MVFX_NODISCARD the attribute under GCC 14's C23 too ([#305](https://github.com/Rawframe-Project/maul-vfx/issues/305)) ([0f86de3](https://github.com/Rawframe-Project/maul-vfx/commit/0f86de36761dc35a11895047bccf72bc45b0616f)), closes [#304](https://github.com/Rawframe-Project/maul-vfx/issues/304)
+* mark every internal bool function nodiscard and check it ([#320](https://github.com/Rawframe-Project/maul-vfx/issues/320)) ([94b969e](https://github.com/Rawframe-Project/maul-vfx/commit/94b969ed36df55a06a66b0983173c9d0f20f732c)), closes [#319](https://github.com/Rawframe-Project/maul-vfx/issues/319) [#321](https://github.com/Rawframe-Project/maul-vfx/issues/321)
+* **water:** keep a crossing point on the surface's grid ([#302](https://github.com/Rawframe-Project/maul-vfx/issues/302)) ([568c4ec](https://github.com/Rawframe-Project/maul-vfx/commit/568c4ec5b5cacbc46fc1055167f287416330a870)), closes [#301](https://github.com/Rawframe-Project/maul-vfx/issues/301)
+
 ## [0.13.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.12.0...v0.13.0) (2026-11-04)
 
 This release closes a gap in the rule that host code may not change a
