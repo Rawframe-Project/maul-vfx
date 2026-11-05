@@ -632,7 +632,8 @@ static void TestColliderBound(Gpu* gpu, mvfxGpu* kernels)
     // Hulls kept out of a world box of half size 1e6, the instance scaled
     // so that the box is 2% short of MVFX_MAX_PLANNED_COLLIDER in the
     // particles' space (3.8e-3), then 2% past it (3.65e-3), then short of
-    // it again: the step past it is refused, the next given again.
+    // it again: the step past it is refused, the next given again; and a
+    // simulation of an instance past it from its creation is refused.
     mvfxContextDef contextDef = mvfxDefaultContextDef();
     mvfxContext* context = NULL;
     CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
@@ -674,6 +675,16 @@ static void TestColliderBound(Gpu* gpu, mvfxGpu* kernels)
                (int)expected[c]);
     }
     CHECK(right == 3, "a step past the largest collider refused, the next given");
+    mvfxDestroyGpuSim(sim);
+    // An instance past it from its creation: its simulation refused.
+    instanceDef.scale = 3.65e-3f;
+    mvfxInstanceId past = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &past) == mvfx_success, "instance past it");
+    simDef.instance = past;
+    sim = NULL;
+    mvfxResult made = mvfxCreateGpuSim(&simDef, &sim, &refusal);
+    printf("  a simulation of an instance past it: %d\n", (int)made);
+    CHECK(made == mvfx_errorLimit && sim == NULL, "a simulation of an instance past it refused");
     mvfxDestroyGpuSim(sim);
     mvfxDestroyContext(context);
 }
