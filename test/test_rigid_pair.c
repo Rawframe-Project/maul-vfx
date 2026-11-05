@@ -983,11 +983,11 @@ static void TestEpaStuck(void)
     // binary32 (its corners an ulp off), and a flat square, a hull of no
     // width, at X -0.75 across Y 0.5 to 1 and Z -1 to -0.5. They overlap
     // by 0.25, to the rounding of the box's turned corners: the box moved
-    // 0.25 along X leaves the square on its face.
-    // EPA's first step finds a point in line with an edge of its horizon,
-    // whose face would have no area; the face beyond that edge goes too,
-    // and the search goes on to the depth. A step left half added read a
-    // face that was gone: a depth of 1.75 along +Y.
+    // 0.25 along X leaves the square on its face. EPA's first step finds a
+    // point in line with an edge of its horizon, whose face would have no
+    // area; the face beyond that edge goes too, and the search goes on to
+    // the depth. A step left half added read a face that was gone: a depth
+    // of 1.75 along +Y.
     static const float box[24] = {
         0x1.fffffcp-1f, -0x1.800002p-1f, -0x1p+0f, 0x1p+0f,         0x1.7ffffcp-1f, -0x1p+0f,
         -0x1p+0f,       -0x1.7ffffcp-1f, -0x1p+0f, -0x1.fffffcp-1f, 0x1.800002p-1f, -0x1p+0f,
