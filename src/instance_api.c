@@ -427,6 +427,28 @@ static const mvfxInstance* PlannedOf(const mvfxContext* context, mvfxInstanceId 
     return *result == mvfx_success ? live : nullptr;
 }
 
+// Whether a planned emitter of rigid hulls is kept out of no box or
+// sphere past MVFX_MAX_PLANNED_COLLIDER in the particles' space.
+MVFX_NODISCARD static bool CollidersHeld(const mvfxInstance* live, int32_t emitter,
+                                         const mvfxEmitterPlan* plan)
+{
+    const mvfxCompiledEmitter* compiled = &live->effect->emitters[emitter];
+    bool hulls = compiled->rigid.enable && compiled->rigid.shape == mvfx_rigidHull;
+    bool held = true;
+    for (int32_t c = 0; hulls && c < plan->colliderCount; ++c)
+    {
+        const mvfxPlannedCollider* collider = &plan->colliders[c];
+        bool box = collider->kind == mvfx_colliderBox && !collider->inside;
+        bool sphere = collider->kind == mvfx_colliderSphere && !collider->inside;
+        held = held && (!sphere || collider->radius <= MVFX_MAX_PLANNED_COLLIDER);
+        for (int32_t k = 0; box && k < 3; ++k)
+        {
+            held = held && collider->halfExtents[k] <= MVFX_MAX_PLANNED_COLLIDER;
+        }
+    }
+    return held;
+}
+
 static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterPlanWork(const mvfxContext* context,
                                                                 mvfxInstanceId instance,
                                                                 int32_t emitter,
@@ -452,6 +474,11 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterPlanWork(const mvfxContex
         return mvfx_errorState;
     }
     StepPlan(live, emitter, 0, planOut);
+    if (!CollidersHeld(live, emitter, planOut))
+    {
+        *planOut = (mvfxEmitterPlan){0};
+        return mvfx_errorLimit;
+    }
     return mvfx_success;
 }
 
@@ -488,6 +515,11 @@ static MVFX_NOINLINE mvfxResult mvfxInstance_GetEmitterStepPlanWork(const mvfxCo
         return mvfx_errorInvalid;
     }
     StepPlan(live, emitter, step, planOut);
+    if (!CollidersHeld(live, emitter, planOut))
+    {
+        *planOut = (mvfxEmitterPlan){0};
+        return mvfx_errorLimit;
+    }
     return mvfx_success;
 }
 
