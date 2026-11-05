@@ -616,8 +616,9 @@ fn bornSize(j: u32) -> vec3<f32> {
 // the births as update's over the particles.
 @compute @workgroup_size(64, 1, 1)
 fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
+    let hulls = params.rigid.y > 0u && params.rigid.x == RIGID_HULL;
     if (params.forceHead.y == 0u && params.collisionHead.z == 0u && params.fateHead.x == 0u &&
-        params.water.x == NONE) {
+        params.water.x == NONE && !hulls) {
         return;
     }
     for (var j = id.x; j < birthCount(); j += params.modes.z * 64u) {
@@ -643,8 +644,11 @@ fn killBirths(@builtin(global_invocation_id) id: vec3<u32>) {
         // of the water surface (BIRTH_CROSSED), for the events' count; a
         // rigid body's contacts dropped past the most above, which offsets
         // sums (MVFX_GPU_RIGID_CONTACTS_DROPPED).
+        // A hull born past its reach (BIRTH_HUGE), counted with the
+        // values past their limits (MVFX_GPU_VALUE_KILL_COUNT).
+        let huge = hulls && pastReach(bornSize(j));
         accepted[j] = mark | select(0u, BIRTH_CONTACT, fate.contacted) |
-                      select(0u, BIRTH_CROSSED, crossed) |
+                      select(0u, BIRTH_CROSSED, crossed) | select(0u, BIRTH_HUGE, huge) |
                       (min(fate.capped, 0xFFFFu) << 8u) | (min(fate.searches, 0xFFu) << 24u);
     }
 }

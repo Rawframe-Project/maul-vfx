@@ -665,7 +665,8 @@ extern "C"
         uint64_t killCount;
         // Particles killed for a value one of its host modules left them
         // with that is not finite or is past its limit
-        // (mvfxParticleArrays), apart from those killed.
+        // (mvfxParticleArrays), apart from those killed, and rigid hulls
+        // born past MVFX_MAX_HULL_REACH.
         uint64_t valueKillCount;
         // Scene queries its capacity of them dropped.
         uint64_t queriesDropped;

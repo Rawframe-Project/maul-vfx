@@ -660,10 +660,40 @@ void mvfxStepRigid(mvfxInstance* instance, int32_t emitter)
     HoldSpeeds(&s, 0, count);
 }
 
+// Whether newborn hull at reaches past MVFX_MAX_HULL_REACH from its
+// size as born at the most its size over life scales it.
+MVFX_NODISCARD static bool PastReach(const mvfxInstance* instance, int32_t emitter, int32_t at)
+{
+    const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
+    if (compiled->rigid.shape != mvfx_rigidHull)
+    {
+        return false;
+    }
+    float size[3] = {1.0f, 1.0f, 1.0f};
+    for (int32_t k = 0; k < 3 && mvfxHasAttribute(&compiled->plan, mvfx_attributeSizeX); ++k)
+    {
+        size[k] = ((const float*)mvfxAttributeArray(instance, emitter,
+                                                    (mvfxAttribute)(mvfx_attributeSizeX + k)))[at];
+    }
+    mvfxBodyMass mass;
+    mvfxBodyShape shape = mvfxBodyShapeOf(&compiled->rigid, compiled->hull, size, &mass);
+    const float* grow = compiled->overLife.sizeBounds;
+    float most = fmaxf(fmaxf(grow[0], grow[1]), grow[2]);
+    return !(mvfxBodyReach(&shape) * most <= MVFX_MAX_HULL_REACH);
+}
+
 void mvfxIntegrateRigidNewborn(mvfxInstance* instance, int32_t emitter, int32_t at,
                                int64_t birthTick)
 {
     instance->emitters[emitter].rigidFlags[at] = 0;
+    // Killed as it is born, unmoved and meeting nothing; counted with the
+    // values past their limits.
+    if (PastReach(instance, emitter, at))
+    {
+        instance->killScratch[at] = 1;
+        instance->emitters[emitter].valuesMarked += 1;
+        return;
+    }
     mvfxRigidSolve s = SolveOf(instance, emitter);
     bool moved = false;
     for (int32_t k = 0; k < s.rigid->substeps; ++k)

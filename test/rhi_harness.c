@@ -2447,6 +2447,26 @@ static bool SameRigidCapped(int32_t e)
     return same;
 }
 
+// The hulls born past their reach the GPU killed over a run.
+static uint32_t s_hugeKilled;
+
+// Whether an emitter's hulls born past their reach, killed and counted
+// by the GPU, are the CPU path's to the one.
+static bool SameHugeKilled(int32_t e)
+{
+    mvfxEmitterStats stats;
+    uint32_t killed = s_record[MVFX_GPU_VALUE_KILL_COUNT];
+    bool same = mvfxInstance_GetEmitterStats(s_context, s_cpu, e, &stats) == mvfx_success &&
+                stats.valueKillCount == killed;
+    if (!same)
+    {
+        printf("hulls born past their reach: GPU %u, the CPU path's %llu\n", killed,
+               (unsigned long long)stats.valueKillCount);
+    }
+    s_hugeKilled = killed > s_hugeKilled ? killed : s_hugeKilled;
+    return same;
+}
+
 // The tears the GPU counted over a run, the last emitter's that tears.
 static uint32_t s_torn;
 
@@ -2568,29 +2588,30 @@ static bool SameSkipped(const mvfxEmitterDef* def, int32_t e)
         bool skipped;
         uint32_t word;
         uint64_t cpu;
-    } counts[16] = {{def->events == 0, MVFX_GPU_EVENTS_WRITTEN, 0},
-                    {def->events == 0, MVFX_GPU_EVENTS_WRITTEN + 1, 0},
-                    {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS, 0},
-                    {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 1, 0},
-                    {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 2, 0},
-                    {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 3, 0},
-                    {def->ribbon.ids == mvfx_ribbonNone, MVFX_GPU_RIBBON_BREAKS, 0},
-                    {!def->neighbors.enable, MVFX_GPU_CAPPED_NEIGHBOR_QUERY_COUNT,
-                     stats.cappedNeighborQueryCount},
-                    {!def->contacts.enable, MVFX_GPU_CONTACT_CAPPED_PARTICLE_COUNT,
-                     stats.contactCappedParticleCount},
-                    {!def->plexus.enable, MVFX_GPU_LINKS, 0},
-                    {!def->plexus.enable, MVFX_GPU_LINKS_DROPPED, stats.linksDropped},
-                    {!(def->unit.tearStrain > 0.0f), MVFX_GPU_TEAR_COUNT, stats.tearCount},
-                    {!(def->unit.selfThickness > 0.0f), MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT,
-                     stats.selfContactCappedPointCount},
-                    {!rigid, MVFX_GPU_RIGID_CONTACTS_DROPPED, stats.rigidContactsDropped},
-                    {!rigid, MVFX_GPU_RIGID_SEARCH_STOP_COUNT, stats.rigidSearchStopCount},
-                    {!rigid || def->rigid.bodyContacts == 0,
-                     MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT,
-                     stats.rigidCandidateCappedBodyCount}};
+    } counts[17] = {
+        {def->events == 0, MVFX_GPU_EVENTS_WRITTEN, 0},
+        {def->events == 0, MVFX_GPU_EVENTS_WRITTEN + 1, 0},
+        {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS, 0},
+        {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 1, 0},
+        {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 2, 0},
+        {!def->eventSpawn.enable, MVFX_GPU_EVENT_SERIALS + 3, 0},
+        {def->ribbon.ids == mvfx_ribbonNone, MVFX_GPU_RIBBON_BREAKS, 0},
+        {!def->neighbors.enable, MVFX_GPU_CAPPED_NEIGHBOR_QUERY_COUNT,
+         stats.cappedNeighborQueryCount},
+        {!def->contacts.enable, MVFX_GPU_CONTACT_CAPPED_PARTICLE_COUNT,
+         stats.contactCappedParticleCount},
+        {!def->plexus.enable, MVFX_GPU_LINKS, 0},
+        {!def->plexus.enable, MVFX_GPU_LINKS_DROPPED, stats.linksDropped},
+        {!(def->unit.tearStrain > 0.0f), MVFX_GPU_TEAR_COUNT, stats.tearCount},
+        {!(def->unit.selfThickness > 0.0f), MVFX_GPU_SELF_CONTACT_CAPPED_POINT_COUNT,
+         stats.selfContactCappedPointCount},
+        {!rigid, MVFX_GPU_RIGID_CONTACTS_DROPPED, stats.rigidContactsDropped},
+        {!rigid, MVFX_GPU_RIGID_SEARCH_STOP_COUNT, stats.rigidSearchStopCount},
+        {!rigid || def->rigid.bodyContacts == 0, MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT,
+         stats.rigidCandidateCappedBodyCount},
+        {!def->rigid.enable || def->rigid.shape != mvfx_rigidHull, MVFX_GPU_VALUE_KILL_COUNT, 0}};
     bool same = true;
-    for (int32_t c = 0; c < 16; ++c)
+    for (int32_t c = 0; c < 17; ++c)
     {
         if (counts[c].skipped && s_record[counts[c].word] != counts[c].cpu)
         {
@@ -2815,6 +2836,7 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     s_contactsCapped = 0;
     s_selfCapped = 0;
     s_rigidCapped = 0;
+    s_hugeKilled = 0;
     s_candidatesCapped = 0;
     s_mostAsleep = 0;
     s_woken = 0;
@@ -2953,6 +2975,8 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                    (!(run->emitters[e].unit.selfThickness > 0.0f) || SameSelfCapped(e)) &&
                    (!run->emitters[e].rigid.enable || !run->emitters[e].collision.enable ||
                     SameRigidCapped(e)) &&
+                   (!run->emitters[e].rigid.enable ||
+                    run->emitters[e].rigid.shape != mvfx_rigidHull || SameHugeKilled(e)) &&
                    (!run->emitters[e].plexus.enable || SameLinks(gpu, sim, e)) &&
                    SameSkipped(&run->emitters[e], e) &&
                    (run->emitters[e].events == 0 || (ReadEvents(gpu, sim, e) && SameEvents(e))) &&
@@ -3084,6 +3108,14 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
                run->leastCandidatesCapped);
         CHECK(s_candidatesCapped >= (uint32_t)run->leastCandidatesCapped,
               "rigid candidates capped");
+    }
+    if (run->emitters[0].rigid.enable && run->emitters[0].rigid.shape == mvfx_rigidHull)
+    {
+        printf("  hulls born past their reach: %u (at least %d, none for 0)\n", s_hugeKilled,
+               run->leastHugeKilled);
+        CHECK(run->leastHugeKilled > 0 ? s_hugeKilled >= (uint32_t)run->leastHugeKilled
+                                       : s_hugeKilled == 0,
+              "hulls born past their reach");
     }
     if (run->emitters[0].rigid.enable && run->emitters[0].rigid.sleepSpeed > 0.0f)
     {
