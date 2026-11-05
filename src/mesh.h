@@ -70,7 +70,9 @@ void mvfxMoveMesh(mvfxMesh* mesh, const float* positions, const float* normals);
 // Returns a mesh's block.
 void mvfxReleaseMesh(mvfxMesh* mesh, const mvfxAllocator* allocator);
 
-// Whether a mesh has the elements a mode needs.
+// Whether a mesh has the elements a mode needs. The mode is a checked
+// shape's (mvfxCheckShape refuses any other), so the default is the
+// vertices.
 bool mvfxMeshHasMode(const mvfxMesh* mesh, mvfxMeshMode mode);
 
 // A point on or in a mesh for a mode, and the normal there, in the mesh's

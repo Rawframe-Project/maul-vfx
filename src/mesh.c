@@ -322,15 +322,13 @@ bool mvfxMeshHasMode(const mvfxMesh* mesh, mvfxMeshMode mode)
 {
     switch (mode)
     {
-    case mvfx_meshVertices:
-        return true;
     case mvfx_meshEdges:
     case mvfx_meshSurface:
         return mesh->triangleCount > 0;
     case mvfx_meshVolume:
         return mesh->tetrahedronCount > 0;
     default:
-        return false;
+        return true;
     }
 }
 
