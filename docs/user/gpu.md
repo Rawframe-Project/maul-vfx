@@ -137,6 +137,8 @@ return made;
 
 The simulation numbers, draws and ends its particles as the CPU path does: its integer outputs (counts, serials, birth and death ticks) are the CPU path's. Floating-point results are the CPU path's within stated tolerances, since the device's arithmetic is not the CPU's; the headers state each output's tolerance. A device may flush subnormals to zero, as WGSL allows, so there a subnormal value, an angle for one, reads as zero. On one device and driver the GPU path gives the same bits run after run.
 
+Its searches of two convex shapes, a rigid hull and a box or a sphere, run in binary32, so a hull reaches at most `MVFX_MAX_HULL_REACH` (2^28) from its center in the particles' space ([limits](effects.md#limits-of-what-particles-show)). Both paths kill one born past it, and the statistics record counts it in `MVFX_GPU_VALUE_KILL_COUNT`, the CPU path's `valueKillCount`.
+
 ## What it does not run
 
 `mvfxCreateGpuSim` refuses an effect it cannot run, with the first emitter, gas or water surface at fault and the features why (`mvfxGpuRefusal`, the `MVFX_FEATURE_*` bits of `plan.h`):

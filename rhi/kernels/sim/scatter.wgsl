@@ -2,9 +2,10 @@
 // sim/births.wgsl): scatter, rebox and measure.
 
 // A birth's marks beside its room's: its contacts make an event; it
-// crossed the water surface.
+// crossed the water surface; a hull born past its reach.
 const BIRTH_CONTACT: u32 = 4u;
 const BIRTH_CROSSED: u32 = 8u;
+const BIRTH_HUGE: u32 = 16u;
 
 // The box around a box and a place, a NaN component passed over as the
 // core's comparisons pass it, tested on the bits, which a device cannot

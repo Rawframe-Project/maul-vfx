@@ -198,6 +198,24 @@ const STATISTICS_TORN: u32 = 50u;
 const STATISTICS_RIGID_CAPPED: u32 = 52u;
 const STATISTICS_RIGID_SEARCHES: u32 = 53u;
 
+// The statistics record's word counting particles killed for a value
+// past its limit: hulls born past their reach (MVFX_GPU_VALUE_KILL_COUNT).
+const STATISTICS_VALUE_KILLS: u32 = 55u;
+
+// Adds the step's hulls born past their reach to the count, in one
+// workgroup: the births killBirths marked BIRTH_HUGE.
+fn countHuge(local: u32) {
+    var mine = 0u;
+    for (var j = local; j < birthCount(); j += CHUNK) {
+        mine += select(0u, 1u, (accepted[j] & BIRTH_HUGE) != 0u);
+    }
+    let before = exclusiveScan(local, mine);
+    if (local == CHUNK - 1u) {
+        counts[STATISTICS_VALUE_KILLS] += before + mine;
+    }
+    workgroupBarrier();
+}
+
 // Adds the step's rigid contacts dropped past the most and searches
 // capped to the counts, in one workgroup: each live body's, which the
 // rigid pass left in its alive word of the other buffer (rigidCounts), and
@@ -255,6 +273,9 @@ fn offsets(@builtin(local_invocation_index) local: u32) {
     }
     if (params.rigid.y > 0u && params.collisionHead.z != 0u) {
         countRigidCapped(local);
+    }
+    if (params.rigid.y > 0u && params.rigid.x == RIGID_HULL) {
+        countHuge(local);
     }
     let n = blockCount();
     if (local == 0u) {

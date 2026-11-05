@@ -12,9 +12,10 @@
 // piled in a box without deep overlaps; a hull tipped through 45
 // degrees, where its contacts change from faces to a point, following a
 // box; a box's and a hull's edge across a heightfield's crest held up by
-// it; a mesh's hull counted past the most; the checks. Bodies are read
-// from their records, their spins through a host module after motion,
-// and a hull's shape from its emitter's view.
+// it; a mesh's hull counted past the most; hulls at the edge of the
+// largest reach, born or killed as they are born; the checks. Bodies are
+// read from their records, their spins through a host module after
+// motion, and a hull's shape from its emitter's view.
 
 #include "particles.h"
 #include "peek.h"
@@ -1033,6 +1034,53 @@ static void TestVertexCount(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+static void TestLargestReach(void)
+{
+    // A cube's hull 1,024 across reaches 512 sqrt(3) times its size: of
+    // size 2.95e5, 2.5% short of MVFX_MAX_HULL_REACH, it is born and lands;
+    // of size 3.1e5, 2.4% past it, or of size 2.95e5 that its size over
+    // life may scale by 1.1, it is killed as it is born and counted with
+    // the values past their limits, not with the kills.
+    static const float wide[24] = {-512, -512, -512, 512,  -512, -512, -512, 512,
+                                   -512, 512,  512,  -512, -512, -512, 512,  512,
+                                   -512, 512,  -512, 512,  512,  512,  512,  512};
+    static const float turn[3] = {0, 0, 0};
+    static const float under[3] = {2.95e5f, 2.95e5f, 2.95e5f};
+    static const float past[3] = {3.1e5f, 3.1e5f, 3.1e5f};
+    OpenContext();
+    mvfxMeshId mesh = MeshOf(wide, 8);
+    mvfxEmitterDef emitters[3] = {Rigid(mvfx_rigidHull, mesh, under, turn, true),
+                                  Rigid(mvfx_rigidHull, mesh, past, turn, true),
+                                  Rigid(mvfx_rigidHull, mesh, under, turn, true)};
+    emitters[2].overLife.size = (mvfxSizeOverLife){.enable = true, .size = {{.value = 1.1f}}};
+    // 16 above the ground, moving down onto it at 1e4: binary32's places
+    // are 16 apart there, and a step moves it 167.
+    static const double place[3] = {0, 151040016.0, 0};
+    static const float down[3] = {0, -1e4f, 0};
+    Play(emitters, 3, place, down);
+    Steps(30);
+    TestParticle body[8];
+    int32_t alive[3];
+    mvfxEmitterStats stats[3];
+    for (int32_t e = 0; e < 3; ++e)
+    {
+        alive[e] = ReadParticles(s_scene.context, s_scene.instance, e, body, 8);
+        CHECK(mvfxInstance_GetEmitterStats(s_scene.context, s_scene.instance, e, &stats[e]) ==
+                  mvfx_success,
+              "stats");
+    }
+    CHECK(alive[0] == 1 && stats[0].valueKillCount == 0 && stats[0].killCount == 0,
+          "a hull short of the largest reach born");
+    CHECK(Bodies(0, body) == 1 && body[0].position[1] < 151040016.0f &&
+              body[0].position[1] >= 151040000.0f - 64.0f,
+          "and landed on the ground");
+    CHECK(alive[1] == 0 && stats[1].valueKillCount == 1 && stats[1].killCount == 0,
+          "a hull past it killed as it is born");
+    CHECK(alive[2] == 0 && stats[2].valueKillCount == 1 && stats[2].killCount == 0,
+          "and one its size over life takes past it");
+    mvfxDestroyContext(s_scene.context);
+}
+
 static void TestChecks(void)
 {
     OpenContext();
@@ -1098,6 +1146,7 @@ int main(void)
     TestCrest();
     TestThinNeedles();
     TestVertexCount();
+    TestLargestReach();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }
