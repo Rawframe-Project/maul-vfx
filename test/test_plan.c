@@ -1863,6 +1863,54 @@ static void TestDepth(void)
     mvfxDestroyContext(context);
 }
 
+static void TestDepthBounds(void)
+{
+    // Projections at the setter's bounds (an inverse's entries near 1e12,
+    // its own near 1e12), under the least and the largest scale, the
+    // instance and the view 2^53 apart: the plan's maps stay finite in
+    // binary32 for an emitter in either space.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const float base[16] = {1.2f, 0, 0, 0, 0, 1.6f, 0, 0, 0, 0, 0, -1, 0, 0, 0.1f, 0};
+    const float sizes[2] = {1e-11f, 6e11f};
+    const float scales[2] = {MVFX_MIN_SCALE, MVFX_MAX_SCALE};
+    bool finite = true;
+    for (int32_t run = 0; run < 8; ++run)
+    {
+        mvfxDepthImage image = {
+            .width = 2, .height = 2, .origin = {-0x1p52, 0.0, 0.0}, .rotation = {0, 0, 0, 1}};
+        for (int32_t k = 0; k < 16; ++k)
+        {
+            image.projection[k] = base[k] * sizes[run % 2];
+        }
+        mvfxEmitterDef emitter = Emitter(16);
+        emitter.space = (mvfxSimulationSpace)(run / 4);
+        emitter.collision = (mvfxCollision){.enable = true,
+                                            .enableDepthImage = true,
+                                            .depthThickness = 0.5f,
+                                            .depthSamples = 4,
+                                            .radius = 0.05f};
+        mvfxEffectId effect = Effect(context, &emitter);
+        mvfxInstanceId planned = Instance(context, effect, true);
+        const double origin[3] = {0x1p52, 0.0, 0.0};
+        const float rotation[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        CHECK(mvfxInstance_SetTransform(context, planned, origin, rotation, scales[(run / 2) % 2],
+                                        false) == mvfx_success &&
+                  mvfxInstance_SetDepthImage(context, planned, &image) == mvfx_success,
+              "set at the bounds");
+        CHECK(mvfxContext_StepTicks(context, STEP_TICKS) == mvfx_success, "stepped");
+        static mvfxEmitterPlan plan;
+        CHECK(mvfxInstance_GetEmitterPlan(context, planned, 0, &plan) == mvfx_success, "a plan");
+        for (int32_t k = 0; k < 16; ++k)
+        {
+            finite = finite && isfinite(plan.depth.toClip[k]) && isfinite(plan.depth.fromClip[k]);
+        }
+    }
+    CHECK(finite, "the maps finite at the bounds");
+    mvfxDestroyContext(context);
+}
+
 int main(void)
 {
     TestBirths();
@@ -1883,5 +1931,6 @@ int main(void)
     TestKillAgeOnlyWhereRead();
     TestOverLifeView();
     TestDepth();
+    TestDepthBounds();
     return s_failures == 0 ? 0 : 1;
 }
