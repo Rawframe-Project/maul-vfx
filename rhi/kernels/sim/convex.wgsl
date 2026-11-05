@@ -14,6 +14,9 @@ struct Poly {
     x: vec3<f32>,
     q: vec4<f32>,
     scale: vec3<f32>,
+    // A box's low corner in its frame (-scale but where it is clipped),
+    // scale its high one.
+    low: vec3<f32>,
     count: u32,
     faces: u32,
 }
@@ -64,7 +67,7 @@ fn polyVertex(p: Poly, i: u32) -> vec3<f32> {
         return rotate(p.q, hullVertex(i, p.scale)) + p.x;
     }
     let bits = (vec3<u32>(i) >> vec3<u32>(0u, 1u, 2u)) & vec3<u32>(1u);
-    return rotate(p.q, select(-p.scale, p.scale, bits != vec3<u32>(0u))) + p.x;
+    return rotate(p.q, select(p.low, p.scale, bits != vec3<u32>(0u))) + p.x;
 }
 
 // A face's outward unit normal and offset (n . x = d on it): a box's axis
@@ -75,7 +78,7 @@ fn polyPlane(p: Poly, f: u32) -> vec4<f32> {
         var axis = vec3<f32>(0.0);
         axis[f / 2u] = select(-1.0, 1.0, f % 2u == 0u);
         let n = rotate(p.q, axis);
-        return vec4<f32>(n, dot3(n, p.x) + p.scale[f / 2u]);
+        return vec4<f32>(n, dot3(n, p.x) + select(-p.low[f / 2u], p.scale[f / 2u], f % 2u == 0u));
     }
     // Over its largest part first: a scale of 0 makes a part near 1e30,
     // whose square f32 cannot hold.
@@ -768,7 +771,33 @@ fn faceContacts(x: vec3<f32>, q: vec4<f32>, a: Poly, b: Poly, meet: Meet,
 
 // A hull body's polytope at its pose.
 fn hullPoly(x: vec3<f32>, q: vec4<f32>, s: Shape) -> Poly {
-    return Poly(POLY_HULL, x, q, s.half, s.count, hullFaceCount());
+    return Poly(POLY_HULL, x, q, s.half, vec3<f32>(0.0), s.count, hullFaceCount());
+}
+
+// A box collider for a hull of reach r at x. A box the particles' space
+// does not turn is clipped to 8 r about x in its frame, so the search's
+// points stay near the body, which binary32 holds finely (a box 1e6
+// across holds its far corners to 0.06): its real faces keep their
+// corners as the center plus the half size, as the core's do, and an
+// artificial face is at least 7 r from the body. With no real face within
+// 2 r of x, which the body would leave by, the whole box is searched. A
+// turned box keeps its far corners, its offset to the body held to
+// binary32 (docs/user/gpu.md).
+fn boxPoly(x: vec3<f32>, r: f32, c: Collider) -> Poly {
+    let h = c.halfExtents.xyz;
+    var box = Poly(POLY_BOX, c.center.xyz, c.rotation, h, -h, 8u, 6u);
+    if (any(c.rotation.xyz != vec3<f32>(0.0))) {
+        return box;
+    }
+    let p = x - c.center.xyz;
+    let low = max(-h, p - vec3<f32>(8.0 * r));
+    let high = min(h, p + vec3<f32>(8.0 * r));
+    let near = any(abs(h - p) <= vec3<f32>(2.0 * r)) || any(abs(h + p) <= vec3<f32>(2.0 * r));
+    if (near && all(low <= high)) {
+        box.low = low;
+        box.scale = high;
+    }
+    return box;
 }
 
 // A hull kept out of a sphere or a box. Of a box, as two polytopes (the
@@ -780,9 +809,15 @@ fn hullPolyContacts(x: vec3<f32>, q: vec4<f32>, s: Shape, c: Collider,
     let hull = hullPoly(x, q, s);
     let box = c.modes.x == COLLIDER_BOX;
     let center = c.center.xyz;
-    var other = Poly(POLY_POINT, center, vec4<f32>(0.0, 0.0, 0.0, 1.0), vec3<f32>(0.0), 1u, 0u);
+    var other = Poly(POLY_POINT, center, vec4<f32>(0.0, 0.0, 0.0, 1.0), vec3<f32>(0.0),
+                     vec3<f32>(0.0), 1u, 0u);
     if (box) {
-        other = Poly(POLY_BOX, center, c.rotation, c.halfExtents.xyz, 8u, 6u);
+        var reach = 0.0;
+        for (var v = 0u; v < s.count; v++) {
+            let w = hullVertex(v, s.half);
+            reach = max(reach, dot3(w, w));
+        }
+        other = boxPoly(x, sqrt(reach), c);
     }
     var meet: Meet;
     if (!convexSearch(hull, other, (*list).margin, box, &meet)) {
