@@ -602,9 +602,9 @@ static int32_t Horizon(const Epa* e, const bool* seen, uint8_t edges[][2])
     return edgeCount;
 }
 
-// The face beyond horizon edge from to: the unseen face holding to from.
-// The polytope is closed (every edge of a face is another's the other
-// way), so there is one.
+// The face beyond horizon edge from to: the unseen face holding to from;
+// -1 for none. The polytope is closed (every edge of a face is another's
+// the other way), so there is one.
 static int32_t Beyond(const Epa* e, const bool* seen, uint8_t from, uint8_t to)
 {
     for (int32_t f = 0; f < e->faceCount; ++f)
@@ -618,7 +618,7 @@ static int32_t Beyond(const Epa* e, const bool* seen, uint8_t from, uint8_t to)
         }
     }
     MVFX_ASSERT(false);
-    return 0;
+    return -1;
 }
 
 // Adds point p whole: the faces it sees removed and the horizon joined to
@@ -645,7 +645,14 @@ static bool Expand(Epa* e, const Point* p)
     {
         if (!HasArea(e, edges[j][0], edges[j][1], p->w))
         {
-            seen[Beyond(e, seen, edges[j][0], edges[j][1])] = true;
+            // Were the face not there (an open polytope, which an
+            // assertion catches), the step is refused, not looped on.
+            int32_t beyond = Beyond(e, seen, edges[j][0], edges[j][1]);
+            if (beyond < 0)
+            {
+                return false;
+            }
+            seen[beyond] = true;
             edgeCount = Horizon(e, seen, edges);
             j = -1;
         }

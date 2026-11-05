@@ -1030,10 +1030,10 @@ static void TurnedBox(const float center[3], const float half[3], const float q[
 // A box's axes in binary64 from its quaternion, as rows.
 static void BoxAxes(const float qf[4], double m[3][3])
 {
-    double x = qf[0];
-    double y = qf[1];
-    double z = qf[2];
-    double w = qf[3];
+    double x = (double)qf[0];
+    double y = (double)qf[1];
+    double z = (double)qf[2];
+    double w = (double)qf[3];
     double n = sqrt(x * x + y * y + z * z + w * w);
     x /= n;
     y /= n;
@@ -1047,11 +1047,12 @@ static void BoxAxes(const float qf[4], double m[3][3])
 
 static void SpanAlong(const float* points, const double d[3], double* low, double* high)
 {
-    *low = INFINITY;
-    *high = -INFINITY;
+    *low = (double)INFINITY;
+    *high = -(double)INFINITY;
     for (int32_t i = 0; i < 8; ++i)
     {
-        double t = d[0] * points[3 * i] + d[1] * points[3 * i + 1] + d[2] * points[3 * i + 2];
+        double t = d[0] * (double)points[3 * i] + d[1] * (double)points[3 * i + 1] +
+                   d[2] * (double)points[3 * i + 2];
         *low = fmin(*low, t);
         *high = fmax(*high, t);
     }
@@ -1118,7 +1119,7 @@ static double SeparatingDepth(const float* a, const float qa[4], const float* b,
     {
         least = ways[i][0] < ways[least][0] ? i : least;
     }
-    double next = INFINITY;
+    double next = (double)INFINITY;
     for (int32_t i = 0; i < 2 * count; ++i)
     {
         double along =
@@ -1230,7 +1231,8 @@ static void TestEpaAgainstAxes(void)
             continue;
         }
         ++judged;
-        double along = expected[0] * normal[0] + expected[1] * normal[1] + expected[2] * normal[2];
+        double along = expected[0] * (double)normal[0] + expected[1] * (double)normal[1] +
+                       expected[2] * (double)normal[2];
         bool right = met && fabs(-(double)distance - depth) <= 1e-4 * (1.0 + depth) &&
                      (!unique || along >= 0.999);
         wrong += right ? 0 : 1;
