@@ -907,11 +907,413 @@ static void TestShallowOverlaps(void)
         bool stopped = true;
         int32_t steps = -1;
         float distance = 0.0f;
+        float normal[3];
         once = once &&
-               mvfxTestConvexMeet(a[i], 6, b[i], 6, 0x1.3f2648p-7f, &stopped, &steps, &distance) &&
+               mvfxTestConvexMeet(a[i], 6, b[i], 6, 0x1.3f2648p-7f, &stopped, &steps, &distance,
+                                  normal) &&
                !stopped && steps <= 1;
     }
     CHECK(once, "hulls overlapping by rounding alone, met without a stopped search");
+}
+
+// The corners of a box of half sizes half about center, as hull points.
+static void BoxPoints(const float center[3], const float half[3], float out[24])
+{
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[3 * i + k] = center[k] + ((i >> k & 1) != 0 ? half[k] : -half[k]);
+        }
+    }
+}
+
+static void TestTouching(void)
+{
+    // Unit cubes touching by a face, an edge and a corner meet at distance
+    // 0. GJK finds the origin on a point of their difference, or on a
+    // segment, and EPA starts from the tetrahedron grown about it. Its
+    // normal runs from b toward a, along a face of the contact: for the
+    // face, its normal.
+    static const float half[3] = {0.5f, 0.5f, 0.5f};
+    static const float origin[3] = {0.0f, 0.0f, 0.0f};
+    static const float places[3][3] = {{1, 0, 0}, {1, 1, 0}, {1, 1, 1}};
+    static const char* names[3] = {"cubes touching by a face met at distance 0",
+                                   "cubes touching by an edge met at distance 0",
+                                   "cubes touching by a corner met at distance 0"};
+    float a[24];
+    BoxPoints(origin, half, a);
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        float b[24];
+        BoxPoints(places[i], half, b);
+        bool stopped = true;
+        int32_t steps = 0;
+        float distance = 1.0f;
+        float normal[3];
+        bool met = mvfxTestConvexMeet(a, 8, b, 8, 0.01f, &stopped, &steps, &distance, normal);
+        float toward =
+            normal[0] * places[i][0] + normal[1] * places[i][1] + normal[2] * places[i][2];
+        CHECK(met && !stopped && steps > 0 && distance == 0.0f && toward <= -1.0f &&
+                  normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] == 1.0f,
+              names[i]);
+    }
+    // Two flat squares, as hulls of no height, overlapping in the plane Y
+    // 0: their difference is flat, so no tetrahedron grows in it, and they
+    // meet at distance 0 along +Y, the plane's normal.
+    static const float flat[3] = {0.5f, 0.0f, 0.5f};
+    static const float aside[3] = {0.25f, 0.0f, 0.25f};
+    float c[24];
+    float d[24];
+    BoxPoints(origin, flat, c);
+    BoxPoints(aside, flat, d);
+    bool stopped = true;
+    int32_t steps = 1;
+    float distance = 1.0f;
+    float normal[3];
+    bool met = mvfxTestConvexMeet(c, 8, d, 8, 0.01f, &stopped, &steps, &distance, normal);
+    CHECK(met && !stopped && steps == 0 && distance == 0.0f && normal[0] == 0.0f &&
+              normal[1] == 1.0f && normal[2] == 0.0f,
+          "flat squares overlapping met at distance 0 along their normal");
+}
+
+static void TestEpaStuck(void)
+{
+    // A box of half sizes 1, 0.75 and 1, turned a quarter about Z in
+    // binary32 (its corners an ulp off), and a flat square, a hull of no
+    // width, at X -0.75 across Y 0.5 to 1 and Z -1 to -0.5. They overlap
+    // by 0.25, to the rounding of the box's turned corners: the box moved
+    // 0.25 along X leaves the square on its face. EPA's first step finds a
+    // point in line with an edge of its horizon, whose face would have no
+    // area; the face beyond that edge goes too, and the search goes on to
+    // the depth. A step left half added read a face that was gone: a depth
+    // of 1.75 along +Y.
+    static const float box[24] = {
+        0x1.fffffcp-1f, -0x1.800002p-1f, -0x1p+0f, 0x1p+0f,         0x1.7ffffcp-1f, -0x1p+0f,
+        -0x1p+0f,       -0x1.7ffffcp-1f, -0x1p+0f, -0x1.fffffcp-1f, 0x1.800002p-1f, -0x1p+0f,
+        0x1.fffffcp-1f, -0x1.800002p-1f, 0x1p+0f,  0x1p+0f,         0x1.7ffffcp-1f, 0x1p+0f,
+        -0x1p+0f,       -0x1.7ffffcp-1f, 0x1p+0f,  -0x1.fffffcp-1f, 0x1.800002p-1f, 0x1p+0f};
+    static const float square[12] = {-0.75f, 1.0f, -1.0f, -0.75f, 1.0f, -0.5f,
+                                     -0.75f, 0.5f, -1.0f, -0.75f, 0.5f, -0.5f};
+    bool stopped = true;
+    int32_t steps = -1;
+    float distance = 1.0f;
+    float normal[3];
+    bool met = mvfxTestConvexMeet(box, 8, square, 4, 0.01f, &stopped, &steps, &distance, normal);
+    CHECK(met && !stopped && fabsf(distance + 0.25f) <= 1e-6f && normal[0] == 1.0f &&
+              fabsf(normal[1]) <= 1e-7f && normal[2] == 0.0f,
+          "a flat square in a box met at their depth, 0.25 along +X");
+}
+
+// A box's corners: half sizes about center, turned by unit quaternion q.
+static void TurnedBox(const float center[3], const float half[3], const float q[4], float out[24])
+{
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        float c[3];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            c[k] = (i >> k & 1) != 0 ? half[k] : -half[k];
+        }
+        // v + 2 w (u x v) + 2 u x (u x v), u the quaternion's vector part.
+        float t[3] = {2.0f * (q[1] * c[2] - q[2] * c[1]), 2.0f * (q[2] * c[0] - q[0] * c[2]),
+                      2.0f * (q[0] * c[1] - q[1] * c[0])};
+        float r[3] = {c[0] + q[3] * t[0] + (q[1] * t[2] - q[2] * t[1]),
+                      c[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]),
+                      c[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0])};
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[3 * i + k] = center[k] + r[k];
+        }
+    }
+}
+
+// A box's axes in binary64 from its quaternion, as rows.
+static void BoxAxes(const float qf[4], double m[3][3])
+{
+    double x = (double)qf[0];
+    double y = (double)qf[1];
+    double z = (double)qf[2];
+    double w = (double)qf[3];
+    double n = sqrt(x * x + y * y + z * z + w * w);
+    x /= n;
+    y /= n;
+    z /= n;
+    w /= n;
+    const double rows[3][3] = {{1 - 2 * (y * y + z * z), 2 * (x * y + w * z), 2 * (x * z - w * y)},
+                               {2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x)},
+                               {2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)}};
+    memcpy(m, rows, sizeof rows);
+}
+
+static void SpanAlong(const float* points, const double d[3], double* low, double* high)
+{
+    *low = (double)INFINITY;
+    *high = -(double)INFINITY;
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        double t = d[0] * (double)points[3 * i] + d[1] * (double)points[3 * i + 1] +
+                   d[2] * (double)points[3 * i + 2];
+        *low = fmin(*low, t);
+        *high = fmax(*high, t);
+    }
+}
+
+// How deep boxes a and b overlap by the separating axes (each box's
+// three, and the nine across an axis of each), and the normal from b
+// toward a that parts them by it: the least of the axes' overlaps, each
+// both ways. In unique, whether every other way not along the normal is
+// 1e-3 deeper.
+static double SeparatingDepth(const float* a, const float qa[4], const float* b, const float qb[4],
+                              double normal[3], bool* unique)
+{
+    double ma[3][3];
+    double mb[3][3];
+    double axes[15][3];
+    int32_t count = 0;
+    BoxAxes(qa, ma);
+    BoxAxes(qb, mb);
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        memcpy(axes[count++], ma[i], sizeof ma[i]);
+        memcpy(axes[count++], mb[i], sizeof mb[i]);
+    }
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        for (int32_t j = 0; j < 3; ++j)
+        {
+            double c[3] = {ma[i][1] * mb[j][2] - ma[i][2] * mb[j][1],
+                           ma[i][2] * mb[j][0] - ma[i][0] * mb[j][2],
+                           ma[i][0] * mb[j][1] - ma[i][1] * mb[j][0]};
+            double length = sqrt(c[0] * c[0] + c[1] * c[1] + c[2] * c[2]);
+            if (length >= 1e-6)
+            {
+                for (int32_t k = 0; k < 3; ++k)
+                {
+                    axes[count][k] = c[k] / length;
+                }
+                ++count;
+            }
+        }
+    }
+    // Each way: its depth (a moved that far against the normal parts
+    // them) and the normal.
+    double ways[30][4];
+    for (int32_t i = 0; i < count; ++i)
+    {
+        double lowA;
+        double highA;
+        double lowB;
+        double highB;
+        SpanAlong(a, axes[i], &lowA, &highA);
+        SpanAlong(b, axes[i], &lowB, &highB);
+        ways[2 * i][0] = highA - lowB;
+        ways[2 * i + 1][0] = highB - lowA;
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            ways[2 * i][1 + k] = -axes[i][k];
+            ways[2 * i + 1][1 + k] = axes[i][k];
+        }
+    }
+    int32_t least = 0;
+    for (int32_t i = 1; i < 2 * count; ++i)
+    {
+        least = ways[i][0] < ways[least][0] ? i : least;
+    }
+    double next = (double)INFINITY;
+    for (int32_t i = 0; i < 2 * count; ++i)
+    {
+        double along =
+            ways[i][1] * ways[least][1] + ways[i][2] * ways[least][2] + ways[i][3] * ways[least][3];
+        next = along < 0.999 ? fmin(next, ways[i][0]) : next;
+    }
+    memcpy(normal, &ways[least][1], 3 * sizeof(double));
+    *unique = next - ways[least][0] > 1e-3;
+    return ways[least][0];
+}
+
+static uint32_t s_draws = 0x2545F491u;
+
+static uint32_t Draw(void)
+{
+    s_draws ^= s_draws << 13u;
+    s_draws ^= s_draws >> 17u;
+    s_draws ^= s_draws << 5u;
+    return s_draws;
+}
+
+static float Unit(void)
+{
+    return (float)(Draw() >> 8u) * 0x1p-24f;
+}
+
+// A turn: none, a whole number of eighths about an axis, or any.
+static void DrawTurn(bool gridded, float q[4])
+{
+    int32_t kind = (int32_t)(Draw() % (gridded ? 2u : 3u));
+    q[0] = 0.0f;
+    q[1] = 0.0f;
+    q[2] = 0.0f;
+    q[3] = 1.0f;
+    if (kind == 1)
+    {
+        double half = (double)(1 + Draw() % 7u) * 0.39269908169872414;
+        int32_t axis = (int32_t)(Draw() % 3u);
+        q[axis] = (float)sin(half);
+        q[3] = (float)cos(half);
+    }
+    else if (kind == 2)
+    {
+        double v[4];
+        double length = 0.0;
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            v[k] = (double)Unit() * 2.0 - 1.0 + 1e-3;
+            length += v[k] * v[k];
+        }
+        for (int32_t k = 0; k < 4; ++k)
+        {
+            q[k] = (float)(v[k] / sqrt(length));
+        }
+    }
+}
+
+// Whether two faces across an edge of an EPA polytope lie folded onto
+// each other: one's third point on the other's plane (within 1e-9 of the
+// reach), their normals opposed (over 120 degrees apart). A convex
+// polytope has none; two faces in one plane have the same normal.
+static bool AnyFold(const double points[][3], int32_t pointCount, const uint8_t faces[][3],
+                    int32_t faceCount)
+{
+    double reach = 0.0;
+    for (int32_t i = 0; i < pointCount; ++i)
+    {
+        reach = fmax(reach, sqrt(points[i][0] * points[i][0] + points[i][1] * points[i][1] +
+                                 points[i][2] * points[i][2]));
+    }
+    double normals[MVFX_TEST_EPA_FACES][3];
+    for (int32_t f = 0; f < faceCount; ++f)
+    {
+        const double* p = points[faces[f][0]];
+        const double* q = points[faces[f][1]];
+        const double* r = points[faces[f][2]];
+        double u[3] = {q[0] - p[0], q[1] - p[1], q[2] - p[2]};
+        double v[3] = {r[0] - p[0], r[1] - p[1], r[2] - p[2]};
+        double n[3] = {u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2],
+                       u[0] * v[1] - u[1] * v[0]};
+        double length = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            normals[f][k] = n[k] / length;
+        }
+    }
+    for (int32_t f = 0; f < faceCount; ++f)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            uint8_t from = faces[f][k];
+            uint8_t to = faces[f][(k + 1) % 3];
+            const double* third = points[faces[f][(k + 2) % 3]];
+            for (int32_t g = 0; g < faceCount; ++g)
+            {
+                for (int32_t m = 0; m < 3; ++m)
+                {
+                    if (faces[g][m] != to || faces[g][(m + 1) % 3] != from)
+                    {
+                        continue;
+                    }
+                    const double* on = points[faces[g][0]];
+                    const double* n = normals[g];
+                    double off = n[0] * (third[0] - on[0]) + n[1] * (third[1] - on[1]) +
+                                 n[2] * (third[2] - on[2]);
+                    double along =
+                        n[0] * normals[f][0] + n[1] * normals[f][1] + n[2] * normals[f][2];
+                    if (fabs(off) <= 1e-9 * reach && along < -0.5)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+static void TestEpaAgainstAxes(void)
+{
+    // Pairs of boxes, as hulls of their corners, three quarters of them
+    // flat (of no size along one axis, or two), half of them on a grid of
+    // quarters turned by eighth turns, so that faces line up and points
+    // fall in line with edges; the other half anywhere, turned any way.
+    // Where they overlap by more than rounding, or the search says they
+    // overlap, its depth is the separating axes' within 1e-4 of 1 plus it,
+    // and where one way is least by 1e-3 its normal is that way's (a
+    // search stopped at its cap too: 2 overlapping by rounding alone).
+    // Wherever EPA runs, its polytope after each step has no face folded
+    // back onto the face across an edge.
+    int32_t judged = 0;
+    int32_t wrong = 0;
+    int32_t folds = 0;
+    for (int32_t n = 0; n < 100000; ++n)
+    {
+        bool gridded = n % 2 == 0;
+        float ha[3];
+        float hb[3];
+        float cb[3];
+        const float ca[3] = {0.0f, 0.0f, 0.0f};
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            ha[k] = gridded ? (float)(1 + Draw() % 6u) * 0.25f : 0.1f + Unit();
+            hb[k] = gridded ? (float)(1 + Draw() % 6u) * 0.25f : 0.1f + Unit();
+            cb[k] = gridded ? (float)((int32_t)(Draw() % 13u) - 6) * 0.25f : 3.0f * Unit() - 1.5f;
+        }
+        // Flat: b along one axis, then a too, then b along two.
+        uint32_t flat = Draw() % 4u;
+        uint32_t first = Draw() % 3u;
+        uint32_t second = Draw() % 3u;
+        uint32_t third = Draw() % 3u;
+        hb[first] = flat >= 1u ? 0.0f : hb[first];
+        ha[second] = flat >= 2u ? 0.0f : ha[second];
+        hb[third] = flat == 3u ? 0.0f : hb[third];
+        float qa[4];
+        float qb[4];
+        DrawTurn(gridded, qa);
+        DrawTurn(gridded, qb);
+        float a[24];
+        float b[24];
+        TurnedBox(ca, ha, qa, a);
+        TurnedBox(cb, hb, qb, b);
+        double expected[3];
+        bool unique = false;
+        double depth = SeparatingDepth(a, qa, b, qb, expected, &unique);
+        bool stopped = true;
+        int32_t steps = 0;
+        float distance = 0.0f;
+        float normal[3] = {0.0f, 0.0f, 0.0f};
+        bool met = mvfxTestConvexMeet(a, 8, b, 8, 0.01f, &stopped, &steps, &distance, normal);
+        // EPA's polytope after each step it took: no face folded.
+        for (int32_t k = 1; met && k <= steps; ++k)
+        {
+            double points[MVFX_TEST_EPA_POINTS][3];
+            _Alignas(16) uint8_t faces[MVFX_TEST_EPA_FACES][3];
+            int32_t pointCount = 0;
+            int32_t faceCount = mvfxTestEpaPolytope(a, 8, b, 8, k, points, &pointCount, faces);
+            folds += AnyFold(points, pointCount, faces, faceCount) ? 1 : 0;
+        }
+        if (!(depth > 1e-6) && !(met && distance < 0.0f))
+        {
+            continue;
+        }
+        ++judged;
+        double along = expected[0] * (double)normal[0] + expected[1] * (double)normal[1] +
+                       expected[2] * (double)normal[2];
+        bool right = met && fabs(-(double)distance - depth) <= 1e-4 * (1.0 + depth) &&
+                     (!unique || along >= 0.999);
+        wrong += right ? 0 : 1;
+    }
+    CHECK(judged >= 25000, "box pairs overlapping");
+    CHECK(wrong == 0, "every overlap found at the separating axes' depth and normal");
+    CHECK(folds == 0, "no face EPA adds folded back onto the face across its edge");
 }
 
 int main(void)
@@ -931,6 +1333,9 @@ int main(void)
     TestSliding();
     TestPile();
     TestShallowOverlaps();
+    TestTouching();
+    TestEpaStuck();
+    TestEpaAgainstAxes();
     TestPoolAndStrikes();
     TestUnits();
     return s_failures == 0 ? 0 : 1;

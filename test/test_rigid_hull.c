@@ -7,13 +7,14 @@
 // a lopsided hull spun freely keeping its angular momentum and energy,
 // its inertia not along its axes; hulls resting on a box collider and a
 // sphere's top as boxes do; a hull around a small sphere pushed out
-// through its nearest face; hulls stacked, meeting head on, and piled in
-// a box without deep overlaps; a hull tipped through 45 degrees, where
-// its contacts change from faces to a point, following a box; a box's and
-// a hull's edge across a heightfield's crest held up by it; a mesh's
-// hull counted past the most; the checks. Bodies are read from their
-// records, their spins through a host module after motion, and a hull's
-// shape from its emitter's view.
+// through its nearest face; a hull of no width inside a box collider
+// pushed out by its least depth; hulls stacked, meeting head on, and
+// piled in a box without deep overlaps; a hull tipped through 45
+// degrees, where its contacts change from faces to a point, following a
+// box; a box's and a hull's edge across a heightfield's crest held up by
+// it; a mesh's hull counted past the most; the checks. Bodies are read
+// from their records, their spins through a host module after motion,
+// and a hull's shape from its emitter's view.
 
 #include "particles.h"
 #include "peek.h"
@@ -441,6 +442,36 @@ static void TestInsideHull(void)
     CHECK(fabsf(At(0, PositionY) - 1.1f) <= 0.01f && fabsf(At(0, PositionX)) <= 1e-4f &&
               speed <= 1e-3f,
           "a hull out by its nearest face");
+    mvfxDestroyContext(s_scene.context);
+}
+
+static void TestFlatInABox(void)
+{
+    // A cube's hull of no width (size 0 along X), turned a quarter about
+    // X, inside a box collider turned a quarter about Z: across Y 0.25 to
+    // 0.75 and Z -1.25 to -0.75 at X -0.25, in a box across X -0.75 to
+    // 0.75, Y -1.25 to 1.25 and Z -1.25 to 1.25. Moved 0.5 along -X, or
+    // along -Z, it is out; one step moves it 0.5 along -X, onto the face.
+    // The search's step that met a point in line with an edge of its
+    // horizon was left half added, and it was pushed 2 along -Y.
+    static const mvfxCollider box = {.kind = mvfx_colliderBox,
+                                     .halfExtents = {1.25f, 0.75f, 1.25f},
+                                     .rotation = {0, 0, 0.70710678f, 0.70710678f}};
+    static const float flat[3] = {0, 0.5f, 0.5f};
+    static const float turn[3] = {1.5707964f, 0, 0};
+    static const double place[3] = {-0.25, 0.5, -1};
+    static const float still[3] = {0, 0, 0};
+    OpenContext();
+    mvfxMeshId cube = MeshOf(s_cube, 8);
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidHull, cube, flat, turn, false);
+    emitter.collision.enable = true;
+    emitter.colliders = &box;
+    emitter.colliderCount = 1;
+    Play(&emitter, 1, place, still);
+    Steps(1);
+    CHECK(fabsf(At(0, PositionX) + 0.75f) <= 1e-5f && fabsf(At(0, PositionY) - 0.5f) <= 1e-5f &&
+              fabsf(At(0, PositionZ) + 1.0f) <= 1e-5f,
+          "a flat hull in a box out by its least depth");
     mvfxDestroyContext(s_scene.context);
 }
 
@@ -1060,6 +1091,7 @@ int main(void)
     TestFreeSpin();
     TestOnColliders();
     TestInsideHull();
+    TestFlatInABox();
     TestMeeting();
     TestPile();
     TestTipping();

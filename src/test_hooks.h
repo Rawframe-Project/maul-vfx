@@ -164,11 +164,28 @@ int32_t mvfxTestLiquidSubsteps(const mvfxContext* context, mvfxInstanceId instan
 // b's points (x, y and z each, countA and countB of them, from 1 to
 // MVFX_MAX_HULL_VERTICES, already where they meet) within margin: whether
 // they meet, and when they do, whether a search stopped at its limit
-// (stopped), EPA's steps and their distance (below 0 overlapping). Returns
-// false too for a count out of range. A step counts its stopped searches
-// (mvfxEmitterStats.rigidSearchStopCount) but no public call gives one's
-// steps.
+// (stopped), EPA's steps, their distance (below 0 overlapping) and the
+// unit normal from b toward a. Returns false too for a count out of range.
+// A step counts its stopped searches (mvfxEmitterStats.rigidSearchStopCount)
+// but no public call gives one's steps, nor the search's normal before
+// contacts are made from it.
 bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b, int32_t countB,
-                        float margin, bool* stopped, int32_t* epaSteps, float* distance);
+                        float margin, bool* stopped, int32_t* epaSteps, float* distance,
+                        float normal[3]);
+
+// The most points and faces of EPA's polytope (as MVFX_EPA_POINTS and
+// MVFX_EPA_FACES).
+#define MVFX_TEST_EPA_POINTS 68
+#define MVFX_TEST_EPA_FACES  136
+
+// The polytope EPA grows in at most most steps for the hulls of a's and
+// b's points (as mvfxTestConvexMeet takes them), where they overlap: its
+// points (of the difference a less b) and their count, and its faces
+// (counterclockwise from outside, indices into points); their count, 0
+// when they are apart, the difference is flat or a count is out of range.
+// No public call gives the search's polytope, whose shape a test checks.
+int32_t mvfxTestEpaPolytope(const float* a, int32_t countA, const float* b, int32_t countB,
+                            int32_t most, double points[MVFX_TEST_EPA_POINTS][3],
+                            int32_t* pointCount, uint8_t faces[MVFX_TEST_EPA_FACES][3]);
 
 #endif // MAUL_VFX_SRC_TEST_HOOKS_H
