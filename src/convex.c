@@ -558,16 +558,48 @@ static int32_t NearestFace(const Epa* e)
     return best;
 }
 
-// Whether the triangle of points i and j and w has area.
-static bool HasArea(const Epa* e, int32_t i, int32_t j, const double w[3])
+// Whether horizon edge from to joins w by a face that keeps the polytope
+// convex: one with area, not folded back onto the unseen face beyond the
+// edge (w on that face's plane, on its side of the edge, the two faces'
+// normals opposed). A fold comes only after a face w does not see went
+// too, for the face beyond it.
+static bool Joins(const Epa* e, int32_t beyond, uint8_t from, uint8_t to, const double w[3])
 {
     double ab[3];
     double aw[3];
     double n[3];
-    Sub(e->points[j].w, e->points[i].w, ab);
-    Sub(w, e->points[i].w, aw);
+    Sub(e->points[to].w, e->points[from].w, ab);
+    Sub(w, e->points[from].w, aw);
     Cross(ab, aw, n);
-    return Dot(n, n) > 0.0;
+    if (!(Dot(n, n) > 0.0))
+    {
+        return false;
+    }
+    double off = Dot(e->normals[beyond], w) - e->distances[beyond];
+    bool onPlane = off >= -1e-12 * (fabs(e->distances[beyond]) + sqrt(Dot(w, w)));
+    return !(onPlane && Dot(n, e->normals[beyond]) < 0.0);
+}
+
+// Whether new face f lies folded back onto the kept face across its first
+// edge (one of the first kept faces): its normal opposed to that face's,
+// its new point on that face's plane. Expand's checks leave none.
+[[maybe_unused]] static bool Folded(const Epa* e, int32_t kept, int32_t f)
+{
+    const uint8_t* face = e->faces[f];
+    const double* w = e->points[face[2]].w;
+    for (int32_t g = 0; g < kept; ++g)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            if (e->faces[g][k] == face[1] && e->faces[g][(k + 1) % 3] == face[0])
+            {
+                double off = Dot(e->normals[g], w) - e->distances[g];
+                return Dot(e->normals[f], e->normals[g]) < 0.0 &&
+                       fabs(off) <= 1e-12 * (fabs(e->distances[g]) + sqrt(Dot(w, w)));
+            }
+        }
+    }
+    return false;
 }
 
 // The horizon of the faces marked seen into edges: each edge of a seen
@@ -624,9 +656,11 @@ static int32_t Beyond(const Epa* e, const bool* seen, uint8_t from, uint8_t to)
 // Adds point p whole: the faces it sees removed and the horizon joined to
 // it. A horizon edge in line with p (p on the plane of the face beyond it,
 // which it does not see by the tolerance) would join it by a face of no
-// area, so the face beyond goes too and the horizon is found again; each
-// pass takes one more face, so it ends. False, the polytope as it was,
-// when there is no room or no face would be left.
+// area, and once that face has gone, an edge of it with a face in its
+// plane beyond would join p folded back onto that face; either way the
+// face beyond goes too and the horizon is found again. Each pass takes
+// one more face, so it ends. False, the polytope as it was, when there is
+// no room or no face would be left.
 static bool Expand(Epa* e, const Point* p)
 {
     if (e->pointCount >= EPA_VERTICES)
@@ -643,15 +677,15 @@ static bool Expand(Epa* e, const Point* p)
     int32_t edgeCount = Horizon(e, seen, edges);
     for (int32_t j = 0; j < edgeCount; ++j)
     {
-        if (!HasArea(e, edges[j][0], edges[j][1], p->w))
+        // Were the face beyond not there (an open polytope, which an
+        // assertion catches), the step is refused, not looped on.
+        int32_t beyond = Beyond(e, seen, edges[j][0], edges[j][1]);
+        if (beyond < 0)
         {
-            // Were the face not there (an open polytope, which an
-            // assertion catches), the step is refused, not looped on.
-            int32_t beyond = Beyond(e, seen, edges[j][0], edges[j][1]);
-            if (beyond < 0)
-            {
-                return false;
-            }
+            return false;
+        }
+        if (!Joins(e, beyond, edges[j][0], edges[j][1], p->w))
+        {
             seen[beyond] = true;
             edgeCount = Horizon(e, seen, edges);
             j = -1;
@@ -683,6 +717,10 @@ static bool Expand(Epa* e, const Point* p)
     {
         // Each has area and room, as found above.
         (void)AddTriangle(e, edges[j][0], edges[j][1], at);
+    }
+    for (int32_t f = kept; f < e->faceCount; ++f)
+    {
+        MVFX_ASSERT(!Folded(e, kept, f));
     }
     return true;
 }

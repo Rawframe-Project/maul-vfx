@@ -437,10 +437,17 @@ fn setEdge(edges: ptr<function, array<u32, 204>>, j: u32, edge: u32) {
     (*edges)[j / 2u] = ((*edges)[j / 2u] & ~(0xFFFFu << shift)) | (edge << shift);
 }
 
-// Whether the triangle of points i and j and w has area.
-fn hasArea(e: ptr<function, Epa>, i: u32, j: u32, w: vec3<f32>) -> bool {
-    let n = cross((*e).w[j] - (*e).w[i], w - (*e).w[i]);
-    return dot3(n, n) > 0.0;
+// Whether horizon edge start end joins w by a face that keeps the
+// polytope convex, as the core's Joins: one with area, not folded back
+// onto the unseen face beyond the edge.
+fn joins(e: ptr<function, Epa>, beyond: u32, start: u32, end: u32, w: vec3<f32>) -> bool {
+    let n = cross((*e).w[end] - (*e).w[start], w - (*e).w[start]);
+    if (!(dot3(n, n) > 0.0)) {
+        return false;
+    }
+    let off = dot3((*e).normals[beyond], w) - (*e).distances[beyond];
+    let onPlane = off >= -1e-6 * (abs((*e).distances[beyond]) + sqrt(dot3(w, w)));
+    return !(onPlane && dot3(n, (*e).normals[beyond]) < 0.0);
 }
 
 // The horizon of the faces marked seen into edges: each edge of a seen
@@ -492,9 +499,10 @@ fn beyond(e: ptr<function, Epa>, seen: ptr<function, array<bool, EPA_FACES>>, st
 }
 
 // Adds point p whole, as the core's Expand: the faces it sees removed and
-// the horizon joined to it; a horizon edge in line with p takes the face
-// beyond it too, and the horizon is found again. False, the polytope as it
-// was, when there is no room or no face would be left.
+// the horizon joined to it; a horizon edge in line with p, or folding back
+// onto the face beyond it, takes that face too, and the horizon is found
+// again. False, the polytope as it was, when there is no room or no face
+// would be left.
 fn expand(e: ptr<function, Epa>, p: Point) -> bool {
     if ((*e).pointCount >= EPA_POINTS) {
         return false;
@@ -512,13 +520,13 @@ fn expand(e: ptr<function, Epa>, p: Point) -> bool {
             break;
         }
         let edge = edgeAt(&edges, j);
-        if (hasArea(e, edge & 0xFFu, edge >> 8u, p.w)) {
-            j += 1u;
-            continue;
-        }
         let g = beyond(e, &seen, edge & 0xFFu, edge >> 8u);
         if (g >= (*e).faceCount) {
             return false;
+        }
+        if (joins(e, g, edge & 0xFFu, edge >> 8u, p.w)) {
+            j += 1u;
+            continue;
         }
         seen[g] = true;
         edgeCount = horizon(e, &seen, &edges);
