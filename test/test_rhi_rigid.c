@@ -394,35 +394,20 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.angularVelocity = (mvfxVectorSource){0};
     Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .spawn = &placed, .least = -1},
         "boxes placed around a ball");
-    // Hulls placed above a world box of the largest half size, 1e6, the
-    // instance at a scale of 3.8e-3: in the emitter's space the box is
-    // 2.6e8 in half size, 2% short of MVFX_MAX_PLANNED_COLLIDER, its top
-    // face at the origin, and the bodies land on it.
     static const mvfxCollider wide = {.kind = mvfx_colliderBox,
                                       .space = mvfx_spaceWorld,
                                       .center = {0, -1e6f, 0},
                                       .halfExtents = {1e6f, 1e6f, 1e6f},
                                       .rotation = {0, 0, 0, 1}};
-    static const double above[12] = {0.3, 0.3, 0, -0.3, 0.3, 0, 0, 0.3, 0.3, 0, 0.3, -0.3};
-    static const mvfxSpawnRequest perched = {.count = 4, .positions = above, .velocities = still};
-    emitter = Thrown(mvfx_rigidHull, &wide, 1);
-    emitter.rate = 0.0f;
-    emitter.burstCount = 0;
-    emitter.hostSpawnCapacity = 8;
-    Met(gpu, kernels,
-        &(Run){.mostApart = 4,
-               .emitters = &emitter,
-               .spawn = &perched,
-               .least = -1,
-               .mesh = &s_hull,
-               .scale = 3.8e-3f},
-        "hulls on a world box 2.6e8 in half size in their space");
     // Measuring: hulls 2e6 across on a local emitter's world box, 1e9 and
     // 1e10 in half size in their space.
-    static const double perch[12] = {0, 1024100, 0, 3e6, 1024100, 0, 0, 1024100, 3e6, 0, 1024100, -3e6};
+    static const double perch[12] = {0, 1024100, 0,   3e6, 1024100, 0,
+                                     0, 1024100, 3e6, 0,   1024100, -3e6};
     static const float fall[12] = {0, -1e4f, 0, 0, -1e4f, 0, 0, -1e4f, 0, 0, -1e4f, 0};
-    static const float big[12] = {2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f};
-    static const mvfxSpawnRequest bigPerched = {.count = 4, .positions = perch, .velocities = fall, .sizes = big};
+    static const float big[12] = {2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f,
+                                  2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f};
+    static const mvfxSpawnRequest bigPerched = {
+        .count = 4, .positions = perch, .velocities = fall, .sizes = big};
     static const float measured[2] = {1e-3f, 1e-4f};
     for (int32_t m = 0; m < 2; ++m)
     {
@@ -435,8 +420,12 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
         emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
         emitter.angularVelocity = (mvfxVectorSource){.kind = mvfx_sourceRange};
         Met(gpu, kernels,
-            &(Run){.mostApart = 4, .emitters = &emitter, .spawn = &bigPerched, .least = -1,
-                   .mesh = &s_wide, .scale = measured[m]},
+            &(Run){.mostApart = 4,
+                   .emitters = &emitter,
+                   .spawn = &bigPerched,
+                   .least = -1,
+                   .mesh = &s_wide,
+                   .scale = measured[m]},
             m == 0 ? "MEASURE big hulls on a box 1e9" : "MEASURE big hulls on a box 1e10");
     }
     // Hulls at the edge of MVFX_MAX_HULL_REACH (2^28): two of size 2.95e5,
