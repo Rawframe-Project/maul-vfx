@@ -32,7 +32,8 @@
 // as they take their spin about their length from rounding; spheres and
 // capsules sized by a parameter of unequal axes or inheriting unequal
 // sizes, their axes the shape does not set taking X; what is still refused (kills
-// within a step; bodies meeting each other are rhi_pairs'). Skips (77)
+// within a step, a step's plan past the largest collider; bodies meeting
+// each other are rhi_pairs'). Skips (77)
 // without an adapter, unless MVFX_RHI_REQUIRED is set.
 
 #include "rhi_harness.h"
@@ -393,6 +394,41 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.angularVelocity = (mvfxVectorSource){0};
     Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .spawn = &placed, .least = -1},
         "boxes placed around a ball");
+    static const mvfxCollider wide = {.kind = mvfx_colliderBox,
+                                      .space = mvfx_spaceWorld,
+                                      .center = {0, -1e6f, 0},
+                                      .halfExtents = {1e6f, 1e6f, 1e6f},
+                                      .rotation = {0, 0, 0, 1}};
+    // Hulls 2e6 across (the 1,024 cube at size 2e3) placed 100 above a
+    // world box of the largest half size, 1e6, of a local emitter at a
+    // scale of 3.8e-3, moving down onto it at 1e4: in the emitter's space
+    // the box is 2.6e8 in half size, 2% short of
+    // MVFX_MAX_PLANNED_COLLIDER, its top face at the origin. (On a box 1e10
+    // in half size, at a scale of 1e-4, the search's products passed
+    // binary32's largest value and the paths parted by half the reach.)
+    static const double perch[12] = {0, 1024100, 0,   3e6, 1024100, 0,
+                                     0, 1024100, 3e6, 0,   1024100, -3e6};
+    static const float fall[12] = {0, -1e4f, 0, 0, -1e4f, 0, 0, -1e4f, 0, 0, -1e4f, 0};
+    static const float large[12] = {2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f,
+                                    2e3f, 2e3f, 2e3f, 2e3f, 2e3f, 2e3f};
+    static const mvfxSpawnRequest perched = {
+        .count = 4, .positions = perch, .velocities = fall, .sizes = large};
+    emitter = Thrown(mvfx_rigidHull, &wide, 1);
+    emitter.space = mvfx_spaceLocal;
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.hostSpawnCapacity = 8;
+    emitter.orientationMode = mvfx_orientationEuler;
+    emitter.orientation = (mvfxVectorSource){.kind = mvfx_sourceRange};
+    emitter.angularVelocity = (mvfxVectorSource){.kind = mvfx_sourceRange};
+    Met(gpu, kernels,
+        &(Run){.mostApart = 4,
+               .emitters = &emitter,
+               .spawn = &perched,
+               .least = -1,
+               .mesh = &s_wide,
+               .scale = 3.8e-3f},
+        "hulls on a box 2.6e8 in half size in their space");
     // Hulls at the edge of MVFX_MAX_HULL_REACH (2^28): two of size 2.95e5,
     // 1.5104e8 in half size and reaching 2.5% short of it, placed upright
     // 16 above the origin and moving down at 1e4 (binary32's places 16
@@ -571,6 +607,90 @@ static void TestRefused(mvfxGpu* kernels)
     emitter.killRules = &rule;
     emitter.killRuleCount = 1;
     CHECK(RefusedForRigid(kernels, &emitter), "rigid particles killed within a step refused");
+}
+
+// Whether a planned instance's emitter of hulls kept out of a world box
+// of half size 1e6 is given its passes at a scale.
+static mvfxResult PassesAt(Gpu* gpu, mvfxContext* context, mvfxInstanceId planned, mvfxGpuSim* sim,
+                           float scale)
+{
+    static const double origin[3] = {0, 0, 0};
+    static const float still[4] = {0, 0, 0, 1};
+    mrhiFrameDef frame = mrhiDefaultFrameDef();
+    if (mvfxInstance_SetTransform(context, planned, origin, still, scale, true) != mvfx_success ||
+        mvfxContext_StepTicks(context, STEP_TICKS) != mvfx_success ||
+        mrhiDevice_BeginFrame(gpu->device, &frame) != mrhi_success)
+    {
+        return mvfx_errorState;
+    }
+    mvfxResult added = mvfxGpuSim_AddPasses(sim);
+    return mrhiDevice_DropFrame(gpu->device) == mrhi_success ? added : mvfx_errorState;
+}
+
+static void TestColliderBound(Gpu* gpu, mvfxGpu* kernels)
+{
+    // Hulls kept out of a world box of half size 1e6, the instance scaled
+    // so that the box is 2% short of MVFX_MAX_PLANNED_COLLIDER in the
+    // particles' space (3.8e-3), then 2% past it (3.65e-3), then short of
+    // it again: the step past it is refused, the next given again; and an
+    // instance past it from its creation has its first step refused.
+    mvfxContextDef contextDef = mvfxDefaultContextDef();
+    mvfxContext* context = NULL;
+    CHECK(mvfxCreateContext(&contextDef, &context) == mvfx_success, "context");
+    static const mvfxCollider wide = {.kind = mvfx_colliderBox,
+                                      .space = mvfx_spaceWorld,
+                                      .center = {0, -1e6f, 0},
+                                      .halfExtents = {1e6f, 1e6f, 1e6f},
+                                      .rotation = {0, 0, 0, 1}};
+    mvfxEmitterDef emitter = Thrown(mvfx_rigidHull, &wide, 1);
+    emitter.space = mvfx_spaceLocal;
+    CHECK(mvfxCreateMesh(context, &s_hull, &emitter.rigid.hull) == mvfx_success, "the hull");
+    mvfxEffectDef effectDef = mvfxDefaultEffectDef();
+    effectDef.emitters = &emitter;
+    effectDef.emitterCount = 1;
+    mvfxEffectId effect = {0};
+    CHECK(mvfxCreateEffect(context, &effectDef, &effect, NULL) == mvfx_success, "effect");
+    mvfxInstanceDef instanceDef = mvfxDefaultInstanceDef();
+    instanceDef.effect = effect;
+    instanceDef.planned = true;
+    instanceDef.scale = 3.8e-3f;
+    mvfxInstanceId planned = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &planned) == mvfx_success, "instance");
+    mvfxGpuSimDef simDef = mvfxDefaultGpuSimDef();
+    simDef.gpu = kernels;
+    simDef.context = context;
+    simDef.effect = effect;
+    simDef.instance = planned;
+    mvfxGpuSim* sim = NULL;
+    mvfxGpuRefusal refusal;
+    CHECK(mvfxCreateGpuSim(&simDef, &sim, &refusal) == mvfx_success, "the simulation");
+    static const float scales[3] = {3.8e-3f, 3.65e-3f, 3.8e-3f};
+    static const mvfxResult expected[3] = {mvfx_success, mvfx_errorLimit, mvfx_success};
+    int32_t right = 0;
+    for (int32_t c = 0; sim != NULL && c < 3; ++c)
+    {
+        mvfxResult added = PassesAt(gpu, context, planned, sim, scales[c]);
+        right += added == expected[c] ? 1 : 0;
+        printf("  passes at a scale of %g: %d (%d)\n", (double)scales[c], (int)added,
+               (int)expected[c]);
+    }
+    CHECK(right == 3, "a step past the largest collider refused, the next given");
+    mvfxDestroyGpuSim(sim);
+    // An instance past it from its creation: its simulation is made, and
+    // its first step refused.
+    instanceDef.scale = 3.65e-3f;
+    mvfxInstanceId past = {0};
+    CHECK(mvfxCreateInstance(context, &instanceDef, &past) == mvfx_success, "instance past it");
+    simDef.instance = past;
+    sim = NULL;
+    mvfxResult made = mvfxCreateGpuSim(&simDef, &sim, &refusal);
+    mvfxResult first = made == mvfx_success ? PassesAt(gpu, context, past, sim, 3.65e-3f) : made;
+    printf("  an instance past it from its creation: made %d, its first step %d\n", (int)made,
+           (int)first);
+    CHECK(made == mvfx_success && first == mvfx_errorLimit,
+          "an instance past it from its creation refused its first step");
+    mvfxDestroyGpuSim(sim);
+    mvfxDestroyContext(context);
 }
 
 // Heights over 9 by 9 points, a gentle swell; signed distances over 8
@@ -1137,6 +1257,7 @@ static void TestTiedSizes(Gpu* gpu, mvfxGpu* kernels)
 static void Suite(Gpu* gpu, mvfxGpu* kernels)
 {
     TestRefused(kernels);
+    TestColliderBound(gpu, kernels);
     TestShapes(gpu, kernels);
     TestSizes(gpu, kernels);
     TestSleep(gpu, kernels);

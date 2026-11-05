@@ -41,6 +41,21 @@ extern "C"
 // context's step takes at most two of its steps.
 #define MVFX_MAX_PLAN_STEPS (2 * MVFX_MAX_LIQUID_SUBSTEPS)
 
+// The largest half size of a box collider, and radius of a sphere one,
+// that a planned emitter of rigid hulls is kept out of, in the
+// particles' space as resolved for a step: a collider's own lengths
+// (at most MVFX_MAX_EXTENT) times the map's scale, which a world
+// collider of a local emitter takes over the instance's scale. The
+// GPU part's search of a hull and a box or a sphere's center runs in
+// binary32 and multiplies squares of their difference's lengths,
+// about its width to the fourth near a contact, past binary32's
+// largest value beyond a width of about 4.3e9; within this bound and
+// MVFX_MAX_HULL_REACH the widest difference is near 1.5e9, its fourth
+// power some 68 times under it. A plan past it is refused. It bounds
+// only the products: binary32 holds a length there to about 16, so a
+// body far smaller than such a collider meets it to that.
+#define MVFX_MAX_PLANNED_COLLIDER 0x1p28f
+
     // A birth a step owes an emitter: 48 bytes, as a GPU buffer holds it,
     // its layout final from 1.0.
     typedef struct mvfxPlannedBirth
@@ -1070,7 +1085,10 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, an
     ///         emitter or a step out of range; `mvfx_errorStale` for an
     ///         instance that is gone; `mvfx_errorUnsupported` for an
-    ///         instance that is not planned.
+    ///         instance that is not planned; `mvfx_errorLimit` for an
+    ///         emitter of rigid hulls kept out of a box or a sphere past
+    ///         MVFX_MAX_PLANNED_COLLIDER in the particles' space at the
+    ///         step, checked at every step's plan.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context,
@@ -1092,7 +1110,9 @@ extern "C"
     ///         that is gone; `mvfx_errorUnsupported` for an instance that
     ///         is not planned; `mvfx_errorState` for one whose plans hold
     ///         more than one step (mvfxInstance_GetPlanSteps), each with
-    ///         its own plan.
+    ///         its own plan; `mvfx_errorLimit` for an emitter of rigid
+    ///         hulls kept out of a box or a sphere past
+    ///         MVFX_MAX_PLANNED_COLLIDER in the particles' space.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context,
