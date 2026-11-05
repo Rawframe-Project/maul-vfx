@@ -3,8 +3,6 @@
 
 #include "rhi_surfaces.h"
 
-#include "test_harness.h"
-
 #include "maul-rhi/encoder.h"
 #include "maul-rhi/resources.h"
 #include "maul-vfx/output.h"

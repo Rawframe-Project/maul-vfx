@@ -43,6 +43,12 @@
       "inherits": "linux-gcc-14"
     },
     {
+      "name": "linux-gcc-14-rhi",
+      "displayName": "GCC 14, Release, the GPU part and its tests built, not run",
+      "inherits": "linux-gcc-14",
+      "cacheVariables": { "MAUL_VFX_RHI": "ON" }
+    },
+    {
       "name": "linux-clang-20",
       "displayName": "Clang 20, Release",
       "inherits": ["linux", "clang"],
@@ -118,6 +124,7 @@
   "buildPresets": [
     { "name": "linux-gcc-14", "configurePreset": "linux-gcc-14" },
     { "name": "linux-arm64-gcc-14", "configurePreset": "linux-arm64-gcc-14" },
+    { "name": "linux-gcc-14-rhi", "configurePreset": "linux-gcc-14-rhi" },
     { "name": "linux-clang-20", "configurePreset": "linux-clang-20" },
     { "name": "linux-clang-20-asan", "configurePreset": "linux-clang-20-asan" },
     { "name": "linux-clang-20-tsan", "configurePreset": "linux-clang-20-tsan" },

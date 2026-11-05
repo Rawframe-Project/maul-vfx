@@ -1249,7 +1249,8 @@ static bool SameEvent(const uint32_t* w, const mvfxEvent* cpu, const double anch
     uint64_t tick = ((uint64_t)w[3] << 32u) | w[2];
     int64_t apart = (int64_t)tick - cpu->tick;
     bool same =
-        (w[0] & 0xFFu) == cpu->kind && ((w[0] >> 8u) != 0) == cpu->killed && w[1] == cpu->serial &&
+        (mvfxEventKind)(w[0] & 0xFFu) == cpu->kind && ((w[0] >> 8u) != 0) == cpu->killed &&
+        w[1] == cpu->serial &&
         (apart == 0 || ((cpu->kind == mvfx_eventCollision || cpu->kind == mvfx_eventWater) &&
                         llabs(apart) <= s_contactSlack));
     float values[20];
