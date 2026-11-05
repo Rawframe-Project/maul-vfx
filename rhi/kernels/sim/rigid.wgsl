@@ -559,6 +559,19 @@ fn rigid(@builtin(global_invocation_id) id: vec3<u32>) {
 // mvfxIntegrateRigidNewborn (awake, meeting the world alone), the step's
 // fate of its strikes. One born at the plan's end takes none, as the core's newborn
 // there moves over no time.
+// The farthest a hull may reach (MVFX_MAX_HULL_REACH, 2^28).
+const MOST_HULL_REACH: f32 = 268435456.0;
+
+// Whether a hull of a size as born reaches past MOST_HULL_REACH at the
+// most its size over life scales it, as the core's PastReach.
+fn pastReach(size: vec3<f32>) -> bool {
+    if (params.rigid.x != RIGID_HULL) {
+        return false;
+    }
+    let most = max(max(params.growth.x, params.growth.y), params.growth.z);
+    return !(rigidReach(size) * most <= MOST_HULL_REACH);
+}
+
 fn rigidNewborn(j: u32, place: vec3<f32>, velocity: vec3<f32>, b: ptr<function, Body>) -> Fate {
     let b0 = birthWord(j, 0u);
     let b1 = birthWord(j, 1u);
@@ -574,6 +587,14 @@ fn rigidNewborn(j: u32, place: vec3<f32>, velocity: vec3<f32>, b: ptr<function, 
     (*b).moving.dragScale = dragScaleOf(j);
     (*b).size = bornSize(j);
     var fate = Fate();
+    // Killed as it is born, unmoved and meeting nothing (killBirths
+    // counts it, BIRTH_HUGE).
+    if (pastReach((*b).size)) {
+        fate.killed = true;
+        fate.inverseLife = (*b).moving.inverseLife;
+        fate.death = (*b).moving.death;
+        return fate;
+    }
     for (var s = 0u; s < params.rigid.y; s++) {
         let span = rigidSpan(s);
         let since = max(span.x, b0.z);

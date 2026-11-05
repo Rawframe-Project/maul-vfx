@@ -204,6 +204,10 @@ typedef struct Run
     // with more candidates than MVFX_MAX_BODY_CANDIDATES the first emitter
     // must have counted over the run (none needed for 0).
     int32_t leastCandidatesCapped;
+    // For an emitter of rigid hulls, the hulls born past
+    // MVFX_MAX_HULL_REACH the first emitter must have killed over the run
+    // (none may be for 0), each step's count the CPU path's.
+    int32_t leastHugeKilled;
     // For an emitter of rigid particles that sleep, the most bodies the
     // first emitter must have held asleep at some step, and those it must
     // have woken over the run (asleep at a step, awake at the next; none

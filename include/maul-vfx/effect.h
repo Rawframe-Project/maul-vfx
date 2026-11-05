@@ -645,6 +645,20 @@ extern "C"
 // The most vertices a rigid particle's hull has.
 #define MVFX_MAX_HULL_VERTICES 64
 
+// The farthest a rigid hull particle may reach from its center, in the
+// particles' space: its size as born, at the most its size over life
+// scales it (its largest factor on any axis). One past it is killed as it
+// is born, before it moves or meets anything, and counted in
+// mvfxEmitterStats.valueKillCount, on both paths alike. The GPU part's
+// search of two convex shapes multiplies squares of their lengths in
+// binary32, about the fourth power of the width of their difference near
+// a contact, which passes binary32's largest value past a width of about
+// 4.3e9: a body within this bound, at most 5.4e8 across, is 8 times
+// narrower. A body this large has no use in an effect. One at the bound
+// itself may fall either way by a rounding of its reach, which the paths
+// may take apart.
+#define MVFX_MAX_HULL_REACH 0x1p28f
+
 // The least moment of inertia a rigid particle keeps about any axis, as a
 // share of the trace of the inertia its shape and size give it, before
 // this hold. A body whose least moment falls short is raised to that

@@ -227,10 +227,16 @@ extern "C"
 // path only).
 #define MVFX_GPU_RIGID_CANDIDATE_CAPPED_BODY_COUNT 54
 
+// For an emitter of rigid hulls, the statistics record's word counting
+// the hulls born past MVFX_MAX_HULL_REACH, killed as they were born, since
+// the instance was last cleared (mvfxEmitterStats.valueKillCount on the
+// CPU path, which runs no host module for a planned instance).
+#define MVFX_GPU_VALUE_KILL_COUNT 55
+
 // The words of an emitter's statistics record (for an emitter whose
 // ribbons pin a head, its words from 39 hold the head, which
 // mvfxGpuSim_GetBounds joins as the CPU path's bounds do).
-#define MVFX_GPU_STATISTICS_WORDS 55
+#define MVFX_GPU_STATISTICS_WORDS 56
 
     /// Returns the default simulation def: the C library's allocation, no
     /// GPU object, context or instance.
