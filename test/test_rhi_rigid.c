@@ -348,6 +348,28 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.angularVelocity = (mvfxVectorSource){0};
     Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .spawn = &placed, .least = -1},
         "boxes placed around a ball");
+    // Hulls placed above a world box of the largest half size, 1e6, the
+    // instance at a scale of 1e-4: in the emitter's space the box is 1e10
+    // across, its top face at the origin, and the bodies land on it.
+    static const mvfxCollider wide = {.kind = mvfx_colliderBox,
+                                      .space = mvfx_spaceWorld,
+                                      .center = {0, -1e6f, 0},
+                                      .halfExtents = {1e6f, 1e6f, 1e6f},
+                                      .rotation = {0, 0, 0, 1}};
+    static const double above[12] = {0.3, 0.3, 0, -0.3, 0.3, 0, 0, 0.3, 0.3, 0, 0.3, -0.3};
+    static const mvfxSpawnRequest perched = {.count = 4, .positions = above, .velocities = still};
+    emitter = Thrown(mvfx_rigidHull, &wide, 1);
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.hostSpawnCapacity = 8;
+    Met(gpu, kernels,
+        &(Run){.mostApart = 4,
+               .emitters = &emitter,
+               .spawn = &perched,
+               .least = -1,
+               .mesh = &s_hull,
+               .scale = 1e-4f},
+        "hulls on a world box 1e10 across in their space");
     // The instance's floor too, in the world's space under a moving
     // instance.
     static const mvfxCollider ground = {

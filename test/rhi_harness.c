@@ -2291,6 +2291,17 @@ static void PlaceFar(void)
     memcpy(s_rotation, q, sizeof s_rotation);
 }
 
+// Scales both instances, standing still at the origin.
+static void ScaleBoth(float scale)
+{
+    static const double place[3] = {0.0, 0.0, 0.0};
+    static const float q[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    CHECK(mvfxInstance_SetTransform(s_context, s_cpu, place, q, scale, true) == mvfx_success &&
+              mvfxInstance_SetTransform(s_context, s_planned, place, q, scale, true) ==
+                  mvfx_success,
+          "scaled");
+}
+
 static void Move(int32_t s, double pace)
 {
     const double place[3] = {90.0 * pace * s, 3.0 * pace * s, -40.0 * pace * s};
@@ -2881,6 +2892,10 @@ void Compare(Gpu* gpu, mvfxGpu* kernels, const Run* run, const char* what)
     if (run->far)
     {
         PlaceFar();
+    }
+    if (run->scale > 0.0f)
+    {
+        ScaleBoth(run->scale);
     }
     int32_t s = 0;
     for (; same && s < steps; ++s)
