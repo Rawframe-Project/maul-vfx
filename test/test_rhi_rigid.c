@@ -393,6 +393,38 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
     emitter.angularVelocity = (mvfxVectorSource){0};
     Met(gpu, kernels, &(Run){.mostApart = 4, .emitters = &emitter, .spawn = &placed, .least = -1},
         "boxes placed around a ball");
+    // Hulls 0.1 to 0.5 across placed at rest 0.3 above colliders of the
+    // largest size, 1e6, at the origin's height: a box, the same box
+    // turned a little about Z, and a sphere.
+    static const mvfxCollider large[3] = {
+        {.kind = mvfx_colliderBox,
+         .center = {0, -1e6f, 0},
+         .halfExtents = {1e6f, 1e6f, 1e6f},
+         .rotation = {0, 0, 0, 1}},
+        {.kind = mvfx_colliderBox,
+         .center = {0, -1e6f, 0},
+         .halfExtents = {1e6f, 1e6f, 1e6f},
+         .rotation = {0, 0, 0.0099998f, 0.99995f}},
+        {.kind = mvfx_colliderSphere, .center = {0, -1e6f, 0}, .radius = 1e6f}};
+    static const double above[12] = {0.3, 0.3, 0, -0.3, 0.3, 0, 0, 0.3, 0.3, 0, 0.3, -0.3};
+    static const mvfxSpawnRequest perched = {.count = 4, .positions = above, .velocities = still};
+    static const char* const largeNames[3] = {"MEASURE hulls on a box 1e6",
+                                              "MEASURE hulls on a turned box 1e6",
+                                              "MEASURE hulls on a sphere 1e6"};
+    for (int32_t c = 0; c < 3; ++c)
+    {
+        emitter = Thrown(mvfx_rigidHull, &large[c], 1);
+        emitter.rate = 0.0f;
+        emitter.burstCount = 0;
+        emitter.hostSpawnCapacity = 8;
+        Met(gpu, kernels,
+            &(Run){.mostApart = 4,
+                   .emitters = &emitter,
+                   .spawn = &perched,
+                   .least = -1,
+                   .mesh = &s_hull},
+            largeNames[c]);
+    }
     // Hulls at the edge of MVFX_MAX_HULL_REACH (2^28): two of size 2.95e5,
     // 1.5104e8 in half size and reaching 2.5% short of it, placed upright
     // 16 above the origin and moving down at 1e4 (binary32's places 16
