@@ -357,7 +357,8 @@ mvfxResult mvfxInstance_GetEmitterMesh(const mvfxContext* context, mvfxInstanceI
 // An emitter's plan of step s as the CPU path takes it: its span and its
 // births; the instance's move over the first step alone, still after it.
 // False, the plan zeroed, for hulls past MVFX_MAX_PLANNED_COLLIDER.
-static bool StepPlan(const mvfxInstance* live, int32_t emitter, int32_t s, mvfxEmitterPlan* planOut)
+MVFX_NODISCARD static bool StepPlan(const mvfxInstance* live, int32_t emitter, int32_t s,
+                                    mvfxEmitterPlan* planOut)
 {
     const mvfxEmitterState* state = &live->emitters[emitter];
     bool split = live->stepped && live->planSteps > 0;
