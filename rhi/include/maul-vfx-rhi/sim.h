@@ -333,10 +333,7 @@ extern "C"
     ///         where the family shares it (`mvfx_errorCapacity`,
     ///         `mvfx_errorUnsupported`, `mvfx_errorState` for a device not
     ///         ready yet, `mvfx_errorBusy` for a call from inside the
-    ///         device's allocator), `mvfx_errorPlatform` otherwise;
-    ///         `mvfx_errorLimit` for an emitter of rigid hulls kept out of a
-    ///         box or a sphere past MVFX_MAX_PLANNED_COLLIDER at the
-    ///         instance's last step, whose plan is refused.
+    ///         device's allocator), `mvfx_errorPlatform` otherwise.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def,
