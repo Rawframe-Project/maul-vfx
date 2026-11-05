@@ -31,7 +31,7 @@ mvfxInstanceDef mvfxDefaultInstanceDef(void)
 
 // Whether every coordinate of an origin is finite and at most 2^52 in
 // size, where a double still holds a millimeter's fraction.
-static bool IsOriginValid(const double origin[3])
+MVFX_NODISCARD static bool IsOriginValid(const double origin[3])
 {
     for (int32_t axis = 0; axis < 3; ++axis)
     {
@@ -44,7 +44,7 @@ static bool IsOriginValid(const double origin[3])
 }
 
 // Whether a rotation is a unit quaternion within 0.001, finite.
-static bool IsRotationValid(const float rotation[4])
+MVFX_NODISCARD static bool IsRotationValid(const float rotation[4])
 {
     double square = 0.0;
     for (int32_t k = 0; k < 4; ++k)

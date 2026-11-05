@@ -15,7 +15,7 @@
 #define PI     3.14159265358979323846f
 
 // Whether low <= x <= high; false for NaN.
-static bool IsWithin(float x, float low, float high)
+MVFX_NODISCARD static bool IsWithin(float x, float low, float high)
 {
     return x >= low && x <= high;
 }

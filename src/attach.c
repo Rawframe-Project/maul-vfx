@@ -142,7 +142,8 @@ static void HostFrame(const mvfxInstance* instance, int32_t emitter, int32_t f, 
 
 // Where a unit's frame is at the step's end: its target, or false for a
 // unit whose source is gone.
-static bool TargetOf(const mvfxInstance* instance, int32_t emitter, int32_t first, float out[7])
+MVFX_NODISCARD static bool TargetOf(const mvfxInstance* instance, int32_t emitter, int32_t first,
+                                    float out[7])
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     uint32_t flags = FlagsOf(instance, emitter)[first];
@@ -169,7 +170,7 @@ static bool TargetOf(const mvfxInstance* instance, int32_t emitter, int32_t firs
     return true;
 }
 
-static bool IsFramed(const mvfxInstance* instance, int32_t emitter)
+MVFX_NODISCARD static bool IsFramed(const mvfxInstance* instance, int32_t emitter)
 {
     mvfxAttachKind kind = instance->effect->emitters[emitter].unit.attach;
     return kind == mvfx_attachHost || kind == mvfx_attachParticles;

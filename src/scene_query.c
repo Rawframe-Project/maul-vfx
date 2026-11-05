@@ -86,7 +86,7 @@ mvfxResult mvfxInstance_GetSceneQueries(mvfxContext* context, mvfxInstanceId ins
     return mvfx_success;
 }
 
-static bool IsAnswerValid(const mvfxSceneAnswer* answer)
+MVFX_NODISCARD static bool IsAnswerValid(const mvfxSceneAnswer* answer)
 {
     if (!answer->hit)
     {

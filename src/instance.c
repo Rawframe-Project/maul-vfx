@@ -558,7 +558,7 @@ static void AddEmitterBlocks(mvfxLayout* layout, const mvfxEffect* effect, const
 // Points each planned emitter at its plan, and gives it back its capacity,
 // its rooms having been laid out for none.
 // Whether an effect has a liquid gas, which cuts its instances' steps.
-static bool HasLiquidGas(const mvfxEffect* effect)
+MVFX_NODISCARD static bool HasLiquidGas(const mvfxEffect* effect)
 {
     for (int32_t g = 0; g < effect->gasCount; ++g)
     {

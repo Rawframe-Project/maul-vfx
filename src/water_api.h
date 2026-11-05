@@ -23,7 +23,8 @@ mvfxBounds mvfxWaterBounds(const mvfxInstance* instance, int32_t w);
 // grid's edge: corner k is cell (lo[0] + (k & 1), lo[1] + (k >> 1)) of
 // weight mvfxWaterShare(t, k), the weights summing to 1; false off the
 // grid.
-bool mvfxWaterCorners(const mvfxCompiledWater* water, float x, float z, int32_t lo[2], float t[2]);
+MVFX_NODISCARD bool mvfxWaterCorners(const mvfxCompiledWater* water, float x, float z,
+                                     int32_t lo[2], float t[2]);
 
 // The corners mvfxWaterCorners finds, a point off the grid held to its
 // edge: every point reads cells of the grid.
@@ -39,8 +40,8 @@ static inline float mvfxWaterShare(const float t[2], int32_t corner)
 // grid's center and its ground (shallow water's; waves have none,
 // -infinity), bilinear as mvfxWaterCorners weighs; false off the grid
 // (nothing written).
-bool mvfxWaterHeight(const mvfxCompiledWater* water, const mvfxWaterState* state, float x, float z,
-                     float* height, float* ground);
+MVFX_NODISCARD bool mvfxWaterHeight(const mvfxCompiledWater* water, const mvfxWaterState* state,
+                                    float x, float z, float* height, float* ground);
 
 // The surface's height and ground, and the water's velocity, at the
 // corners mvfxWaterCorners found for a point.

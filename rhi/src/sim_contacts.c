@@ -32,7 +32,8 @@ static_assert(CONTACT_PROJECT + 2 * MVFX_MAX_CONTACT_ITERATIONS + 2 == CONTACT_P
               "a pass for each contact kernel");
 
 // Creates a buffer of size bytes and usages; false when the device refuses.
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -95,8 +96,8 @@ void mvfxSimContactNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* pl
 }
 
 // Adds a pass of these accesses.
-static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass, const mrhiAccess* accesses,
-                    int32_t count, mrhiPassId* passOut)
+MVFX_NODISCARD static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass,
+                                   const mrhiAccess* accesses, int32_t count, mrhiPassId* passOut)
 {
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = passClass;
@@ -108,7 +109,7 @@ static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass, const mrhiAccess* 
 }
 
 // Whether contact pass p runs for an emitter of these iterations.
-static bool Runs(const Emitter* emitter, int32_t p)
+MVFX_NODISCARD static bool Runs(const Emitter* emitter, int32_t p)
 {
     int32_t projections = CONTACT_PROJECT + 2 * emitter->contactIterations;
     return p < projections || p >= CONTACT_PROJECT + 2 * MVFX_MAX_CONTACT_ITERATIONS;
@@ -162,7 +163,7 @@ bool mvfxAddSimContactPasses(mvfxGpuSim* sim, Emitter* emitter)
 // Records the write of the contact numbers: all of them at the first
 // step, the record numbers' words a plan changes after; the counts
 // emptied every step.
-static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
+MVFX_NODISCARD static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->contactPasses[CONTACT_WRITE];
     const mrhiResourceId* c = emitter->contactResources;
@@ -192,9 +193,9 @@ static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 
 // Records a kernel's pass: its pipeline, bindings, root block and
 // workgroups.
-static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
-                         const mrhiResourceId* bound, int32_t count, const uint32_t root[4],
-                         uint32_t groups)
+MVFX_NODISCARD static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
+                                        const mrhiResourceId* bound, int32_t count,
+                                        const uint32_t root[4], uint32_t groups)
 {
     mrhiBinding bindings[CONTACT_BINDINGS];
     for (int32_t b = 0; b < count; ++b)
@@ -214,7 +215,7 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
 
 // Records the sort's radix passes over the contact keys: each pass's
 // offsets in one workgroup, then its scatter over the blocks.
-static bool RecordRadix(mvfxGpuSim* sim, const Emitter* emitter)
+MVFX_NODISCARD static bool RecordRadix(mvfxGpuSim* sim, const Emitter* emitter)
 {
     const mrhiResourceId* c = emitter->contactResources;
     const mrhiResourceId bound[3] = {c[CONTACT_COUNT], c[CONTACT_SORT], c[CONTACT_DIGITS]};

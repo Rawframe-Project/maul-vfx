@@ -32,7 +32,7 @@ mvfxGpuRibbonsDef mvfxDefaultGpuRibbonsDef(void)
 
 // Whether a view's origin and eye are within range and its directions
 // finite.
-static bool IsViewWithin(const mvfxView* view)
+MVFX_NODISCARD static bool IsViewWithin(const mvfxView* view)
 {
     bool within = true;
     for (int32_t k = 0; k < 3; ++k)
@@ -44,7 +44,7 @@ static bool IsViewWithin(const mvfxView* view)
 }
 
 // Whether a records def is one a pass can be added from, past its layout.
-static bool IsRecordsDefValid(const mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
+MVFX_NODISCARD static bool IsRecordsDefValid(const mvfxGpuSim* sim, const mvfxGpuRecordsDef* def)
 {
     return def->cookie == MVFX_GPU_RECORDS_DEF_COOKIE && def->emitter >= 0 &&
            def->emitter < sim->emitterCount && def->records.index1 != 0 && def->offset % 4u == 0 &&
@@ -52,7 +52,7 @@ static bool IsRecordsDefValid(const mvfxGpuSim* sim, const mvfxGpuRecordsDef* de
 }
 
 // Whether a ribbons def is one a pass can be added from, past its layout.
-static bool IsRibbonsDefValid(const mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
+MVFX_NODISCARD static bool IsRibbonsDefValid(const mvfxGpuSim* sim, const mvfxGpuRibbonsDef* def)
 {
     return def->cookie == MVFX_GPU_RIBBONS_DEF_COOKIE && def->emitter >= 0 &&
            def->emitter < sim->emitterCount && def->points.index1 != 0 &&
@@ -63,7 +63,7 @@ static bool IsRibbonsDefValid(const mvfxGpuSim* sim, const mvfxGpuRibbonsDef* de
 
 // The frame's particles, statistics and grids of an emitter a record pass
 // reads: the step's of the frame, an earlier record pass's, or imported.
-static bool RecordInputs(mvfxGpuSim* sim, Emitter* emitter, mvfxRecordResources* out)
+MVFX_NODISCARD static bool RecordInputs(mvfxGpuSim* sim, Emitter* emitter, mvfxRecordResources* out)
 {
     if (emitter->added)
     {
@@ -95,7 +95,8 @@ static bool RecordInputs(mvfxGpuSim* sim, Emitter* emitter, mvfxRecordResources*
 // its inputs, the simulation's own count word where the host gives none,
 // the emitter's sort words and digit counts or the simulation's own for
 // one without (one with lights alone has digit counts).
-static bool PassInputs(mvfxGpuSim* sim, Emitter* emitter, mvfxRecordResources* resources)
+MVFX_NODISCARD static bool PassInputs(mvfxGpuSim* sim, Emitter* emitter,
+                                      mvfxRecordResources* resources)
 {
     bool sorts = emitter->sort.index1 != 0;
     bool counts = emitter->digits.index1 != 0;

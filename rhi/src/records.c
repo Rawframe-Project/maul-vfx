@@ -54,8 +54,8 @@ void mvfxDestroyRecordBuffers(mrhiDevice* device, mvfxRecordPasses* passes)
 #define RIBBON_BINDINGS 10
 
 // Adds a compute pass of these accesses.
-static bool AddKernelPass(mrhiDevice* device, const mrhiAccess* accesses, int32_t count,
-                          mrhiPassId* passOut)
+MVFX_NODISCARD static bool AddKernelPass(mrhiDevice* device, const mrhiAccess* accesses,
+                                         int32_t count, mrhiPassId* passOut)
 {
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = mrhi_passGraphics;
@@ -67,7 +67,7 @@ static bool AddKernelPass(mrhiDevice* device, const mrhiAccess* accesses, int32_
 
 // Adds a sort's radix passes, offsets and scatter each, over the
 // statistics, the keys and indices and the digit counts.
-static bool AddRadixPasses(mrhiDevice* device, mvfxRecordPass* pass)
+MVFX_NODISCARD static bool AddRadixPasses(mrhiDevice* device, mvfxRecordPass* pass)
 {
     const mrhiAccess used[3] = {
         {.resource = pass->resources.statistics, .kind = mrhi_accessStorageRead},
@@ -104,9 +104,9 @@ static mvfxRecordPass PassOf(const mvfxRecordResources* resources, const uint32_
         .sorted = ribbons ? !links : !sheets && words[MVFX_RECORD_ORDER] == MVFX_ORDER_SORTED};
 }
 
-static bool AddPass(mrhiDevice* device, mvfxRecordPasses* passes,
-                    const mvfxRecordResources* resources, const uint32_t* words,
-                    const uint32_t* ribbonWords, int64_t capacity)
+MVFX_NODISCARD static bool AddPass(mrhiDevice* device, mvfxRecordPasses* passes,
+                                   const mvfxRecordResources* resources, const uint32_t* words,
+                                   const uint32_t* ribbonWords, int64_t capacity)
 {
     mvfxRecordPass* pass = &passes->passes[passes->count];
     bool numbered = ribbonWords != nullptr;
@@ -238,7 +238,8 @@ bool mvfxAddEmptyRecordPass(mrhiDevice* device, mvfxRecordPasses* passes, mrhiRe
 }
 
 // Records an empty pass's counts of 0.
-static bool RecordEmpty(mrhiDevice* device, uint64_t* uploaded, const mvfxRecordPass* pass)
+MVFX_NODISCARD static bool RecordEmpty(mrhiDevice* device, uint64_t* uploaded,
+                                       const mvfxRecordPass* pass)
 {
     static const uint32_t zero[4] = {0};
     bool recorded = mrhiPass_Begin(device, pass->write) == mrhi_success &&
@@ -249,9 +250,9 @@ static bool RecordEmpty(mrhiDevice* device, uint64_t* uploaded, const mvfxRecord
 
 // Records a kernel's pass: its pipeline, bindings, root block (none for
 // NULL) and workgroups.
-static bool RecordKernel(mrhiDevice* device, mrhiPassId pass, mrhiComputePipelineId pipeline,
-                         const mrhiResourceId* bound, int32_t count, const uint32_t* root,
-                         uint32_t groups)
+MVFX_NODISCARD static bool RecordKernel(mrhiDevice* device, mrhiPassId pass,
+                                        mrhiComputePipelineId pipeline, const mrhiResourceId* bound,
+                                        int32_t count, const uint32_t* root, uint32_t groups)
 {
     mrhiBinding bindings[RIBBON_BINDINGS];
     for (int32_t b = 0; b < count; ++b)
@@ -278,8 +279,8 @@ static uint32_t SortGroups(const mvfxRecordPass* pass)
 
 // Records a sort's radix passes: each pass's offsets in one workgroup,
 // then its scatter over the blocks.
-static bool RecordRadix(mrhiDevice* device, const mvfxRecordPipelines* pipelines,
-                        const mvfxRecordPass* pass)
+MVFX_NODISCARD static bool RecordRadix(mrhiDevice* device, const mvfxRecordPipelines* pipelines,
+                                       const mvfxRecordPass* pass)
 {
     const mrhiResourceId bound[3] = {pass->resources.statistics, pass->resources.sort,
                                      pass->resources.digits};
@@ -299,15 +300,16 @@ static bool RecordRadix(mrhiDevice* device, const mvfxRecordPipelines* pipelines
 // Records one pass's numbers, its sort, a ribbon pass's chains and its
 // kernel, or a lights pass's three.
 // Whether a pass reads ribbon numbers: a ribbon, sprite or sheet pass.
-static bool IsNumbered(const mvfxRecordPass* pass)
+MVFX_NODISCARD static bool IsNumbered(const mvfxRecordPass* pass)
 {
     return pass->ribbons || pass->sprites || pass->sheets;
 }
 
 // Records a pass's kernels before its own: the sort's keys and radix
 // passes, a ribbon pass's pieces and chains, a sheet pass's fit.
-static bool RecordBefore(mrhiDevice* device, const mvfxRecordPipelines* pipelines,
-                         const mvfxRecordPass* pass, const mrhiResourceId* bound, int32_t count)
+MVFX_NODISCARD static bool RecordBefore(mrhiDevice* device, const mvfxRecordPipelines* pipelines,
+                                        const mvfxRecordPass* pass, const mrhiResourceId* bound,
+                                        int32_t count)
 {
     bool recorded = true;
     if (pass->sorted)
@@ -345,8 +347,9 @@ static mrhiComputePipelineId KernelOf(const mvfxRecordPipelines* pipelines,
                            : pipelines->records;
 }
 
-static bool RecordPass(mrhiDevice* device, uint64_t* uploaded, const mvfxRecordPipelines* pipelines,
-                       const mvfxRecordPass* pass)
+MVFX_NODISCARD static bool RecordPass(mrhiDevice* device, uint64_t* uploaded,
+                                      const mvfxRecordPipelines* pipelines,
+                                      const mvfxRecordPass* pass)
 {
     if (pass->empty)
     {

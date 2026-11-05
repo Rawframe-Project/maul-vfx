@@ -34,7 +34,7 @@ typedef struct mvfxStrike
 // at the clock. Returns whether a strike lives past the clock (at most
 // one does: the next is at its death), with its serials taken. The step
 // strikes by it and the planner alike.
-bool mvfxNextStrike(mvfxInstance* instance, int32_t emitter, mvfxStrike* strike);
+MVFX_NODISCARD bool mvfxNextStrike(mvfxInstance* instance, int32_t emitter, mvfxStrike* strike);
 
 // Steps emitter e of instance to the instance's clock.
 void mvfxStepEmitter(mvfxInstance* instance, int32_t emitter);

@@ -43,7 +43,7 @@ typedef struct Waves
 } Waves;
 
 // Whether cell (x, z) lies on an open wall, its value then Mur's.
-static bool OnOpenWall(const Waves* w, int32_t x, int32_t z)
+MVFX_NODISCARD static bool OnOpenWall(const Waves* w, int32_t x, int32_t z)
 {
     return (x == 0 && (w->closed & mvfx_waterWallMinX) == 0) ||
            (x == w->n[0] - 1 && (w->closed & mvfx_waterWallMaxX) == 0) ||

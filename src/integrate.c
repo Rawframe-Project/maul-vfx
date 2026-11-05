@@ -294,8 +294,8 @@ float mvfxTurnScale(const mvfxInstance* instance, int32_t emitter, int32_t i, in
 
 // Particle i's contact plane from the scene, grown by its radius times
 // sigma, as a plane collider; false when it has none.
-static bool ScenePlaneOf(const mvfxInstance* instance, int32_t emitter, int32_t i, float sigma,
-                         mvfxResolvedCollider* out)
+MVFX_NODISCARD static bool ScenePlaneOf(const mvfxInstance* instance, int32_t emitter, int32_t i,
+                                        float sigma, mvfxResolvedCollider* out)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     if (!mvfxHasAttribute(&compiled->plan, mvfx_attributeScenePointX))
@@ -339,8 +339,8 @@ typedef struct Reach
 // particle is tried against those colliders first: no contact there is no
 // contact at all, and a contact is found again against them all, so the
 // contacts are the same.
-static bool Collide(const Range* r, int32_t i, const float start[3], float place[3],
-                    const Reach* reach)
+MVFX_NODISCARD static bool Collide(const Range* r, int32_t i, const float start[3], float place[3],
+                                   const Reach* reach)
 {
     const mvfxCollision* collision = &r->compiled->collision;
     const mvfxEmitterState* state = &r->instance->emitters[r->emitter];
@@ -419,7 +419,8 @@ static bool Collide(const Range* r, int32_t i, const float start[3], float place
 
 // Whether a kill rule or an attractor's kill radius kills particle i,
 // gone from start to end over the span.
-static bool IsKilled(const Range* r, int32_t i, const float start[3], const float end[3])
+MVFX_NODISCARD static bool IsKilled(const Range* r, int32_t i, const float start[3],
+                                    const float end[3])
 {
     const mvfxCompiledEmitter* compiled = r->compiled;
     const mvfxEmitterState* state = &r->instance->emitters[r->emitter];
@@ -516,7 +517,7 @@ static void MoveParticle(const Range* r, int32_t i)
 // rules. MoveParticle then reduces to MoveLinear under gravity with the
 // shared factors, then the contacts where the particles collide (and not
 // as rigid particles, which meet the colliders in their own solve).
-static bool IsPlain(const Range* r)
+MVFX_NODISCARD static bool IsPlain(const Range* r)
 {
     const mvfxCompiledEmitter* compiled = r->compiled;
     const mvfxCompiledVelocityModules* modules = r->modules->compiled;
@@ -525,7 +526,7 @@ static bool IsPlain(const Range* r)
 }
 
 // Whether a plain range's particles meet the colliders.
-static bool Collides(const Range* r)
+MVFX_NODISCARD static bool Collides(const Range* r)
 {
     return r->compiled->collision.enable && !r->compiled->rigid.enable;
 }
@@ -588,7 +589,7 @@ static void ReachOf(const Range* r, const float starts[3][PLAIN_RUN], int32_t at
 // Whether a range's particles have no colliders of their own (a scene
 // plane, the instance's depth image), so the run's colliders alone can
 // give them a contact.
-static bool HasNoOwnColliders(const Range* r)
+MVFX_NODISCARD static bool HasNoOwnColliders(const Range* r)
 {
     return !mvfxHasAttribute(&r->compiled->plan, mvfx_attributeScenePointX) &&
            !r->instance->emitters[r->emitter].hasDepth;
@@ -735,7 +736,7 @@ static void ResolveVelocityModules(mvfxInstance* instance, int32_t emitter)
 }
 
 // Whether two maps are the same, value by value.
-static bool SameMap(const mvfxSpaceMap* a, const mvfxSpaceMap* b)
+MVFX_NODISCARD static bool SameMap(const mvfxSpaceMap* a, const mvfxSpaceMap* b)
 {
     bool same = a->sigma == b->sigma;
     for (int32_t k = 0; k < 3; ++k)
@@ -751,8 +752,8 @@ static bool SameMap(const mvfxSpaceMap* a, const mvfxSpaceMap* b)
 
 // Whether the depth image the emitter resolved changed since the step
 // before: another image set, or its map from the world.
-static bool DepthMoved(const mvfxInstance* instance, const mvfxEmitterState* state, bool had,
-                       const mvfxSpaceMap* map)
+MVFX_NODISCARD static bool DepthMoved(const mvfxInstance* instance, const mvfxEmitterState* state,
+                                      bool had, const mvfxSpaceMap* map)
 {
     return state->hasDepth != had || (had && (state->depthSerial != instance->depthSerial ||
                                               !SameMap(map, &state->depth.map)));

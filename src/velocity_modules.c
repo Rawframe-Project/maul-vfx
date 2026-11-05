@@ -22,7 +22,7 @@ static mvfxResult CheckDirection(const mvfxFieldPath* at, uint32_t tag, const fl
                : mvfxRefuseField(at, tag, mvfxRequire(!used || mvfxNormalize(copy)));
 }
 
-static bool IsUsed(const mvfxLifeCurve* life)
+MVFX_NODISCARD static bool IsUsed(const mvfxLifeCurve* life)
 {
     return life->value != 0.0f;
 }

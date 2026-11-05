@@ -89,8 +89,8 @@ bool mvfxUploadSimFrames(mvfxGpuSim* sim, Emitter* emitter, mrhiPassId pass)
 
 // Copies count arrays from array a on of the source's particles after its
 // step (its other buffer) to word at of the emitter's births.
-static bool CopyArrays(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter,
-                       const Emitter* source, int16_t a, uint32_t count, uint64_t at)
+MVFX_NODISCARD static bool CopyArrays(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter,
+                                      const Emitter* source, int16_t a, uint32_t count, uint64_t at)
 {
     uint64_t c = (uint64_t)source->capacity;
     return mrhiPass_CopyBuffer(sim->device, pass, source->resources[BUFFER_OTHER],

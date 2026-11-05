@@ -146,7 +146,7 @@ bool mvfxWriteEventNumbers(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter)
 }
 
 // Records the pass giving an emitter's events their values over life.
-static bool RecordEventValues(mvfxGpuSim* sim, const Emitter* emitter)
+MVFX_NODISCARD static bool RecordEventValues(mvfxGpuSim* sim, const Emitter* emitter)
 {
     mrhiPassId pass = emitter->passes[PASS_EVENT_VALUES];
     const mrhiResourceId* r = emitter->resources;

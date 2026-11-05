@@ -136,8 +136,8 @@ static void PutItem(char* text, int64_t capacity, int64_t* length, int32_t item)
 
 // Writes a path's text into text while it fits, its length into length;
 // false for a path that names no field.
-static bool WritePath(const mvfxEffectRefusal* refusal, char* text, int64_t capacity,
-                      int64_t* length)
+MVFX_NODISCARD static bool WritePath(const mvfxEffectRefusal* refusal, char* text, int64_t capacity,
+                                     int64_t* length)
 {
     if (refusal->tagCount < 0 || refusal->tagCount > MVFX_MAX_FIELD_DEPTH)
     {

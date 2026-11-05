@@ -21,7 +21,8 @@
 // next serials are owed's low 32 bits on: a test reaches the serials'
 // 32-bit wrap without four billion births. Returns false for an id that
 // names no live instance or an emitter out of range.
-bool mvfxTestSetOwed(mvfxContext* context, mvfxInstanceId instance, int32_t emitter, uint64_t owed);
+MVFX_NODISCARD bool mvfxTestSetOwed(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
+                                    uint64_t owed);
 
 // Sets which of a unit's edges from a particle are torn: bit 0 the edge
 // across to its neighbor, bit 1 the edge down, as tearing would leave
@@ -29,8 +30,8 @@ bool mvfxTestSetOwed(mvfxContext* context, mvfxInstanceId instance, int32_t emit
 // names no live instance, an emitter out of range or one whose units do
 // not tear, or a particle not live. A step tears the edges whose strain
 // passes the unit's tearStrain; no public call tears one.
-bool mvfxTestTearEdges(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                       int32_t particle, uint32_t bits);
+MVFX_NODISCARD bool mvfxTestTearEdges(mvfxContext* context, mvfxInstanceId instance,
+                                      int32_t emitter, int32_t particle, uint32_t bits);
 
 // Copies up to capacity of the pairs of an emitter's rigid particles the
 // last step's broadphase found, by their indices among the emitter's
@@ -56,8 +57,9 @@ int64_t mvfxTestReadGasFaces(const mvfxContext* context, mvfxInstanceId instance
 // instance, a gas or an axis out of range, an axis the gas keeps no
 // velocity along, or another count. A step makes them from sources,
 // forces and obstacles; no public call sets them.
-bool mvfxTestWriteGasFaces(mvfxContext* context, mvfxInstanceId instance, int32_t gas, int32_t axis,
-                           const float* values, int64_t count);
+MVFX_NODISCARD bool mvfxTestWriteGasFaces(mvfxContext* context, mvfxInstanceId instance,
+                                          int32_t gas, int32_t axis, const float* values,
+                                          int64_t count);
 
 // Sets a gas's scalar field (mvfx_gasDensity, mvfx_gasTemperature,
 // mvfx_gasFuel, or a surface's mvfx_gasDistance) at its cells, count of
@@ -65,8 +67,9 @@ bool mvfxTestWriteGasFaces(mvfxContext* context, mvfxInstanceId instance, int32_
 // a gas out of range, a field it does not keep, or another count. A
 // step makes them from sources, or a surface's distance from particles;
 // no public call sets them.
-bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance, int32_t gas,
-                            mvfxGasField field, const float* values, int64_t count);
+MVFX_NODISCARD bool mvfxTestWriteGasScalar(mvfxContext* context, mvfxInstanceId instance,
+                                           int32_t gas, mvfxGasField field, const float* values,
+                                           int64_t count);
 
 // Copies up to capacity of a gas's cells' solids into out, each 0 for an
 // open cell, else 1 more than the index of the obstacle filling it, as
@@ -83,8 +86,8 @@ int64_t mvfxTestReadGasSolid(const mvfxContext* context, mvfxInstanceId instance
 // range or not shallow water, or another count. Steps, pushes (which
 // keep the volume) and particles poured in change them; no public call
 // sets them.
-bool mvfxTestWriteWaterDepth(mvfxContext* context, mvfxInstanceId instance, int32_t water,
-                             const float* values, int64_t count);
+MVFX_NODISCARD bool mvfxTestWriteWaterDepth(mvfxContext* context, mvfxInstanceId instance,
+                                            int32_t water, const float* values, int64_t count);
 
 // Sets a shallow water surface's velocities on its faces across an axis
 // (0 along X, 1 along Z), count of them (the faces there are), as a step
@@ -92,8 +95,9 @@ bool mvfxTestWriteWaterDepth(mvfxContext* context, mvfxInstanceId instance, int3
 // that names no live instance, a surface out of range or not shallow
 // water, an axis out of range, or another count. A step makes them from
 // the depths; no public call sets them.
-bool mvfxTestWriteWaterFaces(mvfxContext* context, mvfxInstanceId instance, int32_t water,
-                             int32_t axis, const float* values, int64_t count);
+MVFX_NODISCARD bool mvfxTestWriteWaterFaces(mvfxContext* context, mvfxInstanceId instance,
+                                            int32_t water, int32_t axis, const float* values,
+                                            int64_t count);
 
 // Folds everything a live instance holds into hash, as the determinism
 // tests hash it: its clock; each emitter's particles' attributes, its
@@ -102,7 +106,8 @@ bool mvfxTestWriteWaterFaces(mvfxContext* context, mvfxInstanceId instance, int3
 // instance. The outputs show such a state only once it reaches them,
 // steps later or never (a gas's pressure, an attribute no record field
 // reads), so a difference would surface late or not at all.
-bool mvfxTestHashInstance(const mvfxContext* context, mvfxInstanceId instance, uint64_t* hash);
+MVFX_NODISCARD bool mvfxTestHashInstance(const mvfxContext* context, mvfxInstanceId instance,
+                                         uint64_t* hash);
 
 // The next six exist only so the GPU part's harness (test/rhi_harness.c)
 // can lock-step a CPU instance with a planned one of the same effect:
@@ -126,8 +131,9 @@ int32_t mvfxTestReadParticles(const mvfxContext* context, mvfxInstanceId instanc
 // count words, its live count. Returns false for an id that names no live
 // instance, an emitter out of range, an array it does not store or
 // another count.
-bool mvfxTestAdoptParticles(mvfxContext* context, mvfxInstanceId instance, int32_t emitter,
-                            int32_t array, const uint32_t* words, int32_t count);
+MVFX_NODISCARD bool mvfxTestAdoptParticles(mvfxContext* context, mvfxInstanceId instance,
+                                           int32_t emitter, int32_t array, const uint32_t* words,
+                                           int32_t count);
 
 // The id an emitter gives its next ribbon, or -1 for an id that names no
 // live instance or an emitter out of range. A planned instance's plan
@@ -150,8 +156,8 @@ int32_t mvfxTestFindLinks(mvfxContext* context, mvfxInstanceId instance, int32_t
 // planned instance's reports set (mvfxInstance_SetWaterCounts), into
 // reach. Returns false for an id that names no live instance or a surface
 // out of range. The bounds hold it joined with the emitters' boxes.
-bool mvfxTestWaterReach(const mvfxContext* context, mvfxInstanceId instance, int32_t water,
-                        float* reach);
+MVFX_NODISCARD bool mvfxTestWaterReach(const mvfxContext* context, mvfxInstanceId instance,
+                                       int32_t water, float* reach);
 
 // The substeps an instance's liquid gases take in a step of ticks, from
 // their fastest particles' speeds (a planned instance's reported,
@@ -169,9 +175,9 @@ int32_t mvfxTestLiquidSubsteps(const mvfxContext* context, mvfxInstanceId instan
 // A step counts its stopped searches (mvfxEmitterStats.rigidSearchStopCount)
 // but no public call gives one's steps, nor the search's normal before
 // contacts are made from it.
-bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b, int32_t countB,
-                        float margin, bool* stopped, int32_t* epaSteps, float* distance,
-                        float normal[3]);
+MVFX_NODISCARD bool mvfxTestConvexMeet(const float* a, int32_t countA, const float* b,
+                                       int32_t countB, float margin, bool* stopped,
+                                       int32_t* epaSteps, float* distance, float normal[3]);
 
 // The most points and faces of EPA's polytope (as MVFX_EPA_POINTS and
 // MVFX_EPA_FACES).

@@ -10,12 +10,12 @@
 
 #include <math.h>
 
-static bool IsShare(float x)
+MVFX_NODISCARD static bool IsShare(float x)
 {
     return x >= 0.0f && x <= 1.0f;
 }
 
-static bool IsRotation(const float q[4])
+MVFX_NODISCARD static bool IsRotation(const float q[4])
 {
     double square = 0.0;
     for (int32_t k = 0; k < 4; ++k)
@@ -233,7 +233,8 @@ static void PointAt(const float s[3], const float e[3], float t, float out[3])
     }
 }
 
-static bool HitPlane(const mvfxResolvedCollider* c, const float s[3], const float e[3], Hit* hit)
+MVFX_NODISCARD static bool HitPlane(const mvfxResolvedCollider* c, const float s[3],
+                                    const float e[3], Hit* hit)
 {
     float a[3] = {s[0] - c->center[0], s[1] - c->center[1], s[2] - c->center[2]};
     float b[3] = {e[0] - c->center[0], e[1] - c->center[1], e[2] - c->center[2]};
@@ -280,7 +281,8 @@ static void SpherePoint(const mvfxResolvedCollider* c, const float from[3], Hit*
     }
 }
 
-static bool HitSphere(const mvfxResolvedCollider* c, const float s[3], const float e[3], Hit* hit)
+MVFX_NODISCARD static bool HitSphere(const mvfxResolvedCollider* c, const float s[3],
+                                     const float e[3], Hit* hit)
 {
     float f[3] = {s[0] - c->center[0], s[1] - c->center[1], s[2] - c->center[2]};
     float g[3] = {e[0] - c->center[0], e[1] - c->center[1], e[2] - c->center[2]};
@@ -320,10 +322,11 @@ static bool HitSphere(const mvfxResolvedCollider* c, const float s[3], const flo
 }
 
 // A box's contact in its own frame, from local start a to local end b.
-static bool HitBoxLocal(const float h[3], bool inside, const float a[3], const float b[3],
-                        Hit* hit);
+MVFX_NODISCARD static bool HitBoxLocal(const float h[3], bool inside, const float a[3],
+                                       const float b[3], Hit* hit);
 
-static bool HitBox(const mvfxResolvedCollider* c, const float s[3], const float e[3], Hit* hit)
+MVFX_NODISCARD static bool HitBox(const mvfxResolvedCollider* c, const float s[3], const float e[3],
+                                  Hit* hit)
 {
     const float* q = c->rotation;
     const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
@@ -367,7 +370,7 @@ static int32_t PushAxis(const float h[3], const float a[3], bool inside)
     return axis;
 }
 
-static bool IsInside(const float h[3], const float a[3])
+MVFX_NODISCARD static bool IsInside(const float h[3], const float a[3])
 {
     return fabsf(a[0]) <= h[0] && fabsf(a[1]) <= h[1] && fabsf(a[2]) <= h[2];
 }
@@ -389,7 +392,8 @@ static void PushOut(const float h[3], bool inside, const float a[3], Hit* hit)
     hit->normal[axis] = inside ? -sign : sign;
 }
 
-static bool HitBoxLocal(const float h[3], bool inside, const float a[3], const float b[3], Hit* hit)
+MVFX_NODISCARD static bool HitBoxLocal(const float h[3], bool inside, const float a[3],
+                                       const float b[3], Hit* hit)
 {
     if (IsInside(h, a) != inside)
     {
@@ -557,8 +561,8 @@ float mvfxFieldDistance(const mvfxResolvedCollider* c, const float point[3], flo
 
 // The part [low, high] of the local segment a to b within the grid's box
 // (a heightfield's X and Z); false when it misses it.
-static bool ClipToBox(const mvfxResolvedCollider* c, const float a[3], const float b[3], float* low,
-                      float* high)
+MVFX_NODISCARD static bool ClipToBox(const mvfxResolvedCollider* c, const float a[3],
+                                     const float b[3], float* low, float* high)
 {
     *low = 0.0f;
     *high = 1.0f;
@@ -588,7 +592,8 @@ static bool ClipToBox(const mvfxResolvedCollider* c, const float a[3], const flo
 
 // The local segment's first crossing into a grid's wrong side, sampled
 // every half cell: its share of the segment, on the allowed side.
-static bool CrossField(const mvfxResolvedCollider* c, const float a[3], const float b[3], float* t)
+MVFX_NODISCARD static bool CrossField(const mvfxResolvedCollider* c, const float a[3],
+                                      const float b[3], float* t)
 {
     float low = 0.0f;
     float high = 1.0f;
@@ -632,7 +637,8 @@ static bool CrossField(const mvfxResolvedCollider* c, const float a[3], const fl
     return false;
 }
 
-static bool HitField(const mvfxResolvedCollider* c, const float s[3], const float e[3], Hit* hit)
+MVFX_NODISCARD static bool HitField(const mvfxResolvedCollider* c, const float s[3],
+                                    const float e[3], Hit* hit)
 {
     const float* q = c->rotation;
     const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};
@@ -672,8 +678,9 @@ static bool HitField(const mvfxResolvedCollider* c, const float s[3], const floa
 }
 
 // The segment's earliest contact with any collider, or the particle's own.
-static bool FirstHit(const mvfxResolvedCollider* colliders, int32_t count,
-                     const mvfxOwnColliders* own, const float s[3], const float e[3], Hit* best)
+MVFX_NODISCARD static bool FirstHit(const mvfxResolvedCollider* colliders, int32_t count,
+                                    const mvfxOwnColliders* own, const float s[3], const float e[3],
+                                    Hit* best)
 {
     bool found = own->plane != nullptr && HitPlane(own->plane, s, e, best);
     Hit seen;
@@ -720,7 +727,8 @@ static void Bounce(const mvfxCollision* response, const float n[3], float v[3])
 // is a dot product, its float rounding below 2^-20 of the coordinates'
 // sum; a sphere's discriminant cancels, so its margin is 2^-8 of it (more
 // than the square root of the rounding's share). NaN keeps a collider.
-static bool IsOutOfReach(const mvfxResolvedCollider* c, const float lo[3], const float hi[3])
+MVFX_NODISCARD static bool IsOutOfReach(const mvfxResolvedCollider* c, const float lo[3],
+                                        const float hi[3])
 {
     double size = 0.0;
     for (int32_t k = 0; k < 3; ++k)
@@ -878,7 +886,7 @@ int32_t mvfxCollide(const mvfxResolvedCollider* colliders, int32_t count,
 }
 
 // Whether n floats are the same, value by value.
-static bool SameFloats(const float* a, const float* b, int32_t n)
+MVFX_NODISCARD static bool SameFloats(const float* a, const float* b, int32_t n)
 {
     bool same = true;
     for (int32_t k = 0; k < n; ++k)

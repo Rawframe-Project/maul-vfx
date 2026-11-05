@@ -44,13 +44,13 @@ void mvfxPlanDepth(const mvfxResolvedDepth* depth, const mvfxCollision* collisio
 
 // Whether a place in the particles' space is within the image, in front
 // of the camera.
-bool mvfxDepthSees(const mvfxResolvedDepth* depth, const float place[3]);
+MVFX_NODISCARD bool mvfxDepthSees(const mvfxResolvedDepth* depth, const float place[3]);
 
 // The first sample of the segment s to e, in the particles' space, that
 // is behind the image's surface by less than the thickness: its share of
 // the segment, the surface point grown by the radius and its normal
 // toward the camera, in the particles' space.
-bool mvfxDepthHit(const mvfxResolvedDepth* depth, const float s[3], const float e[3], float* t,
-                  float point[3], float normal[3]);
+MVFX_NODISCARD bool mvfxDepthHit(const mvfxResolvedDepth* depth, const float s[3], const float e[3],
+                                 float* t, float point[3], float normal[3]);
 
 #endif

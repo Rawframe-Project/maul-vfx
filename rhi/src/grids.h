@@ -68,15 +68,17 @@ typedef struct mvfxGpuGrids
 // Lays out a reader's fixed grids (each force's and own collider's; a
 // null id for none: an emitter's view's, or a gas's def's) and the
 // instance's region of hostWords; false when a grid is gone.
-bool mvfxLayGrids(const mvfxContext* context, const mvfxGridId forceGrids[MVFX_MAX_FORCES],
-                  const mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS], uint32_t hostWords,
-                  mvfxGpuGrids* grids);
+MVFX_NODISCARD bool mvfxLayGrids(const mvfxContext* context,
+                                 const mvfxGridId forceGrids[MVFX_MAX_FORCES],
+                                 const mvfxGridId colliderGrids[MVFX_MAX_COLLIDERS],
+                                 uint32_t hostWords, mvfxGpuGrids* grids);
 
 // Places the grids a plan's instance colliders (its colliders from
 // ownColliders on) read in the region, in order, each once; false when
 // one is gone or they pass the region.
-bool mvfxPlaceHostGrids(const mvfxContext* context, const mvfxPlannedCollider* colliders,
-                        int32_t count, int32_t ownColliders, mvfxGpuGrids* grids);
+MVFX_NODISCARD bool mvfxPlaceHostGrids(const mvfxContext* context,
+                                       const mvfxPlannedCollider* colliders, int32_t count,
+                                       int32_t ownColliders, mvfxGpuGrids* grids);
 
 // Writes a grid as the step's numbers give it: its first word, its size
 // along X, Y and Z, its format (all 0 for none): force f's, or the plan's
@@ -88,8 +90,8 @@ void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxPlannedCollider*
 // The bytes the room for the instance's grids needs for colliders: each
 // heightfield's and distance grid's grid once, its bytes rounded up to 4,
 // as mvfxPlaceHostGrids places them; false when one is gone.
-bool mvfxHostGridBytes(const mvfxContext* context, const mvfxCollider* colliders, int32_t count,
-                       int64_t* bytes);
+MVFX_NODISCARD bool mvfxHostGridBytes(const mvfxContext* context, const mvfxCollider* colliders,
+                                      int32_t count, int64_t* bytes);
 
 // Adds a baked table of words values after the buffer's other words (once
 // the grids are laid out): its first word; all ones for NULL values.
@@ -102,7 +104,8 @@ uint32_t mvfxAddRoom(mvfxGpuGrids* grids, uint32_t words);
 // and of the tables at the first write, into the pass, then takes their
 // serials, their bytes added to uploaded; false when the device refuses
 // one or a grid is gone.
-bool mvfxWriteGrids(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass, mrhiResourceId buffer,
-                    const mvfxContext* context, mvfxGpuGrids* grids);
+MVFX_NODISCARD bool mvfxWriteGrids(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass,
+                                   mrhiResourceId buffer, const mvfxContext* context,
+                                   mvfxGpuGrids* grids);
 
 #endif

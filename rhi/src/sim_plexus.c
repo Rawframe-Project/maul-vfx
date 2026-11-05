@@ -32,7 +32,8 @@ static_assert(PLEXUS_STORE + 1 == PLEXUS_PASSES, "a pass for each plexus kernel"
 #define PLEXUS_BINDINGS 7
 
 // Creates a buffer of size bytes and usages; false when the device refuses.
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -87,8 +88,8 @@ void mvfxSimPlexusNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* pla
 }
 
 // Adds a pass of these accesses.
-static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass, const mrhiAccess* accesses,
-                    int32_t count, mrhiPassId* passOut)
+MVFX_NODISCARD static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass,
+                                   const mrhiAccess* accesses, int32_t count, mrhiPassId* passOut)
 {
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = passClass;
@@ -146,7 +147,7 @@ bool mvfxAddSimPlexusPasses(mvfxGpuSim* sim, Emitter* emitter)
 
 // Records the write of the plexus numbers, at the first step, and the
 // zeroing of the links at the simulation's first.
-static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
+MVFX_NODISCARD static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 {
     if (!emitter->plexusWriting)
     {
@@ -166,9 +167,9 @@ static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 }
 
 // Records a kernel's pass: its pipeline, bindings and workgroups.
-static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
-                         const mrhiResourceId* bound, int32_t count, const uint32_t* root,
-                         uint32_t groups)
+MVFX_NODISCARD static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
+                                        const mrhiResourceId* bound, int32_t count,
+                                        const uint32_t* root, uint32_t groups)
 {
     mrhiBinding bindings[PLEXUS_BINDINGS];
     for (int32_t b = 0; b < count; ++b)
@@ -189,7 +190,7 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
 
 // Records the sort's radix passes over the plexus keys: each pass's
 // offsets in one workgroup, then its scatter over the blocks.
-static bool RecordRadix(mvfxGpuSim* sim, const Emitter* emitter)
+MVFX_NODISCARD static bool RecordRadix(mvfxGpuSim* sim, const Emitter* emitter)
 {
     const mrhiResourceId* x = emitter->plexusResources;
     const mrhiResourceId bound[3] = {emitter->resources[BUFFER_STATISTICS], x[PLEXUS_SORT],

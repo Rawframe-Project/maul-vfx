@@ -16,9 +16,9 @@
 
 // Records a write of bytes into a buffer at offset in a pass; whether the
 // device took it, its bytes added to uploaded when it did.
-static inline bool mvfxUpload(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass,
-                              mrhiResourceId buffer, uint64_t offset, const void* data,
-                              size_t bytes)
+MVFX_NODISCARD static inline bool mvfxUpload(mrhiDevice* device, uint64_t* uploaded,
+                                             mrhiPassId pass, mrhiResourceId buffer,
+                                             uint64_t offset, const void* data, size_t bytes)
 {
     bool written = mrhiPass_WriteBuffer(device, pass, buffer, offset, data, bytes) == mrhi_success;
     *uploaded += written ? bytes : 0u;

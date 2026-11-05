@@ -62,7 +62,7 @@ static void BuildEvent(const mvfxInstance* instance, int32_t emitter, const mvfx
 }
 
 // Whether an emitter writes events of a kind.
-static bool Writes(const mvfxInstance* instance, int32_t emitter, mvfxEventKind kind)
+MVFX_NODISCARD static bool Writes(const mvfxInstance* instance, int32_t emitter, mvfxEventKind kind)
 {
     return (instance->effect->emitters[emitter].events & (1u << kind)) != 0;
 }

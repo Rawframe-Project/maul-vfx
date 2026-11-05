@@ -15,7 +15,7 @@ mvfxInstance* mvfxContextInstance(const mvfxContext* context, mvfxInstanceId ins
 mvfxEmitterStatus mvfxEmitterStatusOf(const mvfxInstance* instance, int32_t emitter);
 
 // Whether every emitter of an instance is stopped.
-bool mvfxIsInstanceFinished(const mvfxInstance* instance);
+MVFX_NODISCARD bool mvfxIsInstanceFinished(const mvfxInstance* instance);
 
 // The live instance and the emitter an id and an index name, counting
 // misuse for an emitter out of range: stale or invalid, or success.

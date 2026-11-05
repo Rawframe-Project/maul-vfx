@@ -44,27 +44,27 @@
 #define FACES_AFTER   2u
 
 // Whether the part runs a gas: smoke, a liquid gas and a surface.
-static bool Runs(const mvfxGasView* view)
+MVFX_NODISCARD static bool Runs(const mvfxGasView* view)
 {
     return view->def.kind == mvfx_gasSmoke || view->def.kind == mvfx_gasLiquid ||
            view->def.kind == mvfx_gasSurface;
 }
 
 // Whether a gas has obstacles: its own, or the instance's colliders.
-static bool HasObstacles(const mvfxGasDef* def)
+MVFX_NODISCARD static bool HasObstacles(const mvfxGasDef* def)
 {
     return def->obstacleCount > 0 || def->hostObstacles;
 }
 
 // Whether a gas's burn expands it.
-static bool Expands(const mvfxGasDef* def)
+MVFX_NODISCARD static bool Expands(const mvfxGasDef* def)
 {
     return def->kind == mvfx_gasLiquid || (def->burnExpansion > 0.0f && def->burnRate > 0.0f);
 }
 
 // Whether every wall a gas meets is closed: its expansion then less its
 // mean (a smoke gas has no air).
-static bool IsSealed(const mvfxGasDef* def)
+MVFX_NODISCARD static bool IsSealed(const mvfxGasDef* def)
 {
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -315,7 +315,8 @@ static void StaticNumbers(SimGas* gas)
 }
 
 // Creates a buffer of size bytes and usages; false when the device refuses.
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -711,7 +712,7 @@ mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g)
 
 // Dispatches groups of the point passes' workgroups, in rows past
 // GAS_ROW.
-static bool Dispatch(mvfxGpuSim* sim, mrhiPassId pass, uint32_t groups)
+MVFX_NODISCARD static bool Dispatch(mvfxGpuSim* sim, mrhiPassId pass, uint32_t groups)
 {
     return groups == 0 || mrhiPass_Dispatch(sim->device, pass, groups < GAS_ROW ? groups : GAS_ROW,
                                             (groups + GAS_ROW - 1u) / GAS_ROW, 1) == mrhi_success;
@@ -719,7 +720,7 @@ static bool Dispatch(mvfxGpuSim* sim, mrhiPassId pass, uint32_t groups)
 
 // Records the pass writing the numbers, and the fields and solve emptied
 // after a clear.
-static bool RecordWrite(mvfxGpuSim* sim, SimGas* gas)
+MVFX_NODISCARD static bool RecordWrite(mvfxGpuSim* sim, SimGas* gas)
 {
     mrhiPassId pass = gas->passes[0];
     const mrhiResourceId* r = gas->resources;
@@ -740,7 +741,7 @@ static bool RecordWrite(mvfxGpuSim* sim, SimGas* gas)
 }
 
 // Records the step's dispatches.
-static bool RecordStep(mvfxGpuSim* sim, SimGas* gas)
+MVFX_NODISCARD static bool RecordStep(mvfxGpuSim* sim, SimGas* gas)
 {
     bool recorded = RecordWrite(sim, gas);
     const mrhiResourceId* r = gas->resources;

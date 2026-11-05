@@ -301,7 +301,7 @@ uint32_t mvfxSortBlocks(int32_t capacity);
 
 // Whether a layout is one the record pass writes: its stride a multiple of
 // 4 bytes, no ribbon or neighbor field.
-bool mvfxIsRecordLayout(const mvfxLayoutView* layout);
+MVFX_NODISCARD bool mvfxIsRecordLayout(const mvfxLayoutView* layout);
 
 // Writes a record pass's numbers: the particle buffer's capacity, the
 // records' place, count and layout, the clock at the plan's end, where a
@@ -332,7 +332,7 @@ void mvfxLightNumbers(const mvfxEmitterView* view, const mvfxEmitterPlan* plan,
 
 // Whether a layout is one the ribbon pass writes: its stride a multiple
 // of 4 bytes, no neighbor field.
-bool mvfxIsRibbonLayout(const mvfxLayoutView* layout);
+MVFX_NODISCARD bool mvfxIsRibbonLayout(const mvfxLayoutView* layout);
 
 // Writes a ribbon pass's own numbers: where a particle's ribbon id and
 // distance are, the texture coordinate along and the facing, the tile

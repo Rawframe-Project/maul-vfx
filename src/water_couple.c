@@ -43,8 +43,8 @@ static float Along(const mvfxResolvedWater* water, const float v[3])
 
 // A particle's place x (in the particles' space) in the surface's frame,
 // and the surface's height and ground over it; false off the grid.
-static bool Over(const mvfxResolvedWater* water, const float x[3], float local[3], float* height,
-                 float* ground)
+MVFX_NODISCARD static bool Over(const mvfxResolvedWater* water, const float x[3], float local[3],
+                                float* height, float* ground)
 {
     double place[3];
     mvfxUnmapPoint(&water->map, x, place);

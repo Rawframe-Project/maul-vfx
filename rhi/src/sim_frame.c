@@ -29,7 +29,7 @@ mvfxResult mvfxGpuSim_SetDepthTextures(mvfxGpuSim* sim, mrhiResourceId depth,
 
 // Brings the depth and normal textures the step binds into the frame: the
 // host's, or the simulation's own.
-static bool BindTextures(mvfxGpuSim* sim)
+MVFX_NODISCARD static bool BindTextures(mvfxGpuSim* sim)
 {
     const mrhiResourceId host[2] = {sim->hostDepth, sim->hostNormals};
     const mrhiTextureId own[2] = {sim->ownDepth, sim->ownNormals};

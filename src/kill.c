@@ -8,7 +8,7 @@
 
 #include <math.h>
 
-static bool IsRotation(const float q[4])
+MVFX_NODISCARD static bool IsRotation(const float q[4])
 {
     double square = 0.0;
     for (int32_t k = 0; k < 4; ++k)
@@ -141,14 +141,14 @@ static void IntoBox(const mvfxResolvedKillRule* box, const float place[3], float
     mvfxRotate(inverse, d, out);
 }
 
-static bool IsInsideBox(const float local[3], const float half[3])
+MVFX_NODISCARD static bool IsInsideBox(const float local[3], const float half[3])
 {
     return fabsf(local[0]) <= half[0] && fabsf(local[1]) <= half[1] && fabsf(local[2]) <= half[2];
 }
 
 // Whether the segment meets the box: the slabs' overlap along it.
-static bool SegmentMeetsBox(const mvfxResolvedKillRule* box, const float start[3],
-                            const float end[3])
+MVFX_NODISCARD static bool SegmentMeetsBox(const mvfxResolvedKillRule* box, const float start[3],
+                                           const float end[3])
 {
     float a[3];
     float b[3];
@@ -177,8 +177,9 @@ static bool SegmentMeetsBox(const mvfxResolvedKillRule* box, const float start[3
 }
 
 // Whether one rule kills the particle.
-static bool Kills(const mvfxResolvedKillRule* rule, const float start[3], const float end[3],
-                  const float velocity[3], double ageSeconds, uint32_t collisions)
+MVFX_NODISCARD static bool Kills(const mvfxResolvedKillRule* rule, const float start[3],
+                                 const float end[3], const float velocity[3], double ageSeconds,
+                                 uint32_t collisions)
 {
     float local[3];
     switch (rule->kind)

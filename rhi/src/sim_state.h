@@ -438,7 +438,7 @@ struct mvfxGpuSim
 
 // Whether the device made an object; its first refusal kept in the
 // simulation's refused.
-static inline bool mvfxSimMade(mvfxGpuSim* sim, mrhiResult result)
+MVFX_NODISCARD static inline bool mvfxSimMade(mvfxGpuSim* sim, mrhiResult result)
 {
     if (result != mrhi_success && sim->refused == mvfx_success)
     {
@@ -460,10 +460,10 @@ static inline mvfxResult mvfxSimRefusal(const mvfxGpuSim* sim)
 // entered while adding (the step before kept), false without lanes; the
 // last kept before recording, each recalled to record it, and the
 // simulation's own arrays back after.
-bool mvfxCreateSimLanes(mvfxGpuSim* sim);
+MVFX_NODISCARD bool mvfxCreateSimLanes(mvfxGpuSim* sim);
 void mvfxDestroySimLanes(mvfxGpuSim* sim);
 void mvfxBeginSimSteps(mvfxGpuSim* sim);
-bool mvfxEnterSimStep(mvfxGpuSim* sim, int32_t step);
+MVFX_NODISCARD bool mvfxEnterSimStep(mvfxGpuSim* sim, int32_t step);
 void mvfxStoreSimSteps(mvfxGpuSim* sim, int32_t steps);
 void mvfxRecallSimStep(mvfxGpuSim* sim, int32_t step);
 void mvfxEndSimSteps(mvfxGpuSim* sim);
@@ -482,18 +482,19 @@ mvfxResult mvfxSimWaterPlan(const mvfxGpuSim* sim, int32_t w, mvfxWaterPlan* pla
 
 // Records a kernel's pass p over an emitter's buffers (sim.c), its root
 // block 0; or a kernel in a pass of its own with these root words.
-bool mvfxRecordSimKernel(mvfxGpuSim* sim, const Emitter* emitter, int32_t p, mvfxKernel kernel,
-                         uint32_t groups);
-bool mvfxRecordSimDispatch(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass,
-                           mvfxKernel kernel, uint32_t groups, const uint32_t root[4]);
+MVFX_NODISCARD bool mvfxRecordSimKernel(mvfxGpuSim* sim, const Emitter* emitter, int32_t p,
+                                        mvfxKernel kernel, uint32_t groups);
+MVFX_NODISCARD bool mvfxRecordSimDispatch(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass,
+                                          mvfxKernel kernel, uint32_t groups,
+                                          const uint32_t root[4]);
 
 // The emitters' step order, each after the one it spawns from
 // (sim_spawn.c); the pass copying a spawning emitter's source's events
 // into its spawn region, added and recorded; its births from events
 // recorded; its numbers for them written beside its step's.
 void mvfxOrderSimEmitters(mvfxGpuSim* sim);
-bool mvfxAddSpawnCopyPass(mvfxGpuSim* sim, Emitter* emitter);
-bool mvfxRecordSpawn(mvfxGpuSim* sim, const Emitter* emitter, uint32_t groups);
+MVFX_NODISCARD bool mvfxAddSpawnCopyPass(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxRecordSpawn(mvfxGpuSim* sim, const Emitter* emitter, uint32_t groups);
 mvfxResult mvfxSpawnStepNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
 
 // An emitter's units held to frames (sim_attach.c): the frames sized (the
@@ -505,21 +506,21 @@ mvfxResult mvfxSizeSimFrames(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int32_t 
                              int32_t capacity);
 uint64_t mvfxSimFrameBytes(const Emitter* emitter);
 void mvfxSimFrameNumbers(mvfxGpuSim* sim, Emitter* emitter, const mvfxEmitterPlan* plan);
-bool mvfxUploadSimFrames(mvfxGpuSim* sim, Emitter* emitter, mrhiPassId pass);
-bool mvfxRecordSourceCopy(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass);
+MVFX_NODISCARD bool mvfxUploadSimFrames(mvfxGpuSim* sim, Emitter* emitter, mrhiPassId pass);
+MVFX_NODISCARD bool mvfxRecordSourceCopy(mvfxGpuSim* sim, const Emitter* emitter, mrhiPassId pass);
 
 // Records the writes of an emitter's statistics record (sim_records.c):
 // its map and head, or after a clear and at the simulation's first step
 // the whole record, every count 0, in one upload; false when the device
 // refuses an upload.
-bool mvfxWriteSimRecord(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
+MVFX_NODISCARD bool mvfxWriteSimRecord(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
 // The buffers of an emitter a host reads (sim_records.c), zeroed at the
 // simulation's first step so nothing past their counts holds what the
 // library did not write: both particle buffers and its events buffer.
 // Their accesses appended to a write pass's at that step, and their
 // clears recorded; false when the device refuses a clear.
 void mvfxClearedSimBuffers(const Emitter* emitter, mrhiAccess* accesses, int32_t* count);
-bool mvfxClearSimBuffers(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);
+MVFX_NODISCARD bool mvfxClearSimBuffers(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);
 
 // An emitter's events (sim_events.c): its events buffer and numbers made
 // at the simulation's creation (false when the device refuses); the
@@ -528,54 +529,55 @@ bool mvfxClearSimBuffers(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitte
 // the step's buffers imported; that pass added; its numbers' writes
 // recorded into the step's write pass; its kernels recorded, when it
 // writes events.
-bool mvfxCreateSimEvents(mvfxGpuSim* sim, int32_t e);
+MVFX_NODISCARD bool mvfxCreateSimEvents(mvfxGpuSim* sim, int32_t e);
 void mvfxSimEventNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
-bool mvfxImportEventValues(mvfxGpuSim* sim, Emitter* emitter);
-bool mvfxAddEventValuesPass(mvfxGpuSim* sim, Emitter* emitter);
-bool mvfxWriteEventNumbers(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
-bool mvfxRecordSimEvents(mvfxGpuSim* sim, const Emitter* emitter, uint32_t blocks);
+MVFX_NODISCARD bool mvfxImportEventValues(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxAddEventValuesPass(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxWriteEventNumbers(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
+MVFX_NODISCARD bool mvfxRecordSimEvents(mvfxGpuSim* sim, const Emitter* emitter, uint32_t blocks);
 
 // An emitter's neighbor grid (sim_grid.c): what it does and its buffers
 // made at the simulation's creation (false when the device refuses), and
 // destroyed; its numbers written for a step's plan; its passes added
 // after its room pass, the source's grid's ids taken from the source,
 // which stepped first; recorded.
-bool mvfxCreateSimGrid(mvfxGpuSim* sim, int32_t e);
+MVFX_NODISCARD bool mvfxCreateSimGrid(mvfxGpuSim* sim, int32_t e);
 void mvfxDestroySimGrid(mvfxGpuSim* sim, Emitter* emitter);
 void mvfxSimGridNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
-bool mvfxAddSimGridPasses(mvfxGpuSim* sim, Emitter* emitter);
-bool mvfxRecordSimGrid(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxAddSimGridPasses(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxRecordSimGrid(mvfxGpuSim* sim, Emitter* emitter);
 
 // An emitter's particle contacts (sim_contacts.c): its buffers made at
 // the simulation's creation (false when the device refuses), and
 // destroyed; its numbers written for a step's plan; its passes added
 // after its scatter; recorded.
-bool mvfxCreateSimContacts(mvfxGpuSim* sim, int32_t e);
+MVFX_NODISCARD bool mvfxCreateSimContacts(mvfxGpuSim* sim, int32_t e);
 void mvfxDestroySimContacts(mvfxGpuSim* sim, Emitter* emitter);
 void mvfxSimContactNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
-bool mvfxAddSimContactPasses(mvfxGpuSim* sim, Emitter* emitter);
-bool mvfxRecordSimContacts(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxAddSimContactPasses(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxRecordSimContacts(mvfxGpuSim* sim, Emitter* emitter);
 
 // An emitter's units' self-collision (sim_self.c): its buffers made at
 // the simulation's creation (false when the device refuses), and
 // destroyed; its numbers written for a step's plan; its passes added in
 // place of the unit pass's, those of the unit pass's halves with the
 // step's accesses (used, count of them); recorded.
-bool mvfxCreateSimSelf(mvfxGpuSim* sim, int32_t e);
+MVFX_NODISCARD bool mvfxCreateSimSelf(mvfxGpuSim* sim, int32_t e);
 void mvfxDestroySimSelf(mvfxGpuSim* sim, Emitter* emitter);
 void mvfxSimSelfNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
-bool mvfxAddSimSelfPasses(mvfxGpuSim* sim, Emitter* emitter, const mrhiAccess* used, int32_t count);
-bool mvfxRecordSimSelf(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxAddSimSelfPasses(mvfxGpuSim* sim, Emitter* emitter, const mrhiAccess* used,
+                                         int32_t count);
+MVFX_NODISCARD bool mvfxRecordSimSelf(mvfxGpuSim* sim, Emitter* emitter);
 
 // An emitter's plexus links (sim_plexus.c): its buffers made at the
 // simulation's creation (false when the device refuses), and destroyed;
 // its numbers taken from its plan; its passes added after its bounds;
 // recorded.
-bool mvfxCreateSimPlexus(mvfxGpuSim* sim, int32_t e);
+MVFX_NODISCARD bool mvfxCreateSimPlexus(mvfxGpuSim* sim, int32_t e);
 void mvfxDestroySimPlexus(mvfxGpuSim* sim, Emitter* emitter);
 void mvfxSimPlexusNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
-bool mvfxAddSimPlexusPasses(mvfxGpuSim* sim, Emitter* emitter);
-bool mvfxRecordSimPlexus(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxAddSimPlexusPasses(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxRecordSimPlexus(mvfxGpuSim* sim, Emitter* emitter);
 
 // An emitter's baked tables (sim_tables.c): its rigid hull's faces held as
 // words (mvfx_errorCapacity when the allocator fails; none for another
@@ -589,12 +591,12 @@ void mvfxLaySimTables(const mvfxEmitterView* view, Emitter* emitter);
 // its passes added after the kill pass, the sim kernel's with the step's
 // accesses, then recorded.
 int32_t mvfxSimLiquidPasses(const mvfxEmitterView* view);
-bool mvfxCreateSimLiquid(mvfxGpuSim* sim, int32_t e);
+MVFX_NODISCARD bool mvfxCreateSimLiquid(mvfxGpuSim* sim, int32_t e);
 void mvfxDestroySimLiquid(mvfxGpuSim* sim, Emitter* emitter);
 void mvfxSimLiquidNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan);
-bool mvfxAddSimLiquidPasses(mvfxGpuSim* sim, Emitter* emitter, const mrhiAccess* used,
-                            int32_t count);
-bool mvfxRecordSimLiquid(mvfxGpuSim* sim, Emitter* emitter);
+MVFX_NODISCARD bool mvfxAddSimLiquidPasses(mvfxGpuSim* sim, Emitter* emitter,
+                                           const mrhiAccess* used, int32_t count);
+MVFX_NODISCARD bool mvfxRecordSimLiquid(mvfxGpuSim* sim, Emitter* emitter);
 
 // A mesh shape's region (sim_mesh.c): laid out after emitter e's tables,
 // with the host's copy, at the simulation's creation (mvfx_errorStale for
@@ -604,7 +606,7 @@ bool mvfxRecordSimLiquid(mvfxGpuSim* sim, Emitter* emitter);
 // its upload recorded into the step's write pass.
 mvfxResult mvfxLaySimMesh(mvfxGpuSim* sim, const mvfxGpuSimDef* def, int32_t e);
 mvfxResult mvfxPlaceSimMesh(mvfxGpuSim* sim, int32_t e);
-bool mvfxWriteSimMesh(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
+MVFX_NODISCARD bool mvfxWriteSimMesh(mvfxGpuSim* sim, mrhiPassId pass, Emitter* emitter);
 
 // Emitters following gases and water surfaces (sim_follow.c): a region of
 // emitter e's grids for each gas its forces follow and for the surface it
@@ -621,10 +623,10 @@ void mvfxSimFollowGrids(const mvfxGpuSim* sim, int32_t e, uint32_t forceGrids[][
 void mvfxSimFollowWater(const mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* plan,
                         uint32_t words[MVFX_WATER_COUPLING]);
 void mvfxSimFollowSources(const mvfxGpuSim* sim, Emitter* emitter);
-bool mvfxWriteSimFollow(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step,
-                        const Emitter* emitter);
-bool mvfxImportSimFollow(mvfxGpuSim* sim, const Emitter* emitter, mrhiAccess* accesses,
-                         int32_t* count);
-bool mvfxCopySimFollow(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);
+MVFX_NODISCARD bool mvfxWriteSimFollow(mvfxGpuSim* sim, mrhiPassId pass, mrhiResourceId step,
+                                       const Emitter* emitter);
+MVFX_NODISCARD bool mvfxImportSimFollow(mvfxGpuSim* sim, const Emitter* emitter,
+                                        mrhiAccess* accesses, int32_t* count);
+MVFX_NODISCARD bool mvfxCopySimFollow(mvfxGpuSim* sim, mrhiPassId pass, const Emitter* emitter);
 
 #endif

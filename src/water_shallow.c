@@ -95,7 +95,8 @@ static void Sides(const Flow* f, const Face* face, float h[2], float* sill)
 
 // Whether face (x, z) of an axis carries water: open, its water over its
 // sill above DRY; its surfaces and sill.
-static bool IsWet(const Flow* f, int32_t axis, int32_t x, int32_t z, float h[2], float* sill)
+MVFX_NODISCARD static bool IsWet(const Flow* f, int32_t axis, int32_t x, int32_t z, float h[2],
+                                 float* sill)
 {
     Face face = FaceAt(f, axis, x, z);
     bool wall = face.lowWall || face.highWall;

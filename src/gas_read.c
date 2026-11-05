@@ -45,8 +45,8 @@ static float CellValue(const mvfxCompiledGas* gas, const mvfxGasState* state, mv
 
 // Whether a read is in range for a gas, its pitches resolved and the
 // bytes it reaches into end.
-static bool IsReadValid(const mvfxGasRead* read, const mvfxCompiledGas* gas, int64_t pitch[2],
-                        int64_t* end)
+MVFX_NODISCARD static bool IsReadValid(const mvfxGasRead* read, const mvfxCompiledGas* gas,
+                                       int64_t pitch[2], int64_t* end)
 {
     const int32_t* n = gas->def.size;
     uint32_t bytes = mvfxReadFormatBytes(read->format);

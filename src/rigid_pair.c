@@ -182,7 +182,7 @@ typedef struct Levels
 
 // Whether a pair is wanted: not two sleeping bodies, which stay as they
 // lie; waking, only an awake body with a sleeping one.
-static bool Wanted(const mvfxRigidSolve* s, int32_t a, int32_t b, bool waking)
+MVFX_NODISCARD static bool Wanted(const mvfxRigidSolve* s, int32_t a, int32_t b, bool waking)
 {
     bool asleep = mvfxBodyAsleep(s, a);
     return waking ? asleep != mvfxBodyAsleep(s, b) : !asleep || !mvfxBodyAsleep(s, b);
@@ -428,8 +428,8 @@ typedef struct PairPatch
     mvfxPatchSpread spreadB;
 } PairPatch;
 
-static bool PatchOf(const mvfxRigidSolve* s, const mvfxBody* a, const mvfxBody* b, int32_t first,
-                    int32_t end, PairPatch* out)
+MVFX_NODISCARD static bool PatchOf(const mvfxRigidSolve* s, const mvfxBody* a, const mvfxBody* b,
+                                   int32_t first, int32_t end, PairPatch* out)
 {
     const mvfxPairContact* pairs = s->instance->emitters[s->emitter].rigidPairs;
     mvfxPairContact patch = {.a = 0};

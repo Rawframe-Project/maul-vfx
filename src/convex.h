@@ -55,8 +55,8 @@ typedef struct mvfxConvexMeet
 #define MVFX_EPA_FACES  (2 * MVFX_EPA_POINTS)
 
 // Whether a and b are nearer than margin, and how they meet.
-bool mvfxConvexMeets(const mvfxPolytope* a, const mvfxPolytope* b, float margin,
-                     mvfxConvexMeet* out);
+MVFX_NODISCARD bool mvfxConvexMeets(const mvfxPolytope* a, const mvfxPolytope* b, float margin,
+                                    mvfxConvexMeet* out);
 
 // The steps a meeting took: GJK's, and EPA's where they overlapped.
 typedef struct mvfxConvexSteps
@@ -72,8 +72,9 @@ typedef struct mvfxConvexSteps
 // so the pair is kept, its manifold measuring its points' depths, rather
 // than missed for the step); EPA the nearest face it found, at a depth at
 // most the true one.
-bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b, float margin, int32_t most,
-                           mvfxConvexMeet* out, mvfxConvexSteps* steps);
+MVFX_NODISCARD bool mvfxConvexMeetsWithin(const mvfxPolytope* a, const mvfxPolytope* b,
+                                          float margin, int32_t most, mvfxConvexMeet* out,
+                                          mvfxConvexSteps* steps);
 
 // The polytope EPA grows in at most most steps (at most
 // MVFX_CONVEX_STEPS) for a and b where GJK finds they overlap, for the test

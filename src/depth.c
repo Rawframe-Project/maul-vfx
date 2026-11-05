@@ -16,8 +16,8 @@ static int32_t PixelBytes(mvfxDepthFormat format)
 
 // Whether rows of a size fit a buffer: each row at least a row of pixels,
 // the last ending within the bytes.
-static bool RowsFit(int32_t width, int32_t height, int32_t stride, int32_t pixelBytes,
-                    int64_t byteCount)
+MVFX_NODISCARD static bool RowsFit(int32_t width, int32_t height, int32_t stride,
+                                   int32_t pixelBytes, int64_t byteCount)
 {
     int64_t row = (int64_t)width * pixelBytes;
     return stride >= row && byteCount >= (int64_t)(height - 1) * stride + row;
@@ -25,7 +25,7 @@ static bool RowsFit(int32_t width, int32_t height, int32_t stride, int32_t pixel
 
 // Swaps the row with the largest value in column c of a Gauss-Jordan
 // table, from row c down, into row c; false when that value is 0.
-static bool Pivot(double a[4][8], int32_t c)
+MVFX_NODISCARD static bool Pivot(double a[4][8], int32_t c)
 {
     int32_t pivot = c;
     for (int32_t r = c + 1; r < 4; ++r)
@@ -65,7 +65,7 @@ static void Eliminate(double a[4][8], int32_t c)
 
 // Inverts a 4x4 column-major matrix by Gauss-Jordan elimination with
 // partial pivoting; false when it is singular or the inverse not finite.
-static bool Invert(const double m[16], double out[16])
+MVFX_NODISCARD static bool Invert(const double m[16], double out[16])
 {
     double a[4][8];
     for (int32_t r = 0; r < 4; ++r)
@@ -96,7 +96,7 @@ static bool Invert(const double m[16], double out[16])
     return finite;
 }
 
-static bool IsPoseValid(const mvfxDepthImage* image)
+MVFX_NODISCARD static bool IsPoseValid(const mvfxDepthImage* image)
 {
     double square = 0.0;
     for (int32_t k = 0; k < 4; ++k)
@@ -182,7 +182,7 @@ typedef struct Projected
     int32_t row;
 } Projected;
 
-static bool Project(const mvfxDepthView* view, const double v[3], Projected* out)
+MVFX_NODISCARD static bool Project(const mvfxDepthView* view, const double v[3], Projected* out)
 {
     double clip[4];
     Transform(view->projection, v, clip);
@@ -209,7 +209,8 @@ static bool Project(const mvfxDepthView* view, const double v[3], Projected* out
 }
 
 // A pixel's device depth; false where it holds no surface.
-static bool DepthAt(const mvfxDepthView* view, int32_t column, int32_t row, double* out)
+MVFX_NODISCARD static bool DepthAt(const mvfxDepthView* view, int32_t column, int32_t row,
+                                   double* out)
 {
     const mvfxDepthImage* image = &view->image;
     if (column < 0 || row < 0 || column >= image->width || row >= image->height)
@@ -243,7 +244,8 @@ static bool DepthAt(const mvfxDepthView* view, int32_t column, int32_t row, doub
 }
 
 // The view's point at device x, y and depth; false at infinity.
-static bool Unproject(const mvfxDepthView* view, double x, double y, double d, double out[3])
+MVFX_NODISCARD static bool Unproject(const mvfxDepthView* view, double x, double y, double d,
+                                     double out[3])
 {
     const double ndc[3] = {x, y, d};
     double h[4];
@@ -260,7 +262,8 @@ static bool Unproject(const mvfxDepthView* view, double x, double y, double d, d
 }
 
 // A pixel's surface point, at its center; false where it has none.
-static bool PixelPoint(const mvfxDepthView* view, int32_t column, int32_t row, double out[3])
+MVFX_NODISCARD static bool PixelPoint(const mvfxDepthView* view, int32_t column, int32_t row,
+                                      double out[3])
 {
     double d = 0.0;
     if (!DepthAt(view, column, row, &d))
@@ -279,8 +282,8 @@ static double Length(const double v[3])
 
 // The shorter of the differences to a pixel's two neighbors along an
 // axis, toward increasing columns or rows; false with neither.
-static bool Across(const mvfxDepthView* view, const double center[3], int32_t column, int32_t row,
-                   int32_t dc, int32_t dr, double out[3])
+MVFX_NODISCARD static bool Across(const mvfxDepthView* view, const double center[3], int32_t column,
+                                  int32_t row, int32_t dc, int32_t dr, double out[3])
 {
     double after[3] = {0.0, 0.0, 0.0};
     double before[3] = {0.0, 0.0, 0.0};
@@ -381,8 +384,8 @@ bool mvfxDepthSees(const mvfxResolvedDepth* depth, const float place[3])
 // Whether a place meets the image: along its view ray, within the
 // particle's radius in front of the surface or less than the thickness
 // behind it; the surface's point on that ray in the view's space.
-static bool Meets(const mvfxResolvedDepth* depth, const float place[3], Projected* p,
-                  double surface[3])
+MVFX_NODISCARD static bool Meets(const mvfxResolvedDepth* depth, const float place[3], Projected* p,
+                                 double surface[3])
 {
     const mvfxDepthView* view = depth->view;
     double v[3];
@@ -435,8 +438,8 @@ static int32_t SamplesFor(const mvfxResolvedDepth* depth, const float s[3], cons
 #define DEPTH_HALVINGS 10
 
 // Whether the place at a share of the segment s to e meets the image.
-static bool MeetsAt(const mvfxResolvedDepth* depth, const float s[3], const float e[3], float at,
-                    Projected* p, double surface[3])
+MVFX_NODISCARD static bool MeetsAt(const mvfxResolvedDepth* depth, const float s[3],
+                                   const float e[3], float at, Projected* p, double surface[3])
 {
     float place[3];
     for (int32_t k = 0; k < 3; ++k)

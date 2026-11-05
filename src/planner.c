@@ -97,7 +97,7 @@ void mvfxEndPlanStep(mvfxInstance* instance)
 
 // Whether the simulation numbers an emitter's births: it spawns from
 // events.
-static bool NumberedElsewhere(const mvfxInstance* instance, int32_t emitter)
+MVFX_NODISCARD static bool NumberedElsewhere(const mvfxInstance* instance, int32_t emitter)
 {
     return instance->effect->emitters[emitter].eventSpawn.enable;
 }

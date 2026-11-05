@@ -69,7 +69,7 @@ static_assert(MVFX_SPAWN_FROM == MVFX_SPAWN_SOURCE + 1, "a left-out source's wor
 // Records the copy of the source's events, as many as it wrote and the
 // first of its step's, into an emitter's spawn region; none when the
 // source is left out, its count 0.
-static bool RecordSpawnCopy(mvfxGpuSim* sim, const Emitter* emitter)
+MVFX_NODISCARD static bool RecordSpawnCopy(mvfxGpuSim* sim, const Emitter* emitter)
 {
     static const uint32_t none[2] = {0};
     const Emitter* source = &sim->emitters[emitter->spawnSource];

@@ -252,7 +252,7 @@ void mvfxStepInstance(mvfxInstance* instance, int64_t ticks)
 
 // Whether an instance steps in this step by its off-screen policy,
 // counting its unseen steps.
-static bool IsDue(mvfxInstance* instance)
+MVFX_NODISCARD static bool IsDue(mvfxInstance* instance)
 {
     if (instance->visible || instance->offscreen == mvfx_offscreenSimulate)
     {

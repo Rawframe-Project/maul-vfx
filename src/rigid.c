@@ -84,8 +84,8 @@ static float RadiusOf(const mvfxBodyContact* items, int32_t count, int32_t first
     return radius / patch->load;
 }
 
-static bool PatchOf(const mvfxBodyContact* items, int32_t count, int32_t first, float h,
-                    const mvfxBody* b, Patch* patch)
+MVFX_NODISCARD static bool PatchOf(const mvfxBodyContact* items, int32_t count, int32_t first,
+                                   float h, const mvfxBody* b, Patch* patch)
 {
     float* point = patch->point;
     float* n = patch->n;
@@ -133,7 +133,7 @@ static bool PatchOf(const mvfxBodyContact* items, int32_t count, int32_t first, 
 }
 
 // Whether contact i is the first of its collider's.
-static bool FirstOf(const mvfxBodyContact* items, int32_t i)
+MVFX_NODISCARD static bool FirstOf(const mvfxBodyContact* items, int32_t i)
 {
     bool first = true;
     for (int32_t j = 0; first && j < i; ++j)
@@ -293,7 +293,8 @@ static void SpeedsOf(const mvfxBody* b, mvfxBodyContact* items, int32_t count)
 
 // Body i's scene plane, the host's last answer to its query; false for
 // none.
-static bool ScenePlaneOf(const mvfxRigidSolve* s, int32_t i, mvfxResolvedCollider* out)
+MVFX_NODISCARD static bool ScenePlaneOf(const mvfxRigidSolve* s, int32_t i,
+                                        mvfxResolvedCollider* out)
 {
     mvfxInstance* instance = s->instance;
     if (!mvfxHasAttribute(&instance->effect->emitters[s->emitter].plan, mvfx_attributeScenePointX))

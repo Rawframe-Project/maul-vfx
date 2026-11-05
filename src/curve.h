@@ -57,6 +57,6 @@ static inline float mvfxCurveTableAt(const mvfxCurveTable* table, float time)
 double mvfxCurveLargest(const mvfxCurve* curve, float start, float end);
 
 // Whether no sample of a baked curve is below 0, as a rate must be.
-bool mvfxIsCurveTableNonNegative(const mvfxCurveTable* table);
+MVFX_NODISCARD bool mvfxIsCurveTableNonNegative(const mvfxCurveTable* table);
 
 #endif

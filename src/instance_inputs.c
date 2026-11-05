@@ -161,7 +161,7 @@ mvfxResult mvfxInstance_Spawn(mvfxContext* context, mvfxInstanceId instance, int
 
 // Whether a host's frame is valid: its place finite and at most 2^52 in
 // size, its orientation of length 1 within 1e-3.
-static bool IsAttachFrameValid(const mvfxAttachFrame* frame)
+MVFX_NODISCARD static bool IsAttachFrameValid(const mvfxAttachFrame* frame)
 {
     double square = 0.0;
     for (int32_t k = 0; k < 4; ++k)

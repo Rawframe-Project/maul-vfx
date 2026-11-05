@@ -59,12 +59,13 @@ void mvfxEndDistance(mvfxInstance* instance, int32_t emitter);
 
 // Whether the emitter may still spawn: it has not been stopped, its loops
 // have not ended, and some source of it has births ahead.
-bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter);
+MVFX_NODISCARD bool mvfxHasBirthsAhead(const mvfxInstance* instance, int32_t emitter);
 
 // Where an emitter's current ribbon's pinned head is, in the world: its
 // shape's origin at the step's end. False when it pins none, or may no
 // longer spawn.
-bool mvfxRibbonHeadPlace(const mvfxInstance* instance, int32_t emitter, double out[3]);
+MVFX_NODISCARD bool mvfxRibbonHeadPlace(const mvfxInstance* instance, int32_t emitter,
+                                        double out[3]);
 
 // The ticks from from to to (a plan's or one of its steps') whose
 // events give an emitter births, as its step takes them (from its delay,

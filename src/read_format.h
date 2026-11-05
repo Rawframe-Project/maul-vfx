@@ -15,7 +15,7 @@
 uint32_t mvfxReadFormatBytes(mvfxFormat format);
 
 // Whether a format is normalized (its range mapped from low to high).
-bool mvfxIsReadNormalized(mvfxFormat format);
+MVFX_NODISCARD bool mvfxIsReadNormalized(mvfxFormat format);
 
 // A value mapped to what its format writes: a normalized format's range
 // from low to high to 0 to 1, or -1 to 1.

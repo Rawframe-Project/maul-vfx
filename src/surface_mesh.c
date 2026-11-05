@@ -222,7 +222,7 @@ static void Primitive(Mesher* m, const int32_t* ids, int32_t count)
 // Whether a face of four values (in a cycle) joins its inside corners: its
 // bilinear saddle below the level. The signs alone decide, the same in
 // either cube's cycle.
-static bool JoinsInside(float a, float b, float c, float d)
+MVFX_NODISCARD static bool JoinsInside(float a, float b, float c, float d)
 {
     float above = a * c - b * d;
     float below = a + c - b - d;
@@ -424,14 +424,15 @@ mvfxResult mvfxInstance_GetSurfaceMeshScratchBytes(const mvfxContext* context,
 
 // Whether a pointer holds a buffer of size: NULL only for size 0, aligned
 // to 4 bytes.
-static bool IsBufferValid(const void* p, int64_t size)
+MVFX_NODISCARD static bool IsBufferValid(const void* p, int64_t size)
 {
     return size >= 0 && (p != nullptr || size == 0) && (uintptr_t)p % 4u == 0u;
 }
 
 // Whether a mesh call's arguments are in range.
-static bool IsMeshValid(const double origin[3], float level, const mvfxSurfaceMeshBuffers* b,
-                        const int64_t* vertexCountOut, const int64_t* indexCountOut)
+MVFX_NODISCARD static bool IsMeshValid(const double origin[3], float level,
+                                       const mvfxSurfaceMeshBuffers* b,
+                                       const int64_t* vertexCountOut, const int64_t* indexCountOut)
 {
     if (origin == nullptr || b == nullptr || vertexCountOut == nullptr ||
         indexCountOut == nullptr || !isfinite(level))
