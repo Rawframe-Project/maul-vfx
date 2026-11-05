@@ -86,6 +86,16 @@ int32_t mvfxEpaPolytope(const mvfxPolytope* a, const mvfxPolytope* b, int32_t mo
                         double points[MVFX_EPA_POINTS][3], int32_t* pointCount,
                         uint8_t faces[MVFX_EPA_FACES][3]);
 
+// The polytope EPA grows in at most most steps (at most
+// MVFX_CONVEX_STEPS) for a and b where GJK finds they overlap, for the test
+// hooks: its points (x, y and z each, of the difference a less b) into
+// points, their count in pointCount, and its faces (counterclockwise from
+// outside, indices into points) into faces; their count, 0 when GJK finds
+// them apart or the difference is flat.
+int32_t mvfxEpaPolytope(const mvfxPolytope* a, const mvfxPolytope* b, int32_t most,
+                        double points[MVFX_EPA_POINTS][3], int32_t* pointCount,
+                        uint8_t faces[MVFX_EPA_FACES][3]);
+
 // The point of a polytope nearest p (p itself inside it) and their
 // distance (0 inside).
 float mvfxPolytopeNearest(const mvfxPolytope* a, const float p[3], float out[3]);
