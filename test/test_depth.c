@@ -505,7 +505,7 @@ static void TestRefusals(void)
     Show(&scene, &good);
     uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     static float normals[SIDE * SIDE * 3];
-    for (int32_t field = 0; field < 14; ++field)
+    for (int32_t field = 0; field < 15; ++field)
     {
         // Past a named bound: mvfx_errorLimit, as a direct argument still
         // misuse.
@@ -558,6 +558,10 @@ static void TestRefusals(void)
             bad.byteCount = (int64_t)SIDE * SIDE * 2 - 1;
             bad.stride = SIDE * 2;
             break;
+        case 13:
+            // Finite but not invertible: the view's x read as its y.
+            memcpy(bad.projection, bad.projection + 4, 4 * sizeof(float));
+            break;
         default:
             bad.origin[2] = (double)NAN;
             break;
@@ -565,7 +569,7 @@ static void TestRefusals(void)
         CHECK(mvfxInstance_SetDepthImage(scene.context, scene.instance, &bad) == want,
               "an image out of range");
     }
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 14, "each counted");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 15, "each counted");
     // The good image kept: the wall still met.
     Place(&scene, 0, 0, 1, 0, 0, -2);
     Step(&scene);

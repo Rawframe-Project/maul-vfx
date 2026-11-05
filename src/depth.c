@@ -551,6 +551,34 @@ static void Compose(const float a[4], const float b[4], double out[4])
     out[3] = aw * bw - ax * bx - ay * by - az * bz;
 }
 
+// The inverse of a planned view map m (ToView), by its adjugate. Its 3x3
+// is the map's turn, normalized, and the view's, within 0.001 of unit
+// (IsPoseValid), over sigma: neither turn shrinks an axis below 0.99, so
+// its determinant is near 1 / sigma^3, far from 0 and from rounding, and
+// nothing can fail.
+static void InvertView(const double m[16], double out[16])
+{
+    double cofactor[9] = {
+        m[5] * m[10] - m[9] * m[6], m[9] * m[2] - m[1] * m[10], m[1] * m[6] - m[5] * m[2],
+        m[8] * m[6] - m[4] * m[10], m[0] * m[10] - m[8] * m[2], m[4] * m[2] - m[0] * m[6],
+        m[4] * m[9] - m[8] * m[5],  m[8] * m[1] - m[0] * m[9],  m[0] * m[5] - m[4] * m[1],
+    };
+    double determinant = m[0] * cofactor[0] + m[4] * cofactor[1] + m[8] * cofactor[2];
+    for (int32_t c = 0; c < 3; ++c)
+    {
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out[c * 4 + k] = cofactor[c * 3 + k] / determinant;
+        }
+        out[c * 4 + 3] = 0.0;
+    }
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        out[12 + k] = -(out[k] * m[12] + out[4 + k] * m[13] + out[8 + k] * m[14]);
+    }
+    out[15] = 1.0;
+}
+
 void mvfxPlanDepth(const mvfxResolvedDepth* depth, const mvfxCollision* collision,
                    mvfxPlannedDepth* out)
 {
@@ -592,11 +620,13 @@ void mvfxPlanDepth(const mvfxResolvedDepth* depth, const mvfxCollision* collisio
     }
     toView[15] = 1.0;
     double toClip[16];
-    double fromClip[16] = {0.0};
     Multiply(view->projection, toView, toClip);
-    // The projection is invertible and the map is a turn and a scale: the
-    // product inverts.
-    (void)Invert(toClip, fromClip);
+    // Back: ToView's inverse, then the projection's, checked when the
+    // view was set.
+    double fromView[16];
+    InvertView(toView, fromView);
+    double fromClip[16];
+    Multiply(fromView, view->inverse, fromClip);
     double turn[4];
     Compose(map->rotation, image->rotation, turn);
     *out = (mvfxPlannedDepth){
