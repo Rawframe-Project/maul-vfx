@@ -333,7 +333,10 @@ extern "C"
     ///         where the family shares it (`mvfx_errorCapacity`,
     ///         `mvfx_errorUnsupported`, `mvfx_errorState` for a device not
     ///         ready yet, `mvfx_errorBusy` for a call from inside the
-    ///         device's allocator), `mvfx_errorPlatform` otherwise.
+    ///         device's allocator), `mvfx_errorPlatform` otherwise;
+    ///         `mvfx_errorLimit` for an emitter of rigid hulls kept out of a
+    ///         box or a sphere past MVFX_MAX_PLANNED_COLLIDER at the
+    ///         instance's last step, whose plan is refused.
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxCreateGpuSim(const mvfxGpuSimDef* def,
@@ -453,7 +456,11 @@ extern "C"
     ///         (mvfxGpuSim_SetDepthTextures); `mvfx_errorBusy` while it is
     ///         destroyed (a call from its allocator); `mvfx_errorCapacity`
     ///         when the grids the instance's colliders read pass the def's
-    ///         hostGridBytes, or a mesh shape's mesh its room.
+    ///         hostGridBytes, or a mesh shape's mesh its room;
+    ///         `mvfx_errorLimit` for an emitter of rigid hulls kept out of a
+    ///         box or a sphere past MVFX_MAX_PLANNED_COLLIDER in the
+    ///         particles' space at the step, whose plan is refused (the
+    ///         frame is the host's to drop).
     /// @par Thread safety
     /// Safe from any thread; the device is used by one thread at a time.
     MVFX_NODISCARD MVFX_RHI_API mvfxResult mvfxGpuSim_AddPasses(mvfxGpuSim* sim);

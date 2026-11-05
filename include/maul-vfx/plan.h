@@ -1085,7 +1085,10 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorInvalid` for a NULL argument, an
     ///         emitter or a step out of range; `mvfx_errorStale` for an
     ///         instance that is gone; `mvfx_errorUnsupported` for an
-    ///         instance that is not planned.
+    ///         instance that is not planned; `mvfx_errorLimit` for an
+    ///         emitter of rigid hulls kept out of a box or a sphere past
+    ///         MVFX_MAX_PLANNED_COLLIDER in the particles' space at the
+    ///         step, checked at every step's plan.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterStepPlan(const mvfxContext* context,
@@ -1107,7 +1110,9 @@ extern "C"
     ///         that is gone; `mvfx_errorUnsupported` for an instance that
     ///         is not planned; `mvfx_errorState` for one whose plans hold
     ///         more than one step (mvfxInstance_GetPlanSteps), each with
-    ///         its own plan.
+    ///         its own plan; `mvfx_errorLimit` for an emitter of rigid
+    ///         hulls kept out of a box or a sphere past
+    ///         MVFX_MAX_PLANNED_COLLIDER in the particles' space.
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_GetEmitterPlan(const mvfxContext* context,
