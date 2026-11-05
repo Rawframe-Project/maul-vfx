@@ -1053,9 +1053,10 @@ static void TestLargestReach(void)
                                   Rigid(mvfx_rigidHull, mesh, past, turn, true),
                                   Rigid(mvfx_rigidHull, mesh, under, turn, true)};
     emitters[2].overLife.size = (mvfxSizeOverLife){.enable = true, .size = {{.value = 1.1f}}};
-    // 16 above the ground (binary32's spacing there), moving down onto it.
+    // 16 above the ground, moving down onto it at 1e4: binary32's places
+    // are 16 apart there, and a step moves it 167.
     static const double place[3] = {0, 151040016.0, 0};
-    static const float down[3] = {0, -40, 0};
+    static const float down[3] = {0, -1e4f, 0};
     Play(emitters, 3, place, down);
     Steps(30);
     TestParticle body[8];
@@ -1070,7 +1071,8 @@ static void TestLargestReach(void)
     }
     CHECK(alive[0] == 1 && stats[0].valueKillCount == 0 && stats[0].killCount == 0,
           "a hull short of the largest reach born");
-    CHECK(Bodies(0, body) == 1 && fabsf(body[0].position[1] - 151040000.0f) <= 64.0f,
+    CHECK(Bodies(0, body) == 1 && body[0].position[1] < 151040016.0f &&
+              body[0].position[1] >= 151040000.0f - 64.0f,
           "and landed on the ground");
     CHECK(alive[1] == 0 && stats[1].valueKillCount == 1 && stats[1].killCount == 0,
           "a hull past it killed as it is born");

@@ -395,13 +395,13 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
         "boxes placed around a ball");
     // Hulls at the edge of MVFX_MAX_HULL_REACH (2^28): two of size 2.95e5,
     // 1.5104e8 in half size and reaching 2.5% short of it, placed upright
-    // 16 above the origin (binary32's spacing there) and moving down, one
-    // onto the box (as polytopes, the search's difference near the bound)
-    // and one onto the floor; two of size 3.1e5, 2.4% past it, killed as
-    // they are born on both paths.
+    // 16 above the origin and moving down at 1e4 (binary32's places 16
+    // apart there, a step moves them 167), one onto the box (as polytopes,
+    // the search's difference near the bound) and one onto the floor; two
+    // of size 3.1e5, 2.4% past it, killed as they are born on both paths.
     static const double edge[12] = {0,    151040016.0, 0, 4e8, 151040016.0, 0,
                                     -4e8, 2e8,         0, 0,   2e8,         4e8};
-    static const float down[12] = {0, -100, 0, 0, -100, 0, 0, -100, 0, 0, -100, 0};
+    static const float down[12] = {0, -1e4f, 0, 0, -1e4f, 0, 0, -1e4f, 0, 0, -1e4f, 0};
     static const float edgeSizes[12] = {2.95e5f, 2.95e5f, 2.95e5f, 2.95e5f, 2.95e5f, 2.95e5f,
                                         3.1e5f,  3.1e5f,  3.1e5f,  3.1e5f,  3.1e5f,  3.1e5f};
     static const mvfxSpawnRequest atEdge = {
