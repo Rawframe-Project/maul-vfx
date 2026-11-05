@@ -462,7 +462,10 @@ extern "C"
         // The view's projection, column-major: clip = projection (x, y, z, 1)
         // from the view's space; device depth z / w from 0 to 1, x / w from
         // -1 (the left) to 1, y / w from -1 (the bottom) to 1. Finite and
-        // invertible: perspective, orthographic, reversed or not.
+        // invertible, every entry of it and of its inverse at most 2^40 in
+        // size and the largest of one times the largest of the other at
+        // most 2^32 (the GPU part carries it in binary32): perspective,
+        // orthographic, reversed or not.
         float projection[16];
         // The view's place in the world (each coordinate at most 2^52 in
         // size) and its turn, a unit quaternion within 0.001, normalized
@@ -489,10 +492,10 @@ extern "C"
     /// @return `mvfx_success`; `mvfx_errorStale` for an id that names no live
     ///         instance; `mvfx_errorInvalid` for a NULL context or an image
     ///         out of range (a size below 1, a stride, a byte count short of
-    ///         its rows, a format, a projection not finite or not
-    ///         invertible, a place or a turn); `mvfx_errorLimit` for a size
-    ///         past MVFX_MAX_DEPTH_SIZE. Either counts as misuse when the
-    ///         context is given (the image set before is then kept).
+    ///         its rows, a format, a projection not finite, not invertible
+    ///         or past its bounds, a place or a turn); `mvfx_errorLimit` for
+    ///         a size past MVFX_MAX_DEPTH_SIZE. Either counts as misuse when
+    ///         the context is given (the image set before is then kept).
     /// @par Thread safety
     /// Safe from any thread; the context is used by one thread at a time.
     MVFX_NODISCARD MVFX_API mvfxResult mvfxInstance_SetDepthImage(mvfxContext* context,
