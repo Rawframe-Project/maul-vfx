@@ -1178,12 +1178,10 @@ static void DrawTurn(bool gridded, float q[4])
     }
 }
 
-// Whether two faces across an edge of an EPA polytope lie folded onto
-// each other: one's third point on the other's plane (within 1e-9 of the
-// reach), their normals opposed (over 120 degrees apart). A convex
-// polytope has none; two faces in one plane have the same normal.
-static bool AnyFold(const double points[][3], int32_t pointCount, const uint8_t faces[][3],
-                    int32_t faceCount)
+// An EPA polytope's reach (its farthest point from the origin) and its
+// faces' outward unit normals.
+static double Shape(const double points[][3], int32_t pointCount, const uint8_t faces[][3],
+                    int32_t faceCount, double normals[][3])
 {
     double reach = 0.0;
     for (int32_t i = 0; i < pointCount; ++i)
@@ -1191,7 +1189,6 @@ static bool AnyFold(const double points[][3], int32_t pointCount, const uint8_t 
         reach = fmax(reach, sqrt(points[i][0] * points[i][0] + points[i][1] * points[i][1] +
                                  points[i][2] * points[i][2]));
     }
-    double normals[MVFX_TEST_EPA_FACES][3];
     for (int32_t f = 0; f < faceCount; ++f)
     {
         const double* p = points[faces[f][0]];
@@ -1207,6 +1204,16 @@ static bool AnyFold(const double points[][3], int32_t pointCount, const uint8_t 
             normals[f][k] = n[k] / length;
         }
     }
+    return reach;
+}
+
+// Whether two faces across an edge of an EPA polytope lie folded onto
+// each other: one's third point on the other's plane (within 1e-9 of the
+// reach), their normals opposed (over 120 degrees apart). A convex
+// polytope has none; two faces in one plane have the same normal.
+static bool AnyFold(const double points[][3], const uint8_t faces[][3], int32_t faceCount,
+                    const double normals[][3], double reach)
+{
     for (int32_t f = 0; f < faceCount; ++f)
     {
         for (int32_t k = 0; k < 3; ++k)
@@ -1239,6 +1246,29 @@ static bool AnyFold(const double points[][3], int32_t pointCount, const uint8_t 
     return false;
 }
 
+// Whether a point of an EPA polytope lies in front of one of its faces by
+// more than 1e-9 of the reach. A convex polytope has none, and only its
+// nearest face bounds the depth.
+static bool AnyInFront(const double points[][3], int32_t pointCount, const uint8_t faces[][3],
+                       int32_t faceCount, const double normals[][3], double reach)
+{
+    for (int32_t f = 0; f < faceCount; ++f)
+    {
+        const double* on = points[faces[f][0]];
+        const double* n = normals[f];
+        for (int32_t i = 0; i < pointCount; ++i)
+        {
+            const double* w = points[i];
+            if (n[0] * (w[0] - on[0]) + n[1] * (w[1] - on[1]) + n[2] * (w[2] - on[2]) >
+                1e-9 * reach)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static void TestEpaAgainstAxes(void)
 {
     // Pairs of boxes, as hulls of their corners, three quarters of them
@@ -1254,6 +1284,7 @@ static void TestEpaAgainstAxes(void)
     int32_t judged = 0;
     int32_t wrong = 0;
     int32_t folds = 0;
+    int32_t inFront = 0;
     for (int32_t n = 0; n < 100000; ++n)
     {
         bool gridded = n % 2 == 0;
@@ -1298,7 +1329,10 @@ static void TestEpaAgainstAxes(void)
             _Alignas(16) uint8_t faces[MVFX_TEST_EPA_FACES][3];
             int32_t pointCount = 0;
             int32_t faceCount = mvfxTestEpaPolytope(a, 8, b, 8, k, points, &pointCount, faces);
-            folds += AnyFold(points, pointCount, faces, faceCount) ? 1 : 0;
+            double normals[MVFX_TEST_EPA_FACES][3];
+            double reach = Shape(points, pointCount, faces, faceCount, normals);
+            folds += AnyFold(points, faces, faceCount, normals, reach) ? 1 : 0;
+            inFront += AnyInFront(points, pointCount, faces, faceCount, normals, reach) ? 1 : 0;
         }
         if (!(depth > 1e-6) && !(met && distance < 0.0f))
         {
@@ -1314,6 +1348,8 @@ static void TestEpaAgainstAxes(void)
     CHECK(judged >= 25000, "box pairs overlapping");
     CHECK(wrong == 0, "every overlap found at the separating axes' depth and normal");
     CHECK(folds == 0, "no face EPA adds folded back onto the face across its edge");
+    printf("in front: %d\n", (int)inFront);
+    CHECK(inFront == 0, "no point of EPA's polytope in front of a face of it");
 }
 
 int main(void)
