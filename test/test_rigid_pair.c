@@ -982,7 +982,8 @@ static void TestEpaStuck(void)
     // A box of half sizes 1, 0.75 and 1, turned a quarter about Z in
     // binary32 (its corners an ulp off), and a flat square, a hull of no
     // width, at X -0.75 across Y 0.5 to 1 and Z -1 to -0.5. They overlap
-    // by 0.25: the box moved 0.25 along -X leaves the square on its face.
+    // by 0.25, to the rounding of the box's turned corners: the box moved
+    // 0.25 along X leaves the square on its face.
     // EPA's first step finds a point in line with an edge of its horizon,
     // whose face would have no area; the face beyond that edge goes too,
     // and the search goes on to the depth. A step left half added read a
@@ -999,8 +1000,8 @@ static void TestEpaStuck(void)
     float distance = 1.0f;
     float normal[3];
     bool met = mvfxTestConvexMeet(box, 8, square, 4, 0.01f, &stopped, &steps, &distance, normal);
-    CHECK(met && !stopped && distance == -0.25f && normal[0] == 1.0f && fabsf(normal[1]) <= 1e-7f &&
-              normal[2] == 0.0f,
+    CHECK(met && !stopped && fabsf(distance + 0.25f) <= 1e-6f && normal[0] == 1.0f &&
+              fabsf(normal[1]) <= 1e-7f && normal[2] == 0.0f,
           "a flat square in a box met at their depth, 0.25 along +X");
 }
 
