@@ -1295,7 +1295,7 @@ static void TestEpaAgainstAxes(void)
         for (int32_t k = 1; met && k <= steps; ++k)
         {
             double points[MVFX_TEST_EPA_POINTS][3];
-            uint8_t faces[MVFX_TEST_EPA_FACES][3];
+            _Alignas(16) uint8_t faces[MVFX_TEST_EPA_FACES][3];
             int32_t pointCount = 0;
             int32_t faceCount = mvfxTestEpaPolytope(a, 8, b, 8, k, points, &pointCount, faces);
             folds += AnyFold(points, pointCount, faces, faceCount) ? 1 : 0;
