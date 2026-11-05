@@ -474,6 +474,26 @@ static void TestTurnedAndPlanes(void)
     CHECK(Near((double)At(&scene, 0).position[0], 1.0, 1e-3) &&
               Near((double)At(&scene, 0).velocity[0], 2.0, 1e-3),
           "a turned camera");
+    TestParticle unit = At(&scene, 0);
+    mvfxDestroyContext(scene.context);
+
+    // Its turn 0.0009 off unit (in range): taken normalized, the same
+    // meeting, not one turned and scaled by the longer quaternion.
+    for (int32_t k = 0; k < 4; ++k)
+    {
+        turned.rotation[k] *= 1.0009f;
+    }
+    scene = NewScene(&emitter);
+    Show(&scene, &turned);
+    Place(&scene, 1, 0, 0.3, -2, 0, 0);
+    Step(&scene);
+    bool same = true;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        same = same && Near((double)At(&scene, 0).position[k], (double)unit.position[k], 1e-5) &&
+               Near((double)At(&scene, 0).velocity[k], (double)unit.velocity[k], 1e-5);
+    }
+    CHECK(same, "a camera turned off unit, as the unit turn");
     mvfxDestroyContext(scene.context);
 
     // With a scene plane at z = -0.3 too, the wall at z = 0 comes first.
