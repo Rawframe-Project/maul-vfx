@@ -34,8 +34,8 @@ static float ThicknessOf(const mvfxInstance* instance, int32_t emitter)
 
 // Whether points i and j of one unit are apart by less than the
 // thickness at rest; points of different units never are.
-static bool IsNearAtRest(const mvfxInstance* instance, int32_t emitter, int32_t i, int32_t j,
-                         float thickness)
+MVFX_NODISCARD static bool IsNearAtRest(const mvfxInstance* instance, int32_t emitter, int32_t i,
+                                        int32_t j, float thickness)
 {
     const mvfxCompiledEmitter* compiled = &instance->effect->emitters[emitter];
     int32_t points = compiled->unitPoints;
@@ -91,8 +91,8 @@ static float ClosingOf(const mvfxInstance* instance, int32_t emitter, double sec
 
 // Gathers point i's candidates: other points within reach, not near it
 // at rest; false when it has more than the most.
-static bool Gather(mvfxInstance* instance, int32_t emitter, int32_t i, const float* const x[3],
-                   float reach, float thickness)
+MVFX_NODISCARD static bool Gather(mvfxInstance* instance, int32_t emitter, int32_t i,
+                                  const float* const x[3], float reach, float thickness)
 {
     mvfxEmitterState* state = &instance->emitters[emitter];
     const mvfxNeighborGrid* grid = &state->selfGrid;
@@ -199,7 +199,8 @@ typedef struct Pair
 // sliding since the substep's start (both points' overlap shares taken
 // first) up to friction times the overlap; false where they do not
 // touch.
-static bool PartOf(const Pair* p, int32_t i, int32_t j, float wi, float wj, float out[3])
+MVFX_NODISCARD static bool PartOf(const Pair* p, int32_t i, int32_t j, float wi, float wj,
+                                  float out[3])
 {
     float d[3];
     float square = 0.0f;

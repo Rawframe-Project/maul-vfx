@@ -37,13 +37,13 @@ mvfxKillRule mvfxCompileKillRule(const mvfxKillRule* rule);
 mvfxResolvedKillRule mvfxResolveKillRule(const mvfxKillRule* rule, const mvfxSpaceMap* map);
 
 // Whether the segment from start to end comes within radius of center.
-bool mvfxSegmentMeetsSphere(const float start[3], const float end[3], const float center[3],
-                            float radius);
+MVFX_NODISCARD bool mvfxSegmentMeetsSphere(const float start[3], const float end[3],
+                                           const float center[3], float radius);
 
 // Whether any rule kills a particle that went from start to end over a
 // step, ending it with velocity at ageSeconds after collisions in all.
-bool mvfxIsKilled(const mvfxResolvedKillRule* rules, int32_t count, const float start[3],
-                  const float end[3], const float velocity[3], double ageSeconds,
-                  uint32_t collisions);
+MVFX_NODISCARD bool mvfxIsKilled(const mvfxResolvedKillRule* rules, int32_t count,
+                                 const float start[3], const float end[3], const float velocity[3],
+                                 double ageSeconds, uint32_t collisions);
 
 #endif

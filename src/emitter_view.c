@@ -108,7 +108,7 @@ static mvfxSourceView ScalarSourceOf(const mvfxCompiledScalar* source)
 
 // A value over life as the view gives it.
 // Whether an emitter's particles may be killed within a step.
-static bool Kills(const mvfxCompiledEmitter* e)
+MVFX_NODISCARD static bool Kills(const mvfxCompiledEmitter* e)
 {
     bool kills =
         e->killRuleCount > 0 ||

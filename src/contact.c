@@ -91,7 +91,7 @@ static int32_t Touching(const Pass* p, int32_t i, int32_t out[MVFX_MAX_NEIGHBORS
 }
 
 // The unit line from j to i and its length; false when they share a place.
-static bool LineOf(const Pass* p, int32_t i, int32_t j, float n[3], float* length)
+MVFX_NODISCARD static bool LineOf(const Pass* p, int32_t i, int32_t j, float n[3], float* length)
 {
     float square = 0.0f;
     for (int32_t k = 0; k < 3; ++k)

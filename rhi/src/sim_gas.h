@@ -216,30 +216,30 @@ mvfxResult mvfxReadSimGases(mvfxGpuSim* sim, mvfxEffectId effect, int32_t* refus
 // Makes a gas's buffers and dispatch room; false when the device or the
 // allocator refuses.
 // The instance's obstacles' grids take hostWords of its grids' buffer.
-bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords);
+MVFX_NODISCARD bool mvfxCreateSimGas(mvfxGpuSim* sim, SimGas* gas, uint32_t hostWords);
 void mvfxDestroySimGas(mvfxGpuSim* sim, SimGas* gas);
 
 // Adds a gas's step's passes for its plan, then records them.
 mvfxResult mvfxAddSimGasPasses(mvfxGpuSim* sim, int32_t g);
-bool mvfxRecordSimGas(mvfxGpuSim* sim, SimGas* gas);
+MVFX_NODISCARD bool mvfxRecordSimGas(mvfxGpuSim* sim, SimGas* gas);
 
 // Imports a gas's buffers into the frame open, once a frame; false when
 // the device refuses.
-bool mvfxImportSimGas(mvfxGpuSim* sim, SimGas* gas);
+MVFX_NODISCARD bool mvfxImportSimGas(mvfxGpuSim* sim, SimGas* gas);
 
 // A gas's reads and sample queries (sim_gas_read.c): their numbers'
 // buffers made with the gas (false when the device refuses) and
 // destroyed; the frame's recorded, after its step.
-bool mvfxCreateSimGasReads(mvfxGpuSim* sim, SimGas* gas);
+MVFX_NODISCARD bool mvfxCreateSimGasReads(mvfxGpuSim* sim, SimGas* gas);
 void mvfxDestroySimGasReads(mvfxGpuSim* sim, SimGas* gas);
-bool mvfxRecordSimGasReads(mvfxGpuSim* sim, SimGas* gas);
+MVFX_NODISCARD bool mvfxRecordSimGasReads(mvfxGpuSim* sim, SimGas* gas);
 
 // A surface's meshes (sim_surface_mesh.c): its buffers made with the gas
 // (false when the device refuses; nothing for a gas not a surface) and
 // destroyed; the frame's recorded, after its reads.
-bool mvfxCreateSimSurfaceMesh(mvfxGpuSim* sim, SimGas* gas);
+MVFX_NODISCARD bool mvfxCreateSimSurfaceMesh(mvfxGpuSim* sim, SimGas* gas);
 void mvfxDestroySimSurfaceMesh(mvfxGpuSim* sim, SimGas* gas);
-bool mvfxRecordSimSurfaceMeshes(mvfxGpuSim* sim, SimGas* gas);
+MVFX_NODISCARD bool mvfxRecordSimSurfaceMeshes(mvfxGpuSim* sim, SimGas* gas);
 
 // The passes a gas's step takes at most, with splats splatting into it.
 int32_t mvfxSimGasPasses(const mvfxGasView* view, int32_t splats);
@@ -266,17 +266,17 @@ void mvfxPlanSimSurface(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* p
 // their emitters' buffers imported, the write pass's accesses and its
 // writes (their numbers, their runs emptied), and a dispatch's accesses
 // and bindings.
-bool mvfxCreateSimSplats(mvfxGpuSim* sim, SimGas* gas, int32_t g);
+MVFX_NODISCARD bool mvfxCreateSimSplats(mvfxGpuSim* sim, SimGas* gas, int32_t g);
 void mvfxDestroySimSplats(mvfxGpuSim* sim, SimGas* gas);
 int32_t mvfxSimSplatPasses(int32_t splats, int32_t substeps);
 void mvfxPlanSimSplats(const mvfxGpuSim* sim, SimGas* gas, const mvfxGasPlan* plan);
 void mvfxSimSplatSubstep(SimGas* gas, uint32_t u, float h, uint32_t now, uint32_t cells,
                          uint32_t faces);
-bool mvfxImportSimSplats(mvfxGpuSim* sim, SimGas* gas);
+MVFX_NODISCARD bool mvfxImportSimSplats(mvfxGpuSim* sim, SimGas* gas);
 int32_t mvfxSimSplatWrites(const SimGas* gas, mrhiAccess* accesses);
 int32_t mvfxSimSplatAccesses(const SimGas* gas, const GasDispatch* d, const mrhiAccess* used,
                              mrhiAccess out[GAS_BUFFERS + SPLAT_BUFFERS]);
-bool mvfxWriteSimSplats(mvfxGpuSim* sim, mrhiPassId pass, SimGas* gas);
+MVFX_NODISCARD bool mvfxWriteSimSplats(mvfxGpuSim* sim, mrhiPassId pass, SimGas* gas);
 int32_t mvfxSimSplatBindings(const SimGas* gas, const GasDispatch* d,
                              mrhiBinding out[GAS_BUFFERS + 4]);
 // The splat a dispatch names: one splatting into the gas, or its own

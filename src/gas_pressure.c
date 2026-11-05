@@ -32,7 +32,7 @@ typedef struct Level
 
 // Whether cell i of a level is solved: every cell of smoke, a liquid's
 // liquid cells.
-static bool IsSolved(const Level* l, int64_t i)
+MVFX_NODISCARD static bool IsSolved(const Level* l, int64_t i)
 {
     return l->liquid == nullptr || l->liquid[i] != 0;
 }
@@ -150,7 +150,7 @@ static void LevelCoefficients(const Level* l)
 
 // Whether row (y, z) of a level is inside it along Y and Z, so that its
 // cells but the first and the last have every neighbor.
-static bool IsInnerRow(const Level* l, int32_t y, int32_t z)
+MVFX_NODISCARD static bool IsInnerRow(const Level* l, int32_t y, int32_t z)
 {
     return l->n[0] > 2 && y > 0 && y + 1 < l->n[1] && (l->n[2] == 1 || (z > 0 && z + 1 < l->n[2]));
 }
@@ -444,7 +444,8 @@ void mvfxCloseGasWalls(const mvfxCompiledGas* gas, float* const velocity[3])
 
 // Whether a cell has a face that lets the gas through (a solid's have
 // none).
-static bool IsOpen(const mvfxGasState* state, const int32_t n[3], const int32_t at[3])
+MVFX_NODISCARD static bool IsOpen(const mvfxGasState* state, const int32_t n[3],
+                                  const int32_t at[3])
 {
     const int64_t stride[3] = {1, n[0], (int64_t)n[0] * n[1]};
     for (int32_t k = 0; k < 3; ++k)
@@ -537,7 +538,7 @@ static void Correct(const mvfxCompiledGas* gas, const mvfxGasState* state, float
 }
 
 // Whether every wall a gas meets is closed.
-static bool IsSealed(const mvfxCompiledGas* gas)
+MVFX_NODISCARD static bool IsSealed(const mvfxCompiledGas* gas)
 {
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -551,7 +552,7 @@ static bool IsSealed(const mvfxCompiledGas* gas)
 
 // Whether a liquid has an open air cell, which holds its pressure and
 // makes its system regular.
-static bool HasAir(const mvfxCompiledGas* gas, const mvfxGasState* state)
+MVFX_NODISCARD static bool HasAir(const mvfxCompiledGas* gas, const mvfxGasState* state)
 {
     const uint8_t* liquid = state->room.liquid[0];
     const int32_t* n = gas->def.size;

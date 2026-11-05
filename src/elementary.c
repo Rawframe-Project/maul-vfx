@@ -9,6 +9,8 @@
 
 #include "elementary.h"
 
+#include "maul-vfx/base.h"
+
 #include <float.h>
 #include <math.h>
 #include <stdint.h>
@@ -48,7 +50,7 @@ static const uint32_t TWO_OVER_PI_WORDS[8] = {0xA2F9836Eu, 0x4E441529u, 0xFC2757
 
 // Whether x is a NaN, from its bits: an all-ones exponent and a mantissa
 // that is not zero.
-static bool IsNan(float x)
+MVFX_NODISCARD static bool IsNan(float x)
 {
     uint32_t bits = 0;
     memcpy(&bits, &x, sizeof bits);
@@ -56,7 +58,7 @@ static bool IsNan(float x)
 }
 
 // Whether x is a NaN, from its bits, in binary64.
-static bool IsNanDouble(double x)
+MVFX_NODISCARD static bool IsNanDouble(double x)
 {
     uint64_t bits = 0;
     memcpy(&bits, &x, sizeof bits);

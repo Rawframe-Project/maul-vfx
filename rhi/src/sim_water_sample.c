@@ -138,7 +138,8 @@ mvfxResult mvfxGpuSim_AddWaterSamples(mvfxGpuSim* sim, const mvfxGpuWaterSamples
 }
 
 // Records a query's passes: its numbers' write, then its samples.
-static bool RecordQuery(mvfxGpuSim* sim, const SimWater* water, const WaterSamples* query)
+MVFX_NODISCARD static bool RecordQuery(mvfxGpuSim* sim, const SimWater* water,
+                                       const WaterSamples* query)
 {
     bool recorded = mrhiPass_Begin(sim->device, query->passes[0]) == mrhi_success &&
                     mvfxUpload(sim->device, &sim->uploaded, query->passes[0], query->resource, 0,

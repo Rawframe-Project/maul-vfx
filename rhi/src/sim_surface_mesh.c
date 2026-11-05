@@ -53,7 +53,8 @@ static uint64_t ScratchWords(const mvfxGasView* view)
     return 4u * (uint64_t)view->cells + 4u * Blocks(Cubes(&view->def)) + 3u;
 }
 
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -120,7 +121,8 @@ static uint32_t FirstWord(uint64_t offset, uint64_t words)
 
 // Whether a mesh def is in range for the simulation, its capacities held
 // to the most a mesh has into caps.
-static bool IsMeshValid(const mvfxGpuSim* sim, const mvfxGpuSurfaceMeshDef* def, uint32_t caps[2])
+MVFX_NODISCARD static bool IsMeshValid(const mvfxGpuSim* sim, const mvfxGpuSurfaceMeshDef* def,
+                                       uint32_t caps[2])
 {
     bool valid = def->cookie == MVFX_GPU_SURFACE_MESH_DEF_COOKIE && def->gas >= 0 &&
                  def->gas < sim->gasCount &&
@@ -179,8 +181,9 @@ static void MeshWords(const SimGas* gas, const mvfxGpuSurfaceMeshDef* def, const
 // Imports a mesh's buffers into the frame open: its numbers, the gas's,
 // its scratch and tables, the host's (the simulation's own words for
 // normals and counts it gives none of).
-static bool ImportMesh(mvfxGpuSim* sim, SimGas* gas, const mvfxGpuSurfaceMeshDef* def,
-                       SurfaceMesh* mesh, mrhiResourceId own[2])
+MVFX_NODISCARD static bool ImportMesh(mvfxGpuSim* sim, SimGas* gas,
+                                      const mvfxGpuSurfaceMeshDef* def, SurfaceMesh* mesh,
+                                      mrhiResourceId own[2])
 {
     mesh->out[0] = def->positions;
     mesh->out[1] = def->normals;
@@ -203,8 +206,8 @@ static bool ImportMesh(mvfxGpuSim* sim, SimGas* gas, const mvfxGpuSurfaceMeshDef
 
 // Adds a mesh's passes: its numbers' (and the tables') write, then the
 // kernel's five over its accesses, each resource once.
-static bool AddMeshPasses(mvfxGpuSim* sim, const SimGas* gas, SurfaceMesh* mesh,
-                          const mrhiResourceId own[2])
+MVFX_NODISCARD static bool AddMeshPasses(mvfxGpuSim* sim, const SimGas* gas, SurfaceMesh* mesh,
+                                         const mrhiResourceId own[2])
 {
     const mrhiResourceId* r = gas->resources;
     const mrhiAccess written[2] = {{.resource = mesh->resource, .kind = mrhi_accessCopyDestination},
@@ -280,7 +283,7 @@ mvfxResult mvfxGpuSim_AddSurfaceMesh(mvfxGpuSim* sim, const mvfxGpuSurfaceMeshDe
 
 // Records a mesh's passes: its numbers' write (and the tables'), then the
 // kernel's five.
-static bool RecordMesh(mvfxGpuSim* sim, SimGas* gas, const SurfaceMesh* mesh)
+MVFX_NODISCARD static bool RecordMesh(mvfxGpuSim* sim, SimGas* gas, const SurfaceMesh* mesh)
 {
     mrhiResourceId scratch = {0};
     mrhiResourceId marching = {0};

@@ -41,7 +41,8 @@ int32_t mvfxSimLiquidPasses(const mvfxEmitterView* view)
     return particles ? 1 + def->substeps * SubstepPasses(def) : 0;
 }
 
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -122,15 +123,15 @@ void mvfxSimLiquidNumbers(mvfxGpuSim* sim, int32_t e, const mvfxEmitterPlan* pla
 
 // Whether substep s of the step has ticks, as the core's: those that have
 // none are skipped.
-static bool HasTicks(const Emitter* emitter, int32_t s)
+MVFX_NODISCARD static bool HasTicks(const Emitter* emitter, int32_t s)
 {
     int64_t ticks = emitter->liquidTicks;
     int64_t substeps = emitter->liquidWords[21];
     return ticks * (s + 1) / substeps != ticks * s / substeps;
 }
 
-static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass, const mrhiAccess* accesses,
-                    int32_t count, mrhiPassId* passOut)
+MVFX_NODISCARD static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass,
+                                   const mrhiAccess* accesses, int32_t count, mrhiPassId* passOut)
 {
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = passClass;
@@ -194,9 +195,9 @@ bool mvfxAddSimLiquidPasses(mvfxGpuSim* sim, Emitter* emitter, const mrhiAccess*
 }
 
 // Records a liquid module's or the sort's pass.
-static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
-                         const mrhiResourceId* bound, int32_t count, const uint32_t root[4],
-                         uint32_t groups)
+MVFX_NODISCARD static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
+                                        const mrhiResourceId* bound, int32_t count,
+                                        const uint32_t root[4], uint32_t groups)
 {
     mrhiBinding bindings[LIQUID_BINDINGS];
     for (int32_t b = 0; b < count; ++b)
@@ -216,8 +217,8 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
 
 // Records substep s's passes from passes: the move, the grid, the
 // iterations, the gain, viscosity and confinement.
-static bool RecordSubstep(mvfxGpuSim* sim, const Emitter* emitter, const mrhiPassId* passes,
-                          int32_t s)
+MVFX_NODISCARD static bool RecordSubstep(mvfxGpuSim* sim, const Emitter* emitter,
+                                         const mrhiPassId* passes, int32_t s)
 {
     const mvfxLiquidDef* def = &sim->views[emitter - sim->emitters].liquid;
     const mrhiResourceId* q = emitter->liquidResources;

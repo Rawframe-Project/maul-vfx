@@ -206,7 +206,7 @@ static void WriteQuad(const mvfxRecordSource* source, const mvfxOutputLayout* la
     }
 }
 
-static bool AreBuffersValid(const mvfxExpandBuffers* buffers)
+MVFX_NODISCARD static bool AreBuffersValid(const mvfxExpandBuffers* buffers)
 {
     return buffers->vertexCapacity >= 0 &&
            (buffers->vertexCapacity == 0 || buffers->vertices != nullptr) &&

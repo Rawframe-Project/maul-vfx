@@ -7,6 +7,8 @@
 #ifndef MAUL_VFX_SRC_RIGID_FLOW_H
 #define MAUL_VFX_SRC_RIGID_FLOW_H
 
+#include "maul-vfx/base.h"
+
 #include <stdbool.h>
 
 // A body's principal frame: its moments of inertia, largest first, and
@@ -55,6 +57,6 @@ float mvfxHeldMiddle(const float moments[3]);
 // from mvfxSinCos's binary32 half turns scaled to unit pairs: the
 // momentum's size is kept to rounding, its orbit in the body's frame
 // held to its energy's, and a body symmetric about an axis turns exactly.
-bool mvfxFlowBody(const mvfxPrincipal* p, float t, float q[4], float w[3]);
+MVFX_NODISCARD bool mvfxFlowBody(const mvfxPrincipal* p, float t, float q[4], float w[3]);
 
 #endif

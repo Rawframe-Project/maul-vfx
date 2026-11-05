@@ -67,7 +67,7 @@ static void CompileRibbonShape(const mvfxRibbonDef* ribbon, mvfxCompiledEmitter*
 }
 
 // Whether a gradient has no keys, so is white.
-static bool IsWhite(const mvfxGradient* gradient)
+MVFX_NODISCARD static bool IsWhite(const mvfxGradient* gradient)
 {
     return gradient->colorKeyCount == 0 && gradient->alphaKeyCount == 0;
 }
@@ -97,7 +97,8 @@ void mvfxAddParameterReach(const mvfxEmitterDef* def, double reach[MVFX_MAX_PARA
 
 // Whether a source is an emitter of the effect already placed: one out of
 // range never is (mvfxCheckEffectDef refuses it by its field first).
-static bool IsPlaced(const bool placed[MVFX_MAX_EMITTERS], int32_t source, int32_t count)
+MVFX_NODISCARD static bool IsPlaced(const bool placed[MVFX_MAX_EMITTERS], int32_t source,
+                                    int32_t count)
 {
     return source >= 0 && source < count && placed[source];
 }

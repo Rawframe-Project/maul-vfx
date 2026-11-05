@@ -73,7 +73,7 @@ void mvfxReleaseMesh(mvfxMesh* mesh, const mvfxAllocator* allocator);
 // Whether a mesh has the elements a mode needs. The mode is a checked
 // shape's (mvfxCheckShape refuses any other), so the default is the
 // vertices.
-bool mvfxMeshHasMode(const mvfxMesh* mesh, mvfxMeshMode mode);
+MVFX_NODISCARD bool mvfxMeshHasMode(const mvfxMesh* mesh, mvfxMeshMode mode);
 
 // A point on or in a mesh for a mode, and the normal there, in the mesh's
 // space, from four words (and words mixed from them).

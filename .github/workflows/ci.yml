@@ -82,6 +82,8 @@ jobs:
           python3 tools/check_docs.py
           python3 tools/check_lengths.py
           python3 tools/check_guide.py
+          python3 tools/check_nodiscard.py --self-test
+          python3 tools/check_nodiscard.py
       # Every test registration: the library's suites, and with the GPU
       # part its device suites and the samples' tests.
       - name: Test hygiene

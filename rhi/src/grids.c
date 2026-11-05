@@ -13,7 +13,7 @@ static uint32_t WordsOf(const mvfxGridView* view)
     return (uint32_t)((view->bytes + 3) / 4);
 }
 
-static bool SameId(mvfxGridId a, mvfxGridId b)
+MVFX_NODISCARD static bool SameId(mvfxGridId a, mvfxGridId b)
 {
     return a.index1 == b.index1 && a.generation == b.generation;
 }
@@ -32,7 +32,8 @@ static int32_t Find(const mvfxGpuGrids* grids, int32_t first, int32_t count, mvf
 }
 
 // Adds a grid at word at; false when it is gone.
-static bool Add(const mvfxContext* context, mvfxGridId id, uint32_t at, mvfxGpuGrids* grids)
+MVFX_NODISCARD static bool Add(const mvfxContext* context, mvfxGridId id, uint32_t at,
+                               mvfxGpuGrids* grids)
 {
     mvfxGridView view;
     if (mvfxGrid_GetView(context, id, &view) != mvfx_success)
@@ -187,8 +188,8 @@ void mvfxColliderGridWords(const mvfxGpuGrids* grids, const mvfxPlannedCollider*
 
 // Uploads a grid's values from its first word: the whole words, then a
 // last half alone in a word of its own.
-static bool Upload(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass, mrhiResourceId buffer,
-                   uint32_t first, const mvfxGridView* view)
+MVFX_NODISCARD static bool Upload(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass,
+                                  mrhiResourceId buffer, uint32_t first, const mvfxGridView* view)
 {
     uint64_t whole = (uint64_t)view->bytes & ~(uint64_t)3;
     bool written = whole == 0 || mvfxUpload(device, uploaded, pass, buffer, (uint64_t)first * 4u,
@@ -222,8 +223,8 @@ uint32_t mvfxAddRoom(mvfxGpuGrids* grids, uint32_t words)
 }
 
 // Records the tables' uploads.
-static bool WriteTables(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass,
-                        mrhiResourceId buffer, const mvfxGpuGrids* grids)
+MVFX_NODISCARD static bool WriteTables(mrhiDevice* device, uint64_t* uploaded, mrhiPassId pass,
+                                       mrhiResourceId buffer, const mvfxGpuGrids* grids)
 {
     bool written = true;
     for (int32_t t = 0; written && t < grids->tableCount; ++t)

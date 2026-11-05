@@ -169,7 +169,7 @@ typedef struct mvfxGasState
 
 // Whether a gas has a field: a surface gas only its distance, held as its
 // first scalar; another, every field but the distance.
-static inline bool mvfxIsGasFieldOf(const mvfxCompiledGas* gas, mvfxGasField field)
+MVFX_NODISCARD static inline bool mvfxIsGasFieldOf(const mvfxCompiledGas* gas, mvfxGasField field)
 {
     return gas->def.kind == mvfx_gasSurface ? field == mvfx_gasDistance
                                             : mvfxIsKind(field, mvfx_gasVelocityZ);

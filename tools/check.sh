@@ -93,6 +93,8 @@ source_checks() {
     python3 tools/check_overlap.py
     python3 tools/check_host_calls.py --self-test
     python3 tools/check_host_calls.py
+    python3 tools/check_nodiscard.py --self-test
+    python3 tools/check_nodiscard.py
     step "generated files"
     python3 tools/gen_file.py --self-test
     python3 tools/gen_file.py --check

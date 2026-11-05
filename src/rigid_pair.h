@@ -19,7 +19,7 @@ void mvfxFindBodyPairs(const mvfxRigidSolve* s, int32_t count);
 // whether any woke. Woken only at the step's end, a sleeping pile met a
 // landing body as immovable ground for that step, and a box dropped on
 // it rebounded as off the floor (2.16 m/s where on an awake pile 1.49).
-bool mvfxWakeTouching(const mvfxRigidSolve* s, int32_t count);
+MVFX_NODISCARD bool mvfxWakeTouching(const mvfxRigidSolve* s, int32_t count);
 
 // A pass over the pairs, their contacts as a body's with the world's,
 // each pair's friction after its contacts; backward from the last.

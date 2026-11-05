@@ -277,7 +277,7 @@ mvfxResult mvfxCheckGasDef(const mvfxFieldPath* at, const mvfxGasDef* def)
 
 // Whether a level can be halved: every axis of more than one cell keeps
 // at least 2.
-static bool Coarsens(const int32_t n[3])
+MVFX_NODISCARD static bool Coarsens(const int32_t n[3])
 {
     bool any = false;
     for (int32_t k = 0; k < 3; ++k)

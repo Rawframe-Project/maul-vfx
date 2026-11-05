@@ -57,8 +57,8 @@ static const mvfxCollider* TerrainOf(const mvfxInstance* instance, int32_t w, co
 // The height along a vertical, from start along along in the field's
 // frame, where it meets the field's height under the point at at, taken
 // as level there; false where that point is outside the field's box.
-static bool Meet(const mvfxResolvedCollider* t, const float start[3], const float along[3],
-                 float at, float* height)
+MVFX_NODISCARD static bool Meet(const mvfxResolvedCollider* t, const float start[3],
+                                const float along[3], float at, float* height)
 {
     const float point[2] = {start[0] + at * along[0], start[2] + at * along[2]};
     const float u[3] = {point[0] / (2.0f * t->halfExtents[0]) + 0.5f, 0.5f,
@@ -168,7 +168,7 @@ void mvfxFillWater(mvfxInstance* instance, int32_t w)
 
 // Whether a source's footprint covers the point (x, z) of the box's frame,
 // among the cells its span takes: a box's span is the box.
-static bool Covers(const mvfxWaterSource* source, float x, float z)
+MVFX_NODISCARD static bool Covers(const mvfxWaterSource* source, float x, float z)
 {
     float dx = x - source->center[0];
     float dz = z - source->center[2];

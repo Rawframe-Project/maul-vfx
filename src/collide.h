@@ -68,18 +68,20 @@ float mvfxColliderGap(const mvfxResolvedCollider* c, const float point[3], bool 
 
 // Whether two resolved colliders are the same, field by field (a grid's
 // by its serial too).
-bool mvfxSameCollider(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b);
+MVFX_NODISCARD bool mvfxSameCollider(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b);
 
 // Whether two resolved colliders are the same but for their grid's
 // values.
-bool mvfxSameColliderShape(const mvfxResolvedCollider* a, const mvfxResolvedCollider* b);
+MVFX_NODISCARD bool mvfxSameColliderShape(const mvfxResolvedCollider* a,
+                                          const mvfxResolvedCollider* b);
 
 // Whether a grid collider seen as before is now after with only its
 // grid's values changed, each change since among the points the live
 // grid knows changed (either NULL: false). Colliders are resolved every
 // step, so the last two hold whenever the values changed; they guard
 // the rule should that ever not be so.
-bool mvfxOnlyPointsChanged(const mvfxResolvedCollider* before, const mvfxResolvedCollider* after);
+MVFX_NODISCARD bool mvfxOnlyPointsChanged(const mvfxResolvedCollider* before,
+                                          const mvfxResolvedCollider* after);
 
 // A point's distance outside the part of a grid collider's box its grid's
 // changed points reach (the cells about them; all of a heightfield's

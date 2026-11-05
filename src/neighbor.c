@@ -78,7 +78,8 @@ static void BuildGrid(mvfxInstance* instance, int32_t emitter, float cell)
 
 // Whether a neighbor an offset d away (its squared length square) lies in
 // the view about a heading.
-static bool Sees(const mvfxNeighborQuery* q, const float d[3], float square, const float h[3])
+MVFX_NODISCARD static bool Sees(const mvfxNeighborQuery* q, const float d[3], float square,
+                                const float h[3])
 {
     float heading = h[0] * h[0] + h[1] * h[1] + h[2] * h[2];
     // A particle at rest sees all: 0 against 0.
@@ -139,7 +140,7 @@ typedef struct Walk
 
 // Adds the neighbors among a key's entries; false once one more than the
 // most is found.
-static bool VisitKey(const Walk* w, uint32_t key, mvfxNeighborSums* sums)
+MVFX_NODISCARD static bool VisitKey(const Walk* w, uint32_t key, mvfxNeighborSums* sums)
 {
     const mvfxNeighborQuery* q = w->query;
     const mvfxNeighborGrid* grid = q->grid;

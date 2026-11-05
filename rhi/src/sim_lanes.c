@@ -63,7 +63,7 @@ static size_t WritesBytes(const SimGas* gas)
 
 // Whether the simulation's effect can split its steps: it has a liquid
 // gas.
-static bool Splits(const mvfxGpuSim* sim)
+MVFX_NODISCARD static bool Splits(const mvfxGpuSim* sim)
 {
     for (int32_t g = 0; g < sim->gasCount; ++g)
     {
@@ -77,7 +77,7 @@ static bool Splits(const mvfxGpuSim* sim)
 
 // Makes step s's own arrays for each emitter and gas, sized as the
 // simulation's.
-static bool MakeArrays(mvfxGpuSim* sim, SimLanes* lanes, int32_t s)
+MVFX_NODISCARD static bool MakeArrays(mvfxGpuSim* sim, SimLanes* lanes, int32_t s)
 {
     bool made = true;
     for (int32_t e = 0; made && e < lanes->emitterCount; ++e)

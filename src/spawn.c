@@ -56,7 +56,7 @@ static int64_t LoopStart(const mvfxCompiledEmitter* emitter, uint64_t loop)
 }
 
 // Whether a loop is past the emitter's last.
-static bool IsPastLoops(const mvfxCompiledEmitter* emitter, uint64_t loop)
+MVFX_NODISCARD static bool IsPastLoops(const mvfxCompiledEmitter* emitter, uint64_t loop)
 {
     return emitter->loops > 0 && loop >= (uint64_t)emitter->loops;
 }
@@ -130,8 +130,8 @@ static int64_t PeekBurst(const mvfxCompiledEmitter* emitter, const mvfxCompiledB
 
 // Whether a tick lies where the emitter spawns: after its delay, within
 // its loops, not past a stop.
-static bool IsSpawning(const mvfxInstance* instance, const mvfxCompiledEmitter* emitter,
-                       int64_t tick)
+MVFX_NODISCARD static bool IsSpawning(const mvfxInstance* instance,
+                                      const mvfxCompiledEmitter* emitter, int64_t tick)
 {
     return tick > emitter->delay && tick <= instance->stopTick &&
            (emitter->loops == 0 || tick <= LoopStart(emitter, (uint64_t)emitter->loops));
@@ -326,7 +326,7 @@ void mvfxEventSpawnWindow(const mvfxInstance* instance, int32_t emitter, int64_t
 // Whether an emitter spawning from a source's events may still spawn: the
 // source holds particles (a planned one, while its last death is ahead) or
 // has births ahead.
-static bool SourceMayWrite(const mvfxInstance* instance, int32_t source)
+MVFX_NODISCARD static bool SourceMayWrite(const mvfxInstance* instance, int32_t source)
 {
     const mvfxEmitterState* held = &instance->emitters[source];
     return held->count > 0 || (instance->planned && held->lastDeath > instance->clock) ||

@@ -17,7 +17,7 @@
 #include <string.h>
 
 // Whether low <= x <= high; false for NaN.
-static bool IsWithin(float x, float low, float high)
+MVFX_NODISCARD static bool IsWithin(float x, float low, float high)
 {
     return x >= low && x <= high;
 }
@@ -38,7 +38,8 @@ mvfxResult mvfxCheckPositions(const float* positions, const float* normals, int3
     return result;
 }
 
-static bool AreIndicesValid(const uint32_t* indices, int64_t count, int32_t vertexCount)
+MVFX_NODISCARD static bool AreIndicesValid(const uint32_t* indices, int64_t count,
+                                           int32_t vertexCount)
 {
     for (int64_t i = 0; i < count; ++i)
     {

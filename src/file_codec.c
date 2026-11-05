@@ -125,7 +125,7 @@ static void PutPadding(mvfxCodec* codec)
 }
 
 // Takes a little-endian value of some bytes; false past the end.
-static bool Take(mvfxCodec* codec, size_t bytes, uint64_t* value)
+MVFX_NODISCARD static bool Take(mvfxCodec* codec, size_t bytes, uint64_t* value)
 {
     if (codec->fault != mvfx_success)
     {
@@ -186,11 +186,13 @@ static size_t ValueBytes(const mvfxFileField* field)
     }
 }
 
-static bool IsDefault(const mvfxFileType* type, const uint8_t* object, const uint8_t* base);
+MVFX_NODISCARD static bool IsDefault(const mvfxFileType* type, const uint8_t* object,
+                                     const uint8_t* base);
 
 // Whether a field's bits are its default's: an array's when it has no
 // items, as no default has; a cookie's always, as it is never stored.
-static bool FieldIsDefault(const mvfxFileField* field, const uint8_t* object, const uint8_t* base)
+MVFX_NODISCARD static bool FieldIsDefault(const mvfxFileField* field, const uint8_t* object,
+                                          const uint8_t* base)
 {
     const uint8_t* place = object + field->offset;
     const uint8_t* was = base + field->offset;
@@ -219,7 +221,8 @@ static bool FieldIsDefault(const mvfxFileField* field, const uint8_t* object, co
     }
 }
 
-static bool IsDefault(const mvfxFileType* type, const uint8_t* object, const uint8_t* base)
+MVFX_NODISCARD static bool IsDefault(const mvfxFileType* type, const uint8_t* object,
+                                     const uint8_t* base)
 {
     for (int32_t i = 0; i < type->fieldCount; ++i)
     {

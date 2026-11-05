@@ -109,7 +109,7 @@ static size_t Utf8Fault(const uint8_t* text, size_t length)
     return length;
 }
 
-static bool SameName(const char* a, int32_t aLength, const char* b, int32_t bLength)
+MVFX_NODISCARD static bool SameName(const char* a, int32_t aLength, const char* b, int32_t bLength)
 {
     return aLength == bLength && memcmp(a, b, (size_t)aLength) == 0;
 }
@@ -612,7 +612,7 @@ static mvfxFileResult CheckFile(const uint8_t* bytes, size_t size, const mvfxEff
 
 // The effect section of a file the reader accepted, from its section
 // table; false when the bytes no longer hold one in the file.
-static bool EffectSection(const void* file, int64_t size, Section* effect)
+MVFX_NODISCARD static bool EffectSection(const void* file, int64_t size, Section* effect)
 {
     const uint8_t* bytes = file;
     if (size < HEADER_BYTES)

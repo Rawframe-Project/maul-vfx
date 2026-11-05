@@ -271,7 +271,7 @@ static void PointOf(const Simplex* s, double v[3])
 // The nearest point to the origin of the tetrahedron (Ericson 5.1.6):
 // of each face the origin is beyond, the nearest's, kept; false when the
 // origin is inside.
-static bool Tetrahedron(Simplex* s)
+MVFX_NODISCARD static bool Tetrahedron(Simplex* s)
 {
     static const int32_t faces[4][4] = {{0, 1, 2, 3}, {0, 2, 3, 1}, {0, 3, 1, 2}, {1, 3, 2, 0}};
     Simplex best = *s;
@@ -315,7 +315,7 @@ static bool Tetrahedron(Simplex* s)
 
 // The simplex's nearest point to the origin, the simplex cut to the
 // points that weigh in it; false when it holds the origin.
-static bool Nearest(Simplex* s, double v[3])
+MVFX_NODISCARD static bool Nearest(Simplex* s, double v[3])
 {
     bool apart = true;
     if (s->count == 2)
@@ -339,8 +339,8 @@ static bool Nearest(Simplex* s, double v[3])
 // At most most steps, counted in steps; stopped there, the last simplex's
 // point, apart (its distance is at least the true one). Each step comes
 // nearer or ends it.
-static bool Gjk(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s, double v[3], int32_t most,
-                int32_t* steps)
+MVFX_NODISCARD static bool Gjk(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s,
+                               double v[3], int32_t most, int32_t* steps)
 {
     const double start[3] = {(double)(a->vertices[0][0] - b->vertices[0][0]),
                              (double)(a->vertices[0][1] - b->vertices[0][1]),
@@ -421,7 +421,7 @@ typedef struct Epa
 
 // Adds triangle i j k (counterclockwise from outside); false for no area
 // or no room.
-static bool AddTriangle(Epa* e, int32_t i, int32_t j, int32_t k)
+MVFX_NODISCARD static bool AddTriangle(Epa* e, int32_t i, int32_t j, int32_t k)
 {
     if (e->faceCount >= EPA_FACES)
     {
@@ -479,7 +479,7 @@ static double OffSpan(const Simplex* s, const double w[3])
 // difference along the axes and across what it has, each new when off
 // its span by a millionth of the difference's reach (a length, so at
 // every scale); false when the difference is flat.
-static bool Blow(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s)
+MVFX_NODISCARD static bool Blow(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s)
 {
     static const double axes[6][3] = {{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
                                       {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
@@ -525,7 +525,7 @@ static bool Blow(const mvfxPolytope* a, const mvfxPolytope* b, Simplex* s)
 }
 
 // Starts EPA's polytope from a tetrahedron, its faces turned outward.
-static bool StartEpa(Epa* e, const Simplex* s)
+MVFX_NODISCARD static bool StartEpa(Epa* e, const Simplex* s)
 {
     *e = (Epa){.pointCount = 4};
     for (int32_t i = 0; i < 4; ++i)
@@ -563,7 +563,8 @@ static int32_t NearestFace(const Epa* e)
 // edge (w on that face's plane, on its side of the edge, the two faces'
 // normals opposed). A fold comes only after a face w does not see went
 // too, for the face beyond it.
-static bool Joins(const Epa* e, int32_t beyond, uint8_t from, uint8_t to, const double w[3])
+MVFX_NODISCARD static bool Joins(const Epa* e, int32_t beyond, uint8_t from, uint8_t to,
+                                 const double w[3])
 {
     double ab[3];
     double aw[3];
@@ -639,7 +640,7 @@ static int32_t Beyond(const Epa* e, const bool* seen, uint8_t from, uint8_t to)
 // face beyond goes too and the horizon is found again. Each pass takes
 // one more face, so it ends. False, the polytope as it was, when there is
 // no room or no face would be left.
-static bool Expand(Epa* e, const Point* p)
+MVFX_NODISCARD static bool Expand(Epa* e, const Point* p)
 {
     if (e->pointCount >= EPA_VERTICES)
     {

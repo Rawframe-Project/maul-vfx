@@ -38,7 +38,7 @@ static inline mvfxResult mvfxFirst(mvfxResult a, mvfxResult b)
 
 // Whether a kind is one of its enumeration's, from 0 to last: a negative
 // one, which an int of the host's may hold, never is.
-static inline bool mvfxIsKind(int32_t kind, int32_t last)
+MVFX_NODISCARD static inline bool mvfxIsKind(int32_t kind, int32_t last)
 {
     return kind >= 0 && kind <= last;
 }

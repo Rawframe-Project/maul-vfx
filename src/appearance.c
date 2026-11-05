@@ -6,7 +6,7 @@
 #include <math.h>
 #include <string.h>
 
-static bool Has(const mvfxCompiledEmitter* emitter, mvfxAttribute attribute)
+MVFX_NODISCARD static bool Has(const mvfxCompiledEmitter* emitter, mvfxAttribute attribute)
 {
     return mvfxHasAttribute(&emitter->plan, attribute);
 }

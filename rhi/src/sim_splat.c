@@ -66,7 +66,8 @@ static void Push(SimGas* gas, mvfxKernel kernel, const uint32_t root[4], uint32_
                                                   .splat = splat};
 }
 
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -76,7 +77,8 @@ static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, 
 
 // Makes a splat's buffers for emitter e, splatting into the gas or its
 // own: its numbers, its sorted words, its sort's digit counts.
-static bool MakeSplat(mvfxGpuSim* sim, const SimGas* gas, SimSplat* splat, int32_t e, bool own)
+MVFX_NODISCARD static bool MakeSplat(mvfxGpuSim* sim, const SimGas* gas, SimSplat* splat, int32_t e,
+                                     bool own)
 {
     const mvfxGasView* view = &gas->view;
     *splat = (SimSplat){.emitter = e,

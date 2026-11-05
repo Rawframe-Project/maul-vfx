@@ -41,7 +41,8 @@ static float AgeAt(int64_t clock, int64_t birth)
 // Whether unit u (particle u for an emitter of particles) has ended: by
 // its first point's life, as all of a unit's points die together (a
 // contact's life loss can shorten a later point's alone).
-static bool UnitEnded(const mvfxInstance* instance, int32_t emitter, int32_t points, int32_t u)
+MVFX_NODISCARD static bool UnitEnded(const mvfxInstance* instance, int32_t emitter, int32_t points,
+                                     int32_t u)
 {
     const uint32_t* birthLow = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthLow);
     const uint32_t* birthHigh = mvfxAttributeArray(instance, emitter, mvfx_attributeBirthHigh);
@@ -178,7 +179,7 @@ static void MoveLive(mvfxInstance* instance, int32_t emitter)
 
 // Whether the step's births fit beside the live units: they are counted
 // on a copy of the cursors, up to the room there is.
-static bool BirthsFit(const mvfxInstance* instance, int32_t emitter)
+MVFX_NODISCARD static bool BirthsFit(const mvfxInstance* instance, int32_t emitter)
 {
     int64_t room = UnitCapacity(instance, emitter) - LiveUnits(instance, emitter);
     mvfxBirths births;

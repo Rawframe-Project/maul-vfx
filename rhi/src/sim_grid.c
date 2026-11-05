@@ -29,7 +29,8 @@
 static_assert(GRID_RADIX + 2 * MVFX_SORT_PASSES == GRID_VALUES, "a pass for each radix kernel");
 
 // Creates a buffer of size bytes and usages; false when the device refuses.
-static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage, mrhiBufferId* out)
+MVFX_NODISCARD static bool CreateBuffer(mvfxGpuSim* sim, uint64_t size, mrhiBufferUsage usage,
+                                        mrhiBufferId* out)
 {
     mrhiBufferDef def = mrhiDefaultBufferDef();
     def.size = size;
@@ -121,8 +122,8 @@ static void GridBuffers(const mvfxGpuSim* sim, const Emitter* emitter,
 }
 
 // Adds a pass of these accesses.
-static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass, const mrhiAccess* accesses,
-                    int32_t count, mrhiPassId* passOut)
+MVFX_NODISCARD static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass,
+                                   const mrhiAccess* accesses, int32_t count, mrhiPassId* passOut)
 {
     mrhiPassDef def = mrhiDefaultPassDef();
     def.passClass = passClass;
@@ -135,7 +136,7 @@ static bool AddPass(mvfxGpuSim* sim, mrhiPassClass passClass, const mrhiAccess* 
 
 // Whether an emitter's grid pass p runs: the write always, the keys, the
 // sort and the values when it builds, the query when it finds or steers.
-static bool Runs(const Emitter* emitter, int32_t p)
+MVFX_NODISCARD static bool Runs(const Emitter* emitter, int32_t p)
 {
     uint32_t needs = p == GRID_WRITE       ? emitter->gridFlags
                      : p == GRID_NEIGHBORS ? MVFX_GRID_FINDS | MVFX_GRID_STEERS
@@ -206,7 +207,7 @@ static uint32_t StepWords(const Emitter* emitter)
 
 // Records the write of the grid's numbers: all of them at the first step,
 // those a step changes after; its count emptied at the first.
-static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
+MVFX_NODISCARD static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 {
     mrhiPassId pass = emitter->gridPasses[GRID_WRITE];
     const mrhiResourceId* g = emitter->gridResources;
@@ -227,9 +228,9 @@ static bool RecordWrite(mvfxGpuSim* sim, Emitter* emitter)
 
 // Records a kernel's pass: its pipeline, bindings, root block (none for
 // NULL) and workgroups.
-static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
-                         const mrhiResourceId* bound, int32_t count, const uint32_t* root,
-                         uint32_t groups)
+MVFX_NODISCARD static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
+                                        const mrhiResourceId* bound, int32_t count,
+                                        const uint32_t* root, uint32_t groups)
 {
     mrhiBinding bindings[GRID_BINDINGS];
     for (int32_t b = 0; b < count; ++b)
@@ -250,7 +251,7 @@ static bool RecordKernel(mvfxGpuSim* sim, mrhiPassId pass, mvfxKernel kernel,
 
 // Records the sort's radix passes over the grid's keys: each pass's
 // offsets in one workgroup, then its scatter over the blocks.
-static bool RecordRadix(mvfxGpuSim* sim, const Emitter* emitter)
+MVFX_NODISCARD static bool RecordRadix(mvfxGpuSim* sim, const Emitter* emitter)
 {
     const mrhiResourceId* g = emitter->gridResources;
     const mrhiResourceId bound[3] = {g[GRID_COUNT], g[GRID_WORDS], g[GRID_DIGITS]};

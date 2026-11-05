@@ -33,7 +33,7 @@ static mvfxResult CheckInput(const mvfxFieldPath* at, uint32_t inputTag, uint32_
                                 mvfxBounded(range[1], -MVFX_MAX_EXTENT, MVFX_MAX_EXTENT));
 }
 
-static bool IsWhite(const mvfxGradient* gradient)
+MVFX_NODISCARD static bool IsWhite(const mvfxGradient* gradient)
 {
     return gradient->colorKeyCount == 0 && gradient->alphaKeyCount == 0;
 }

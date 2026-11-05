@@ -20,7 +20,7 @@ static void Cross(const float a[3], const float b[3], float out[3])
 }
 
 // v less its part along a unit t, normalized; false when nothing is left.
-static bool Across(const float v[3], const float t[3], float out[3])
+MVFX_NODISCARD static bool Across(const float v[3], const float t[3], float out[3])
 {
     float along = Dot(v, t);
     for (int32_t k = 0; k < 3; ++k)

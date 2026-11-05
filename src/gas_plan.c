@@ -241,7 +241,7 @@ mvfxResult mvfxInstance_GetGasStepPlan(const mvfxContext* context, mvfxInstanceI
 
 // Whether nothing pours into gas g after tick: the instance stopped by
 // then, and every emitter splatting into it had its last death.
-static bool IsPouringOver(const mvfxInstance* live, int32_t g, int64_t tick)
+MVFX_NODISCARD static bool IsPouringOver(const mvfxInstance* live, int32_t g, int64_t tick)
 {
     if (tick < live->stopTick)
     {
