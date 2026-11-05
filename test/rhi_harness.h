@@ -77,9 +77,6 @@ typedef struct Run
     // Whether the instances stand still far from the origin, past where
     // binary32 places keep a noise's lattice.
     bool far;
-    // The instances' scale, standing still at the origin (1 for 0): a
-    // world collider is over it in a local emitter's space.
-    float scale;
     // A grid made in the run's context for its emitters' vector fields
     // (NULL for none), and whether it is given new values at half time.
     const mvfxGridDef* grid;
