@@ -77,10 +77,13 @@ fn polyPlane(p: Poly, f: u32) -> vec4<f32> {
         let n = rotate(p.q, axis);
         return vec4<f32>(n, dot3(n, p.x) + p.scale[f / 2u]);
     }
+    // Over its largest part first: a scale of 0 makes a part near 1e30,
+    // whose square f32 cannot hold.
     var n = hullPlane(f).xyz / max(p.scale, vec3<f32>(1e-30));
-    let square = dot3(n, n);
-    if (square > 0.0 && isFinite(square)) {
-        n = n * (1.0 / sqrt(square));
+    let largest = max(abs(n.x), max(abs(n.y), abs(n.z)));
+    if (largest > 0.0 && isFinite(largest)) {
+        n = n / largest;
+        n = n * (1.0 / sqrt(dot3(n, n)));
     }
     n = rotate(p.q, n);
     return vec4<f32>(n, dot3(n, polyVertex(p, polyLoop(p, polyFaceStart(p, f)))));
