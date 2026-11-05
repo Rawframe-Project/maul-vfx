@@ -505,7 +505,7 @@ static void TestRefusals(void)
     Show(&scene, &good);
     uint64_t misuse = mvfxContext_GetMisuse(scene.context);
     static float normals[SIDE * SIDE * 3];
-    for (int32_t field = 0; field < 14; ++field)
+    for (int32_t field = 0; field < 16; ++field)
     {
         // Past a named bound: mvfx_errorLimit, as a direct argument still
         // misuse.
@@ -558,6 +558,29 @@ static void TestRefusals(void)
             bad.byteCount = (int64_t)SIDE * SIDE * 2 - 1;
             bad.stride = SIDE * 2;
             break;
+        case 13:
+            // Invertible, but its inverse past 2^40: fromClip would leave
+            // binary32 (an entry near 1e40).
+            for (int32_t k = 0; k < 16; ++k)
+            {
+                bad.projection[k] *= 1e-39f;
+            }
+            break;
+        case 14:
+        {
+            // Singular (its z column its x and y columns' sum), though
+            // elimination in binary64 leaves its last pivot a rounding
+            // error: scaled by 2^20, its inverse's entries (near 5e8) and
+            // its own fit 2^40, but their product passes 2^32.
+            static const float singular[16] = {
+                9.96875f,  4.09375f,   11.875f,  0, 5.75f, 12.734375f, 11.0625f, 0,
+                15.71875f, 16.828125f, 22.9375f, 0, 0,     0,          0,        1};
+            for (int32_t k = 0; k < 16; ++k)
+            {
+                bad.projection[k] = singular[k] * (k == 15 ? 1.0f : 0x1p20f);
+            }
+            break;
+        }
         default:
             bad.origin[2] = (double)NAN;
             break;
@@ -565,7 +588,7 @@ static void TestRefusals(void)
         CHECK(mvfxInstance_SetDepthImage(scene.context, scene.instance, &bad) == want,
               "an image out of range");
     }
-    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 14, "each counted");
+    CHECK(mvfxContext_GetMisuse(scene.context) == misuse + 16, "each counted");
     // The good image kept: the wall still met.
     Place(&scene, 0, 0, 1, 0, 0, -2);
     Step(&scene);

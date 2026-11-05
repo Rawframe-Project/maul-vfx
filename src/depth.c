@@ -117,6 +117,34 @@ static bool IsPoseValid(const mvfxDepthImage* image)
     return fabs(sqrt(square) - 1.0) <= 0.001;
 }
 
+// The largest an entry of a projection or of its inverse may be: a plan
+// carries both into toClip and fromClip in binary32, through a map of a
+// scale from 1e-6 to 1e6 and places within 2^53, which keeps every entry
+// below 2^116, far from binary32's 2^128.
+#define DEPTH_PROJECTION_BOUND 0x1p40
+
+// The largest the largest entry of a projection times that of its inverse
+// may be: the inverse, by elimination in binary64, then holds to about
+// 2^-21, and a matrix singular but for rounding (a pivot near 2^-53 of its
+// entries, an inverse near 2^53 of its reciprocal) is refused.
+#define DEPTH_PROJECTION_CONDITION 0x1p32
+
+// Whether a projection and its inverse fit the plan's binary32 maps and
+// the inverse holds: DEPTH_PROJECTION_BOUND and
+// DEPTH_PROJECTION_CONDITION.
+MVFX_NODISCARD static bool Conditioned(const double m[16], const double inverse[16])
+{
+    double largest = 0.0;
+    double largestInverse = 0.0;
+    for (int32_t k = 0; k < 16; ++k)
+    {
+        largest = fmax(largest, fabs(m[k]));
+        largestInverse = fmax(largestInverse, fabs(inverse[k]));
+    }
+    return largest <= DEPTH_PROJECTION_BOUND && largestInverse <= DEPTH_PROJECTION_BOUND &&
+           largest * largestInverse <= DEPTH_PROJECTION_CONDITION;
+}
+
 mvfxResult mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxDepthView* out)
 {
     bool bare = planned && image->pixels == nullptr;
@@ -148,7 +176,8 @@ mvfxResult mvfxPrepareDepthView(const mvfxDepthImage* image, bool planned, mvfxD
         out->projection[k] = (double)image->projection[k];
     }
     out->image = *image;
-    return mvfxRequire(Invert(out->projection, out->inverse));
+    return mvfxRequire(Invert(out->projection, out->inverse) &&
+                       Conditioned(out->projection, out->inverse));
 }
 
 // The column-major matrix m times (v, 1), in binary64.
