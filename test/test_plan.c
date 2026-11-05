@@ -1962,6 +1962,7 @@ static void TestColliderBounds(void)
     for (int32_t e = 0; e < 3; ++e)
     {
         emitters[e] = Emitter(64);
+        emitters[e].space = mvfx_spaceLocal;
         emitters[e].rigid = (mvfxRigidDef){.enable = true,
                                            .shape = e < 2 ? mvfx_rigidHull : mvfx_rigidSphere,
                                            .density = 1.0f,

@@ -630,6 +630,7 @@ static void TestColliderBound(Gpu* gpu, mvfxGpu* kernels)
                                       .halfExtents = {1e6f, 1e6f, 1e6f},
                                       .rotation = {0, 0, 0, 1}};
     mvfxEmitterDef emitter = Thrown(mvfx_rigidHull, &wide, 1);
+    emitter.space = mvfx_spaceLocal;
     CHECK(mvfxCreateMesh(context, &s_hull, &emitter.rigid.hull) == mvfx_success, "the hull");
     mvfxEffectDef effectDef = mvfxDefaultEffectDef();
     effectDef.emitters = &emitter;
