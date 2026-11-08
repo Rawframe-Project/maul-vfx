@@ -43,8 +43,32 @@ MVFX_NODISCARD static bool BindTextures(mvfxGpuSim* sim)
     return bound;
 }
 
+// Whether an emitter of rigid hulls is kept out of no box or sphere past
+// MVFX_MAX_PLANNED_COLLIDER at the step, which its search of the two
+// shapes in binary32 could not carry.
+MVFX_NODISCARD static bool CollidersHeld(const mvfxEmitterView* view, const mvfxEmitterPlan* plan)
+{
+    bool hulls = view->rigid.enable && view->rigid.shape == mvfx_rigidHull;
+    bool held = true;
+    for (int32_t c = 0; hulls && c < plan->colliderCount; ++c)
+    {
+        const mvfxPlannedCollider* collider = &plan->colliders[c];
+        bool box = collider->kind == mvfx_colliderBox && !collider->inside;
+        bool sphere = collider->kind == mvfx_colliderSphere && !collider->inside;
+        held = held && (!sphere || collider->radius <= MVFX_MAX_PLANNED_COLLIDER);
+        for (int32_t k = 0; box && k < 3; ++k)
+        {
+            held = held && collider->halfExtents[k] <= MVFX_MAX_PLANNED_COLLIDER;
+        }
+    }
+    return held;
+}
+
 // Places every emitter's grids of the instance's colliders for the step,
-// clearing the passes a frame the host dropped left behind.
+// clearing the passes a frame the host dropped left behind; refuses a
+// step whose hulls meet a collider past MVFX_MAX_PLANNED_COLLIDER (every
+// step of a context's step has the colliders as at its end, so the first
+// step's plan holds them all).
 static mvfxResult PlaceGrids(mvfxGpuSim* sim)
 {
     mvfxEmitterPlan plan;
@@ -57,6 +81,10 @@ static mvfxResult PlaceGrids(mvfxGpuSim* sim)
         if (result != mvfx_success)
         {
             return result;
+        }
+        if (emitter->capacity > 0 && !CollidersHeld(&sim->views[e], &plan))
+        {
+            return mvfx_errorLimit;
         }
         if (emitter->capacity > 0 && plan.depth.enable && sim->hostDepth.index1 == 0)
         {

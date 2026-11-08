@@ -41,6 +41,22 @@ extern "C"
 // context's step takes at most two of its steps.
 #define MVFX_MAX_PLAN_STEPS (2 * MVFX_MAX_LIQUID_SUBSTEPS)
 
+// The largest half size of a box collider, and radius of a sphere one,
+// that a planned emitter of rigid hulls is kept out of, in the
+// particles' space as resolved for a step: a collider's own lengths
+// (at most MVFX_MAX_EXTENT) times the map's scale, which a world
+// collider of a local emitter takes over the instance's scale. The
+// GPU part's search of a hull and a box or a sphere's center runs in
+// binary32 and multiplies squares of their difference's lengths,
+// about its width to the fourth near a contact, past binary32's
+// largest value beyond a width of about 4.3e9; within this bound and
+// MVFX_MAX_HULL_REACH the widest difference is near 1.5e9, its fourth
+// power some 68 times under it. The GPU part refuses such a step
+// (mvfxGpuSim_AddPasses); the plan itself is given. It bounds
+// only the products: binary32 holds a length there to about 16, so a
+// body far smaller than such a collider meets it to that.
+#define MVFX_MAX_PLANNED_COLLIDER 0x1p28f
+
     // A birth a step owes an emitter: 48 bytes, as a GPU buffer holds it,
     // its layout final from 1.0.
     typedef struct mvfxPlannedBirth
