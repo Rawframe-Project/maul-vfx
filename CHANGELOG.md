@@ -6,6 +6,76 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.14.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.13.0...v0.14.0) (2026-11-08)
+
+This release bounds what the GPU part's binary32 search of rigid hulls
+must carry, refusing or killing what would overflow it, fixes the convex
+search's answer in a rare overlap, makes a depth image's inputs safe for
+both paths, and fixes a water crossing at the edge of a surface's grid.
+Results change only in those cases. The golden hashes, the effect file
+format and the GPU part's tolerances are unchanged.
+
+### Changed
+
+- **Breaking: a rigid hull born reaching past `MVFX_MAX_HULL_REACH`
+  (2^28) from its center**, at the most its size over life scales it,
+  is killed as it is born, on the CPU path and the GPU part alike, and
+  counted in `valueKillCount`. The GPU part's convex search runs in
+  binary32 and overflowed for shapes wider than about 4.3e9, where the
+  two paths parted. The GPU part's statistics record has a new word,
+  `MVFX_GPU_VALUE_KILL_COUNT`, so `MVFX_GPU_STATISTICS_WORDS` is 56
+  ([#328](https://github.com/Rawframe-Project/maul-vfx/pull/328)).
+- **Breaking: a planned instance's step is refused with
+  `mvfx_errorLimit` by `mvfxGpuSim_AddPasses`** when an emitter of rigid
+  hulls is kept out of a box collider with a half size, or a sphere with
+  a radius, past `MVFX_MAX_PLANNED_COLLIDER` (2^28) in the particles'
+  space. A collider reaches that size when the instance's scale carries
+  it there, as a world box of half size 1e6 seen by a local emitter of
+  an instance scaled by 1e-4; there the GPU part's search overflowed and
+  parted from the CPU path. Steps within the bound are unchanged
+  ([#330](https://github.com/Rawframe-Project/maul-vfx/pull/330)).
+- **Breaking: `mvfxInstance_SetDepthImage` refuses a projection that
+  binary32 cannot carry**, with `mvfx_errorInvalid`: one with an entry
+  of it or of its inverse past 2^40 in size, or with its largest entry
+  times its inverse's past 2^32. Before, such a projection, as one
+  scaled by 1e-39 or one almost singular, was taken, and a planned
+  instance handed the GPU infinite or subnormal entries
+  ([#323](https://github.com/Rawframe-Project/maul-vfx/pull/323)).
+- **Breaking: a depth image's turn given off unit (within 0.001) is
+  normalized when it is set**, as an instance's transform is. Before,
+  the CPU path turned and scaled the image's points and normals by the
+  quaternion as given, while a planned instance composed it into one
+  turn, so a local emitter's normals on the two paths were about 3e-4
+  apart. The CPU path's
+  collisions with such an image change
+  ([#324](https://github.com/Rawframe-Project/maul-vfx/pull/324)).
+
+### Fixed
+
+- **Breaking: the convex search (a rigid hull against a box collider, or
+  two hulls) no longer answers from a face its EPA step removed.** When
+  the step's point lay in line with an edge of its horizon, as for a
+  hull of size 0 along an axis inside a box, the search took its depth
+  and normal from whatever the face's slot held, and a body could be
+  pushed out 2 units along the wrong axis. Each step is now added whole
+  or not at all. Every other search gives the same bits
+  ([#317](https://github.com/Rawframe-Project/maul-vfx/pull/317)).
+- **Breaking: a particle crossing a water surface at the low edge of its
+  grid is decided by the water there.** The crossing point could round
+  an ulp off the grid; the CPU path then read the surface's height
+  uninitialized, and the GPU part read the crossing's normal at the
+  grid's far corner. Every other crossing is unchanged
+  ([#302](https://github.com/Rawframe-Project/maul-vfx/pull/302)).
+- On the GPU part, a rigid hull of size 0 along an axis meeting a box
+  collider now matches the CPU path. Its faces across that axis kept a
+  normal about 1e30 long, because binary32 could not square it
+  ([#325](https://github.com/Rawframe-Project/maul-vfx/pull/325)).
+- `MVFX_NODISCARD` is the `[[nodiscard]]` attribute under GCC 14's C23
+  mode too, so a program built with GCC 14 is warned when it drops a
+  status. GCC 14 reports `__STDC_VERSION__` as 202000L there, and the
+  macro expanded to nothing
+  ([#305](https://github.com/Rawframe-Project/maul-vfx/pull/305)).
+
 ## [0.13.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.12.0...v0.13.0) (2026-11-04)
 
 This release closes a gap in the rule that host code may not change a
