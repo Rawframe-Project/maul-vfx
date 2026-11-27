@@ -16,4 +16,19 @@
 void mvfxBoxBoxContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
                         const mvfxResolvedCollider* c, mvfxBodyContacts* list);
 
+// The part of a box collider the particles' space does not turn that a
+// hull body of reach r at x can meet, as its low and high corners in the
+// particles' space, so a search against it takes its tolerances from the
+// body and not from the box (a box 1e6 across would make them lengths
+// like the body's own). Each axis is clipped to x less and plus twice the
+// greatest power of two at most 8 r (8 r to 16 r, the same bits for a
+// reach a rounding apart): the box's real faces within it are kept as
+// its center plus or less its half size, and an artificial face is at
+// least 7 r from the body. A body whose center is inside the box by more
+// than 2 r on every axis gets the whole box, so it leaves by a real face.
+// Returns false where the clip is empty, as no part of the body reaches
+// it.
+MVFX_NODISCARD bool mvfxClipBox(const mvfxResolvedCollider* c, const float x[3], float r,
+                                float low[3], float high[3]);
+
 #endif

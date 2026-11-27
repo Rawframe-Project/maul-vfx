@@ -13,6 +13,39 @@ static float Dot(const float a[3], const float b[3])
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
+bool mvfxClipBox(const mvfxResolvedCollider* c, const float x[3], float r, float low[3],
+                 float high[3])
+{
+    // Twice the power of two at most 8 r, its exponent bits alone: 0 for
+    // a reach of 0.
+    const float eight = 8.0f * r;
+    uint32_t bits = 0;
+    memcpy(&bits, &eight, sizeof bits);
+    bits &= 0x7f800000u;
+    float reach = 0.0f;
+    memcpy(&reach, &bits, sizeof reach);
+    reach *= 2.0f;
+    bool deep = true;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        low[k] = c->center[k] + -c->halfExtents[k];
+        high[k] = c->center[k] + c->halfExtents[k];
+        deep = deep && x[k] - low[k] > 2.0f * r && high[k] - x[k] > 2.0f * r;
+    }
+    if (deep)
+    {
+        return true;
+    }
+    bool meets = true;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        low[k] = fmaxf(low[k], x[k] - reach);
+        high[k] = fminf(high[k], x[k] + reach);
+        meets = meets && low[k] <= high[k];
+    }
+    return meets;
+}
+
 static void ToBody(const float q[4], const float v[3], float out[3])
 {
     const float inverse[4] = {-q[0], -q[1], -q[2], q[3]};

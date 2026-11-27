@@ -24,9 +24,10 @@ typedef struct mvfxPolytope
     const uint8_t* loop;
 } mvfxPolytope;
 
-// A box of half sizes half at center turned by rotation.
-void mvfxBoxPolytope(const float center[3], const float rotation[4], const float half[3],
-                     mvfxPolytope* out);
+// A box at center turned by rotation, from its low corner to its high one
+// in its frame (-half and half for a whole box).
+void mvfxBoxPolytope(const float center[3], const float rotation[4], const float low[3],
+                     const float high[3], mvfxPolytope* out);
 
 // A hull scaled along its axes, turned by q and moved to x.
 void mvfxHullPolytope(const mvfxHull* hull, const float scale[3], const float x[3],

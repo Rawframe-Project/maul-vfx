@@ -13,7 +13,8 @@
 // degrees, where its contacts change from faces to a point, following a
 // box; a box's and a hull's edge across a heightfield's crest held up by
 // it; a mesh's hull counted past the most; hulls at the edge of the
-// largest reach, born or killed as they are born; the checks. Bodies are
+// largest reach, born or killed as they are born; hulls meeting a box of
+// the largest size as they meet a small one; the checks. Bodies are
 // read from their records, their spins through a host module after
 // motion, and a hull's shape from its emitter's view.
 
@@ -1081,6 +1082,55 @@ static void TestLargestReach(void)
     mvfxDestroyContext(s_scene.context);
 }
 
+// Lopsided hulls 0.1 to 0.5 across, turned any way, let go at rest 0.3
+// above a box collider of half size h centered h below the origin, so
+// its top face is at 0 for every h; their records after 45 steps.
+static int32_t OnBoxOf(float h, TestParticle out[8])
+{
+    const mvfxCollider box = {.kind = mvfx_colliderBox,
+                              .center = {0, -h, 0},
+                              .halfExtents = {h, h, h},
+                              .rotation = {0, 0, 0, 1}};
+    static const float size[3] = {0.1f, 0.1f, 0.1f};
+    static const float turn[3] = {0, 0, 0};
+    static const double above[12] = {0.3, 0.3, 0, -0.3, 0.3, 0, 0, 0.3, 0.3, 0, 0.3, -0.3};
+    static const float still[12] = {0};
+    OpenContext();
+    mvfxEmitterDef emitter = Rigid(mvfx_rigidHull, MeshOf(s_lopsided, 7), size, turn, true);
+    emitter.size.max[0] = emitter.size.max[1] = emitter.size.max[2] = 0.5f;
+    emitter.orientation.max[0] = emitter.orientation.max[1] = emitter.orientation.max[2] = 6.28f;
+    emitter.colliders = &box;
+    PlayAt(&emitter, 1, above, still, 4);
+    Steps(45);
+    int32_t count = ReadParticles(s_scene.context, s_scene.instance, 0, out, 8);
+    mvfxDestroyContext(s_scene.context);
+    return count;
+}
+
+static void TestLargeBox(void)
+{
+    // A hull's search against a box the particles' space does not turn
+    // takes the box clipped to the hull's neighbourhood, so the bodies
+    // meet a box of half size 1e6 (MVFX_MAX_EXTENT) with the same bits as
+    // one of 10: the clipped boxes are the same.
+    TestParticle small[8];
+    TestParticle large[8];
+    int32_t count = OnBoxOf(10.0f, small);
+    CHECK(count == 4 && OnBoxOf(1e6f, large) == 4, "four bodies on each box");
+    bool landed = true;
+    bool same = true;
+    for (int32_t i = 0; i < 4 && count == 4; ++i)
+    {
+        landed = landed && small[i].position[1] > 0.0f && small[i].position[1] < 0.29f;
+        same = same &&
+               memcmp(small[i].position, large[i].position, sizeof small[i].position) == 0 &&
+               memcmp(small[i].velocity, large[i].velocity, sizeof small[i].velocity) == 0 &&
+               memcmp(small[i].orientation, large[i].orientation, sizeof small[i].orientation) == 0;
+    }
+    CHECK(landed, "the hulls landed on the box");
+    CHECK(same, "on a box of 1e6 as on one of 10, bit for bit");
+}
+
 static void TestChecks(void)
 {
     OpenContext();
@@ -1147,6 +1197,7 @@ int main(void)
     TestThinNeedles();
     TestVertexCount();
     TestLargestReach();
+    TestLargeBox();
     TestChecks();
     return s_failures == 0 ? 0 : 1;
 }
