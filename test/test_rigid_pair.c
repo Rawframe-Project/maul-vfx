@@ -1005,6 +1005,62 @@ static void TestEpaStuck(void)
           "a flat square in a box met at their depth, 0.25 along +X");
 }
 
+static void TestTouchingInLine(void)
+{
+    // Flat rectangles, as hulls of a box's corners (mvfxBoxPolytope's,
+    // of a box of no size along one axis), turned by eighth turns so that
+    // they lie in one plane and touch along an edge, overlapping by the
+    // rounding of their turned corners. Three points of GJK's simplex
+    // fall in line there, to rounding: a triangle of no area, whose
+    // regions kept a corner 0.35 from the origin though its edge held the
+    // origin within 3e-8, and the search ended apart from that corner,
+    // not met at a margin of 0.01. They meet at a distance within
+    // rounding of 0.
+    static const float a0[24] = {
+        0x1.0f8768p+0, -0x1.0f876ap+0, -0x1p-1, -0x1.0f8768p+0, 0x1.0f876ap+0, -0x1p-1,
+        0x1.0f8768p+0, -0x1.0f876ap+0, -0x1p-1, -0x1.0f8768p+0, 0x1.0f876ap+0, -0x1p-1,
+        0x1.0f8768p+0, -0x1.0f876ap+0, 0x1p-1,  -0x1.0f8768p+0, 0x1.0f876ap+0, 0x1p-1,
+        0x1.0f8768p+0, -0x1.0f876ap+0, 0x1p-1,  -0x1.0f8768p+0, 0x1.0f876ap+0, 0x1p-1};
+    static const float b0[24] = {
+        0x1.4f876ap+0,  -0x1.4f876ep+0, -0x1p-1, 0x1.4f876ap+0,  -0x1.4f876ep+0, -0x1p-1,
+        -0x1.9f0ed4p-1, 0x1.9f0edcp-1,  -0x1p-1, -0x1.9f0ed4p-1, 0x1.9f0edcp-1,  -0x1p-1,
+        0x1.4f876ap+0,  -0x1.4f876ep+0, 0x1p+0,  0x1.4f876ap+0,  -0x1.4f876ep+0, 0x1p+0,
+        -0x1.9f0ed4p-1, 0x1.9f0edcp-1,  0x1p+0,  -0x1.9f0ed4p-1, 0x1.9f0edcp-1,  0x1p+0};
+    static const float a1[24] = {
+        -0x1.0f876ep-1, -0x1.4p+0, 0x1.0f876ap-1, 0x1.0f876ep-1, -0x1.4p+0, -0x1.0f876ap-1,
+        -0x1.0f876ep-1, 0x1.4p+0,  0x1.0f876ap-1, 0x1.0f876ep-1, 0x1.4p+0,  -0x1.0f876ap-1,
+        -0x1.0f876ep-1, -0x1.4p+0, 0x1.0f876ap-1, 0x1.0f876ep-1, -0x1.4p+0, -0x1.0f876ap-1,
+        -0x1.0f876ep-1, 0x1.4p+0,  0x1.0f876ap-1, 0x1.0f876ep-1, 0x1.4p+0,  -0x1.0f876ap-1};
+    static const float b1[24] = {
+        -0x1.9f0ed4p-1, -0x1.4p+0, 0x1.9f0edp-1,   -0x1.9f0ed4p-1, -0x1.4p+0, 0x1.9f0edp-1,
+        -0x1.9f0ed4p-1, -0x1.8p-1, 0x1.9f0edp-1,   -0x1.9f0ed4p-1, -0x1.8p-1, 0x1.9f0edp-1,
+        0x1.4f876ap+0,  -0x1.4p+0, -0x1.4f8768p+0, 0x1.4f876ap+0,  -0x1.4p+0, -0x1.4f8768p+0,
+        0x1.4f876ap+0,  -0x1.8p-1, -0x1.4f8768p+0, 0x1.4f876ap+0,  -0x1.8p-1, -0x1.4f8768p+0};
+    static const float a2[24] = {
+        0x1.c48c5cp-1,  -0x1.c48c62p-1, -0x1.8p-1, 0x1.c48c5cp-1,  -0x1.c48c62p-1, -0x1.8p-1,
+        -0x1.c48c5cp-1, 0x1.c48c62p-1,  -0x1.8p-1, -0x1.c48c5cp-1, 0x1.c48c62p-1,  -0x1.8p-1,
+        0x1.c48c5cp-1,  -0x1.c48c62p-1, 0x1.8p-1,  0x1.c48c5cp-1,  -0x1.c48c62p-1, 0x1.8p-1,
+        -0x1.c48c5cp-1, 0x1.c48c62p-1,  0x1.8p-1,  -0x1.c48c5cp-1, 0x1.c48c62p-1,  0x1.8p-1};
+    static const float b2[24] = {
+        0x1.9f0edp-1, -0x1.9f0ed4p-1, -0x1.8p-1, -0x1.4f8768p+0, 0x1.4f876ap+0, -0x1.8p-1,
+        0x1.9f0edp-1, -0x1.9f0ed4p-1, -0x1.8p-1, -0x1.4f8768p+0, 0x1.4f876ap+0, -0x1.8p-1,
+        0x1.9f0edp-1, -0x1.9f0ed4p-1, 0x1p-2,    -0x1.4f8768p+0, 0x1.4f876ap+0, 0x1p-2,
+        0x1.9f0edp-1, -0x1.9f0ed4p-1, 0x1p-2,    -0x1.4f8768p+0, 0x1.4f876ap+0, 0x1p-2};
+    const float* const a[3] = {a0, a1, a2};
+    const float* const b[3] = {b0, b1, b2};
+    bool touching = true;
+    for (int32_t i = 0; i < 3; ++i)
+    {
+        bool stopped = true;
+        int32_t steps = -1;
+        float distance = 1.0f;
+        float normal[3];
+        bool met = mvfxTestConvexMeet(a[i], 8, b[i], 8, 0.01f, &stopped, &steps, &distance, normal);
+        touching = touching && met && !stopped && fabsf(distance) <= 1e-6f;
+    }
+    CHECK(touching, "rectangles touching along an edge in one plane met at distance 0");
+}
+
 // A box's corners: half sizes about center, turned by unit quaternion q.
 static void TurnedBox(const float center[3], const float half[3], const float q[4], float out[24])
 {
@@ -1336,6 +1392,7 @@ int main(void)
     TestTouching();
     TestEpaStuck();
     TestEpaAgainstAxes();
+    TestTouchingInLine();
     TestPoolAndStrikes();
     TestUnits();
     return s_failures == 0 ? 0 : 1;

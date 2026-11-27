@@ -373,6 +373,8 @@ MVFX_NODISCARD static bool Gjk(const mvfxPolytope* a, const mvfxPolytope* b, Sim
                 return true;
             }
         }
+        const Simplex before = *s;
+        const double last[3] = {v[0], v[1], v[2]};
         s->p[s->count++] = p;
         if (!Nearest(s, v))
         {
@@ -380,6 +382,14 @@ MVFX_NODISCARD static bool Gjk(const mvfxPolytope* a, const mvfxPolytope* b, Sim
         }
         // No nearer than before: as near as rounding allows (a simplex
         // can otherwise cycle between faces about as near, to the cap).
+        // Further, the simplex before stands: a triangle of no area (its
+        // points in line to rounding) keeps one of its regions, which may
+        // be a corner far from the origin, though its edge held it near.
+        if (Dot(v, v) > vv)
+        {
+            *s = before;
+            memcpy(v, last, sizeof last);
+        }
         if (!(Dot(v, v) < vv))
         {
             return true;
