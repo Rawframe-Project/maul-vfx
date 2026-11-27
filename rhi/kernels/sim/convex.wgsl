@@ -285,12 +285,20 @@ fn gjk(a: Poly, b: Poly, s: ptr<function, Simplex>, v: ptr<function, vec3<f32>>,
                 return true;
             }
         }
+        let before = *s;
+        let last = *v;
         (*s).p[(*s).count] = p;
         (*s).count += 1u;
         if (!nearestOf(s, v)) {
             return false;
         }
-        // No nearer than before: as near as rounding allows.
+        // No nearer than before: as near as rounding allows. Further, the
+        // simplex before stands (a triangle of no area may keep a far
+        // corner), as the core's Gjk.
+        if (dot3(*v, *v) > vv) {
+            *s = before;
+            *v = last;
+        }
         if (!(dot3(*v, *v) < vv)) {
             return true;
         }
