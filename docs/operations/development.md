@@ -9,7 +9,7 @@ Setting up a machine to build and test Maul VFX, and regenerating what is genera
 | Linux | CMake 3.25, Ninja, GCC 14 and Clang 20 (`gcc-14`, `clang-20`), `clang-tidy-20`, clang-format 22.1.5 (`pip install clang-format==22.1.5`); for the GPU part's suites, lavapipe (`mesa-vulkan-drivers`) and the Vulkan validation layers. |
 | Windows | Visual Studio with "C++ Clang tools for Windows" (`clang-cl`). |
 | macOS | Xcode's Apple Clang. |
-| The web | Emscripten (`EMSDK` set, as `emsdk activate` does) and Node. |
+| The web | Emscripten 7.0.1, the version CI pins in `ci.yml` (`EMSDK` set, as `emsdk activate` does), and Node. |
 
 The organization's CI image has everything the Linux cells need. In the workspace, run full checks, large builds and fuzzing through `$RAWFRAME_ROOT/tools/heavy.sh`.
 
