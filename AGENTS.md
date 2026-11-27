@@ -23,7 +23,7 @@ out/linux-clang-20/test_golden --print                          # the golden has
 python3 tools/gen_file.py       # regenerate src/file_fields.c, src/file_tags.h, test/file_pins.h and test/file_layout.h after changing a def struct or tools/file-tags.txt
 ```
 
-Run the `pr`, `full` and `extended` tiers, the lavapipe presets and fuzzing through `/home/rawframe-project/tools/heavy.sh` on the shared machine. Every CI cell is a preset in `CMakePresets.json`, built in `out/<preset>`. Each suite `test/test_<name>.c` has the label `<name>`. Tests that need a device carry `integration`; the GPU part's suites among them also carry `nightly` and run only in the `linux-rhi-lavapipe` presets, while `linux-rhi` runs `sample_gpu` on lavapipe as a smoke test.
+Run the `pr`, `full` and `extended` tiers, the lavapipe presets and fuzzing through `$RAWFRAME_ROOT/tools/heavy.sh` (on Windows, in the workspace's WSL distribution through its `tools/linux.sh`). Every CI cell is a preset in `CMakePresets.json`, built in `out/<preset>`. Each suite `test/test_<name>.c` has the label `<name>`. Tests that need a device carry `integration`; the GPU part's suites among them also carry `nightly` and run only in the `linux-rhi-lavapipe` presets, while `linux-rhi` runs `sample_gpu` on lavapipe as a smoke test.
 
 ## Ways to hurt yourself
 

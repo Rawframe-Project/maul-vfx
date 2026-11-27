@@ -13,10 +13,10 @@ What to run before pushing, what each tier covers, and what the test presets exp
 | `full` | Also ThreadSanitizer, the shared library, Clang's Release build, clang-tidy on `rhi/src/kernels.c` (it includes 70 MB of containers and takes over three minutes), and 60 seconds of fuzzing per target. | under 20 minutes |
 | `extended` | Also the GPU part's suites on lavapipe: under the Vulkan validation layer, and under AddressSanitizer. | up to 2 hours |
 
-Run `changed` before every push. Run the other tiers through the workspace's heavy-job wrapper on the shared machine:
+Run `changed` before every push. Run the other tiers through the workspace's heavy-job wrapper (on Windows, in the workspace's WSL distribution through its `tools/linux.sh`):
 
 ```sh
-/home/rawframe-project/tools/heavy.sh tools/check.sh full
+"$RAWFRAME_ROOT/tools/heavy.sh" tools/check.sh full
 ```
 
 The macOS, Windows and web cells run in CI only, `windows-d3d12` among them. The organization's documentation check runs when the `.github` repository is checked out beside the workspace (`ORG_DEFAULTS` overrides where).
@@ -89,5 +89,5 @@ The nightly `fuzz` run minimizes each target's corpus with libFuzzer's merge and
 `test_elementary_sweep` and `test_half_sweep` are built but not registered: they compare the library's own sine, cosine, exponential, power and half conversion against references over every binary32 input of their domains, which takes minutes. Run them by hand after changing `src/elementary.c` or `src/half.c`:
 
 ```sh
-/home/rawframe-project/tools/heavy.sh out/linux-clang-20/test_elementary_sweep
+"$RAWFRAME_ROOT/tools/heavy.sh" out/linux-clang-20/test_elementary_sweep
 ```
