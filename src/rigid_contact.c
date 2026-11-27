@@ -745,14 +745,33 @@ static void HullSphereContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
     mvfxAddBodyContact(list, point, near, n, depth);
 }
 
-// A hull outside a box, as two polytopes.
+// A hull outside a box, as two polytopes: a box the particles' space does
+// not turn clipped to the hull's neighbourhood (mvfxClipBox), a turned
+// one whole.
 static void HullBoxContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
                             const mvfxResolvedCollider* c, mvfxBodyContacts* list)
 {
     mvfxPolytope hull;
     mvfxPolytope box;
     mvfxHullPolytope(s->hull, s->scale, b->x, b->q, &hull);
-    mvfxBoxPolytope(c->center, c->rotation, c->halfExtents, &box);
+    if (c->rotation[0] != 0.0f || c->rotation[1] != 0.0f || c->rotation[2] != 0.0f)
+    {
+        const float* h = c->halfExtents;
+        const float low[3] = {-h[0], -h[1], -h[2]};
+        mvfxBoxPolytope(c->center, c->rotation, low, h, &box);
+    }
+    else
+    {
+        static const float origin[3] = {0.0f, 0.0f, 0.0f};
+        static const float still[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        float low[3];
+        float high[3];
+        if (!mvfxClipBox(c, b->x, mvfxBodyReach(s), low, high))
+        {
+            return;
+        }
+        mvfxBoxPolytope(origin, still, low, high, &box);
+    }
     PolytopeContacts(b, &hull, &box, list);
 }
 

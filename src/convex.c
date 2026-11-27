@@ -46,8 +46,8 @@ static const uint16_t s_boxStart[7] = {0, 4, 8, 12, 16, 20, 24};
 static const uint8_t s_boxLoop[24] = {1, 3, 7, 5, 0, 4, 6, 2, 2, 6, 7, 3,
                                       0, 1, 5, 4, 4, 5, 7, 6, 0, 2, 3, 1};
 
-void mvfxBoxPolytope(const float center[3], const float rotation[4], const float half[3],
-                     mvfxPolytope* out)
+void mvfxBoxPolytope(const float center[3], const float rotation[4], const float low[3],
+                     const float high[3], mvfxPolytope* out)
 {
     out->vertexCount = 8;
     out->faceCount = 6;
@@ -58,7 +58,7 @@ void mvfxBoxPolytope(const float center[3], const float rotation[4], const float
         float corner[3];
         for (int32_t k = 0; k < 3; ++k)
         {
-            corner[k] = (i >> k & 1) != 0 ? half[k] : -half[k];
+            corner[k] = (i >> k & 1) != 0 ? high[k] : low[k];
         }
         mvfxRotate(rotation, corner, out->vertices[i]);
         for (int32_t k = 0; k < 3; ++k)
@@ -71,7 +71,7 @@ void mvfxBoxPolytope(const float center[3], const float rotation[4], const float
         float axis[3] = {0.0f, 0.0f, 0.0f};
         axis[f / 2] = f % 2 == 0 ? 1.0f : -1.0f;
         mvfxRotate(rotation, axis, out->planes[f]);
-        out->planes[f][3] = DotF(out->planes[f], center) + half[f / 2];
+        out->planes[f][3] = DotF(out->planes[f], center) + (f % 2 == 0 ? high[f / 2] : -low[f / 2]);
     }
 }
 

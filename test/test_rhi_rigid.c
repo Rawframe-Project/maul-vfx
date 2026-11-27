@@ -429,6 +429,23 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
                .mesh = &s_wide,
                .scale = 3.8e-3f},
         "hulls on a box 2.6e8 in half size in their space");
+    // The suite's hulls, 0.1 to 0.5 across, four placed at rest 0.3 above
+    // the same box of a world emitter before each step: the CPU path
+    // searches the box clipped to each hull's neighbourhood, so its size
+    // does not set the search's tolerances, and the GPU part's search of
+    // the whole box in binary32 matches it. (With the CPU path searching
+    // the whole box too, its tolerances a millionth of the box's size,
+    // the paths parted by 49 particles.)
+    static const double above[12] = {0.3, 0.3, 0, -0.3, 0.3, 0, 0, 0.3, 0.3, 0, 0.3, -0.3};
+    static const mvfxSpawnRequest resting = {.count = 4, .positions = above, .velocities = still};
+    emitter = Thrown(mvfx_rigidHull, &wide, 1);
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.hostSpawnCapacity = 8;
+    Met(gpu, kernels,
+        &(Run){
+            .mostApart = 4, .emitters = &emitter, .spawn = &resting, .least = -1, .mesh = &s_hull},
+        "hulls resting on a box 1e6 in half size");
     // Hulls at the edge of MVFX_MAX_HULL_REACH (2^28): two of size 2.95e5,
     // 1.5104e8 in half size and reaching 2.5% short of it, placed upright
     // 16 above the origin and moving down at 1e4 (binary32's places 16

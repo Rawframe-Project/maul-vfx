@@ -760,7 +760,14 @@ extern "C"
         int32_t bodyContacts;
         // A hull's mesh, its hull that of the positions the mesh was
         // created with: mvfxMesh_SetPositions moves no hull, before the
-        // effect is created or after.
+        // effect is created or after. A hull kept out of a box the
+        // particles' space does not turn meets the box clipped to its
+        // neighbourhood, so the box's size does not change its contacts.
+        // Against a turned box or a sphere, the search's tolerances grow
+        // with the collider's size: lopsided hulls 0.1 to 0.5 across
+        // resting on a turned box of half size 1e4 part from those on one
+        // of 10 by 1.9e-4 in place (1.3e-2 at 1e6), and on a sphere of
+        // radius 1e4 from those on one of 1e3 by 3.3e-3 (0.14 at 1e6).
         mvfxMeshId hull;
         // Sleeping: a body is still while its farthest point's speed (its
         // speed plus its angular speed times its reach) is below sleepSpeed,
