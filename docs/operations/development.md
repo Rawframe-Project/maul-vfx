@@ -11,7 +11,7 @@ Setting up a machine to build and test Maul VFX, and regenerating what is genera
 | macOS | Xcode's Apple Clang. |
 | The web | Emscripten (`EMSDK` set, as `emsdk activate` does) and Node. |
 
-The organization's CI image has everything the Linux cells need. On the shared development machine, run full checks, large builds and fuzzing through `/home/rawframe-project/tools/heavy.sh`.
+The organization's CI image has everything the Linux cells need. In the workspace, run full checks, large builds and fuzzing through `$RAWFRAME_ROOT/tools/heavy.sh`.
 
 ## Building
 
@@ -41,7 +41,7 @@ The GPU part's suites need a device. Those that run on Maul RHI's test driver (`
 ```sh
 cmake --preset linux-rhi-lavapipe
 cmake --build --preset linux-rhi-lavapipe
-/home/rawframe-project/tools/heavy.sh ctest --preset linux-rhi-lavapipe -R rhi_events
+"$RAWFRAME_ROOT/tools/heavy.sh" ctest --preset linux-rhi-lavapipe -R rhi_events
 ```
 
 A device suite and the GPU sample exit 77 and count as skipped when the adapter search succeeds and finds no adapter, unless `MVFX_RHI_REQUIRED` is set; a failed search, device or GPU object fails them. Those presets set it, to `vulkan`, or `d3d12` in the `windows-rhi-d3d12` preset; the device suites and the sample then also refuse an adapter of another driver, and any other value fails them before the search. On D3D12 only `rhi_kernels` runs: WARP, the runners' D3D12 adapter, faults compiling the simulation's kernels, and its in-place 64-bit remainders are an expected failure there that fails the check if it ever passes ([#65](https://github.com/Rawframe-Project/maul-vfx/issues/65)). The first frame of a run compiles every kernel it dispatches: minutes on lavapipe with an empty shader cache, a fraction of a second with a warm one. lavapipe keys its cache on the CPU, its count included, so pinning a run to other cores (`taskset`) starts it cold.
@@ -66,8 +66,8 @@ Run a generator again whenever its inputs change, and commit what it writes. [ke
 The files listed under "Editing shared family files" in [AGENTS.md](../../AGENTS.md#ways-to-hurt-yourself) are synced from the organization's `.github` repository. Take a new family revision with
 
 ```sh
-python3 /home/rawframe-project/.github/maul/family_sync.py --write maul-vfx
-python3 /home/rawframe-project/.github/maul/family_sync.py --check maul-vfx
+python3 ../../.github/maul/family_sync.py --write maul-vfx
+python3 ../../.github/maul/family_sync.py --check maul-vfx
 ```
 
 in a pull request of its own.
