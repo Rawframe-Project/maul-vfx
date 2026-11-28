@@ -51,8 +51,7 @@ bool mvfxClipBox(const mvfxResolvedCollider* c, const float x[3], float r, float
     return meets;
 }
 
-bool mvfxClipTurnedBox(const mvfxResolvedCollider* c, const float x[3], float r,
-                       float corners[8][3], float planes[6][4])
+bool mvfxClipTurnedBox(const mvfxResolvedCollider* c, const float x[3], float r, mvfxPolytope* out)
 {
     const float reach = ClipReach(r);
     const float inverse[4] = {-c->rotation[0], -c->rotation[1], -c->rotation[2], c->rotation[3]};
@@ -78,6 +77,10 @@ bool mvfxClipTurnedBox(const mvfxResolvedCollider* c, const float x[3], float r,
             return false;
         }
     }
+    // The box's loops and counts, then its corners and faces in binary64.
+    const float* h = c->halfExtents;
+    const float whole[3] = {-h[0], -h[1], -h[2]};
+    mvfxBoxPolytope(c->center, c->rotation, whole, h, out);
     for (int32_t i = 0; i < 8; ++i)
     {
         double corner[3];
@@ -89,7 +92,7 @@ bool mvfxClipTurnedBox(const mvfxResolvedCollider* c, const float x[3], float r,
         mvfxRotateDouble(c->rotation, corner, turned);
         for (int32_t k = 0; k < 3; ++k)
         {
-            corners[i][k] = (float)(turned[k] + (double)c->center[k]);
+            out->vertices[i][k] = (float)(turned[k] + (double)c->center[k]);
         }
     }
     for (int32_t f = 0; f < 6; ++f)
@@ -101,10 +104,10 @@ bool mvfxClipTurnedBox(const mvfxResolvedCollider* c, const float x[3], float r,
         double offset = f % 2 == 0 ? high[f / 2] : -low[f / 2];
         for (int32_t k = 0; k < 3; ++k)
         {
-            planes[f][k] = (float)n[k];
+            out->planes[f][k] = (float)n[k];
             offset += n[k] * (double)c->center[k];
         }
-        planes[f][3] = (float)offset;
+        out->planes[f][3] = (float)offset;
     }
     return true;
 }
