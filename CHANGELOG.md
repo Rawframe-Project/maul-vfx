@@ -8,11 +8,34 @@ simulation's results.
 
 ## [0.14.1](https://github.com/Rawframe-Project/maul-vfx/compare/v0.14.0...v0.14.1) (2026-11-28)
 
+This release fixes two cases where the CPU path's convex search answered
+rigid hulls wrongly: against a box collider much larger than the body,
+and where two shapes touch face to face. Results change only in those
+cases. The golden hashes, the effect file format and the GPU part's
+tolerances are unchanged.
 
 ### Fixed
 
-* **collide:** keep GJK's nearer simplex when a step falls in line ([#341](https://github.com/Rawframe-Project/maul-vfx/issues/341)) ([6eaa27e](https://github.com/Rawframe-Project/maul-vfx/commit/6eaa27e954392a2efc28510969ac95e7ba124b91)), closes [#313](https://github.com/Rawframe-Project/maul-vfx/issues/313)
-* **collide:** search a hull against an unturned box in its neighbourhood ([#339](https://github.com/Rawframe-Project/maul-vfx/issues/339)) ([2113d44](https://github.com/Rawframe-Project/maul-vfx/commit/2113d449d1bd104f1741cab2626644acf8b34d16)), closes [#331](https://github.com/Rawframe-Project/maul-vfx/issues/331) [#329](https://github.com/Rawframe-Project/maul-vfx/issues/329)
+- **A rigid hull meets a large box collider as it meets a small one.**
+  The CPU path's search took its tolerances from the size of the
+  shapes it compared, so against a box of half size 1e6
+  (`MVFX_MAX_EXTENT`) a body 0.1 to 0.5 across could be reported
+  touching 2e-3 away, and settled differently than on a small box:
+  1.2e-2 apart in place after 45 steps. A box the particles' space
+  does not turn is now searched clipped to the hull's neighbourhood,
+  so its size no longer matters, and the GPU part, which searches the
+  whole box, agrees with the CPU path on it. A turned box and a sphere
+  are still searched whole; `mvfxRigidDef.hull` states their measured
+  limit
+  ([#339](https://github.com/Rawframe-Project/maul-vfx/pull/339)).
+- **Shapes touching face to face are found touching.** Where two flat
+  faces lay in one plane and touched along an edge, the search could
+  end on a point far from the true one and report them apart by up to
+  0.04, so a contact at a margin of 0.01 was missed. It now keeps the
+  nearer answer. In a million box pairs checked against an exact
+  answer, 119 touching pairs were missed before and none now. The GPU
+  part does the same
+  ([#341](https://github.com/Rawframe-Project/maul-vfx/pull/341)).
 
 ## [0.14.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.13.0...v0.14.0) (2026-11-08)
 
