@@ -449,10 +449,9 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
         "hulls resting on a box 1e6 in half size");
     // The same hulls, each at rest 0.3 over the middle of a box of its own,
     // 16 across and 4 deep, its top face at 0: GJK's triangles of a box's
-    // corners and a hull's, 10 and more reaches out, are slivers whose
-    // nearest point binary32 weights missed by thousandths of a reach,
-    // stopping the search short and flinging bodies sideways at speeds
-    // past 100.
+    // corners and a hull's, 10 and more reaches out, are slivers, whose
+    // nearest point the GPU part takes as the origin's projection onto
+    // their plane.
     mvfxCollider tables[4];
     for (int32_t b = 0; b < 4; ++b)
     {
