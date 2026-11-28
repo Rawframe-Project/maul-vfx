@@ -6,6 +6,14 @@ Added, Changed, Fixed, Removed and Security. The project uses
 may change the API, the ABI, the effect file format and the
 simulation's results.
 
+## [0.14.1](https://github.com/Rawframe-Project/maul-vfx/compare/v0.14.0...v0.14.1) (2026-11-28)
+
+
+### Fixed
+
+* **collide:** keep GJK's nearer simplex when a step falls in line ([#341](https://github.com/Rawframe-Project/maul-vfx/issues/341)) ([6eaa27e](https://github.com/Rawframe-Project/maul-vfx/commit/6eaa27e954392a2efc28510969ac95e7ba124b91)), closes [#313](https://github.com/Rawframe-Project/maul-vfx/issues/313)
+* **collide:** search a hull against an unturned box in its neighbourhood ([#339](https://github.com/Rawframe-Project/maul-vfx/issues/339)) ([2113d44](https://github.com/Rawframe-Project/maul-vfx/commit/2113d449d1bd104f1741cab2626644acf8b34d16)), closes [#331](https://github.com/Rawframe-Project/maul-vfx/issues/331) [#329](https://github.com/Rawframe-Project/maul-vfx/issues/329)
+
 ## [0.14.0](https://github.com/Rawframe-Project/maul-vfx/compare/v0.13.0...v0.14.0) (2026-11-08)
 
 This release bounds what the GPU part's binary32 search of rigid hulls
