@@ -75,6 +75,16 @@ void mvfxBoxPolytope(const float center[3], const float rotation[4], const float
     }
 }
 
+void mvfxBoxPolytopeOf(const float corners[8][3], const float planes[6][4], mvfxPolytope* out)
+{
+    out->vertexCount = 8;
+    out->faceCount = 6;
+    out->faceStart = s_boxStart;
+    out->loop = s_boxLoop;
+    memcpy(out->vertices, corners, 8 * sizeof corners[0]);
+    memcpy(out->planes, planes, 6 * sizeof planes[0]);
+}
+
 void mvfxHullPolytope(const mvfxHull* hull, const float scale[3], const float x[3],
                       const float q[4], mvfxPolytope* out)
 {

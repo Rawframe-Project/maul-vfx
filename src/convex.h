@@ -29,6 +29,11 @@ typedef struct mvfxPolytope
 void mvfxBoxPolytope(const float center[3], const float rotation[4], const float low[3],
                      const float high[3], mvfxPolytope* out);
 
+// A box from its corners (corner i with bit k set for the high side along
+// the box's axis k) and its faces' planes (+X, -X, +Y, -Y, +Z and -Z of
+// its frame), as mvfxClipTurnedBox makes them.
+void mvfxBoxPolytopeOf(const float corners[8][3], const float planes[6][4], mvfxPolytope* out);
+
 // A hull scaled along its axes, turned by q and moved to x.
 void mvfxHullPolytope(const mvfxHull* hull, const float scale[3], const float x[3],
                       const float q[4], mvfxPolytope* out);

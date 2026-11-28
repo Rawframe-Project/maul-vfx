@@ -31,4 +31,16 @@ void mvfxBoxBoxContacts(const mvfxBodyPose* b, const mvfxBodyShape* s,
 MVFX_NODISCARD bool mvfxClipBox(const mvfxResolvedCollider* c, const float x[3], float r,
                                 float low[3], float high[3]);
 
+// The part of a box collider the particles' space turns that a hull body
+// of reach r at x can meet, clipped as mvfxClipBox clips an unturned one
+// in the box's own frame: x taken into it, and the clip's corners and
+// faces turned back, in binary64 until each is rounded near the body, so
+// the box's size sets neither the search's tolerances nor how finely its
+// faces near the body are held. Corner i has bit k set for the high side
+// along the box's axis k; the planes are the faces' outward unit normals
+// and offsets (n . x = d on a face), +X, -X, +Y, -Y, +Z and -Z of the
+// box's frame. Returns false where the clip is empty.
+MVFX_NODISCARD bool mvfxClipTurnedBox(const mvfxResolvedCollider* c, const float x[3], float r,
+                                      float corners[8][3], float planes[6][4]);
+
 #endif
