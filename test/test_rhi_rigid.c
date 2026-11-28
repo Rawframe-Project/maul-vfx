@@ -24,7 +24,8 @@
 // keeps them within; spheres, capsules, boxes and hulls on heightfields
 // and distance grids, the emitter's and the instance's, and on a depth
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
-// they are kept out of, and born into a box; hulls of no width placed in
+// they are kept out of, at rest over the middles of boxes 16 across, and
+// born into a box; hulls of no width placed in
 // a box; capsules of the largest size on grids; bodies near the ends of
 // sizes and densities, in their own units, tumbling and thrown on a
 // floor; capsules and boxes 1e-8 of their length across landing on a
@@ -446,6 +447,29 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
         &(Run){
             .mostApart = 4, .emitters = &emitter, .spawn = &resting, .least = -1, .mesh = &s_hull},
         "hulls resting on a box 1e6 in half size");
+    // The same hulls, each at rest 0.3 over the middle of a box of its own,
+    // 16 across and 4 deep, its top face at 0: GJK's triangles of a box's
+    // corners and a hull's, 10 and more reaches out, are slivers, whose
+    // nearest point the GPU part takes as the origin's projection onto
+    // their plane.
+    mvfxCollider tables[4];
+    for (int32_t b = 0; b < 4; ++b)
+    {
+        tables[b] = (mvfxCollider){.kind = mvfx_colliderBox,
+                                   .center = {20.0f * (float)b, -2.0f, 0},
+                                   .halfExtents = {8.0f, 2.0f, 8.0f},
+                                   .rotation = {0, 0, 0, 1}};
+    }
+    static const double over[12] = {0, 0.3, 0, 20, 0.3, 0, 40, 0.3, 0, 60, 0.3, 0};
+    static const mvfxSpawnRequest onTables = {.count = 4, .positions = over, .velocities = still};
+    emitter = Thrown(mvfx_rigidHull, tables, 4);
+    emitter.rate = 0.0f;
+    emitter.burstCount = 0;
+    emitter.hostSpawnCapacity = 8;
+    Met(gpu, kernels,
+        &(Run){
+            .mostApart = 4, .emitters = &emitter, .spawn = &onTables, .least = -1, .mesh = &s_hull},
+        "hulls resting on the middles of boxes 8 in half size");
     // Hulls at the edge of MVFX_MAX_HULL_REACH (2^28): two of size 2.95e5,
     // 1.5104e8 in half size and reaching 2.5% short of it, placed upright
     // 16 above the origin and moving down at 1e4 (binary32's places 16

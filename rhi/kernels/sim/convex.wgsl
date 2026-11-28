@@ -117,12 +117,13 @@ fn support(a: Poly, b: Poly, d: vec3<f32>) -> Point {
     return Point(polyVertex(a, i) - polyVertex(b, j), i, j);
 }
 
-// A simplex of the difference and the weights of its point nearest the
-// origin.
+// A simplex of the difference, the weights of its point nearest the
+// origin, and that point.
 struct Simplex {
     p: array<Point, 4>,
     weight: array<f32, 4>,
     count: u32,
+    point: vec3<f32>,
 }
 
 // Keeps n of the simplex's points, i, j and k in order, with weights.
@@ -137,6 +138,11 @@ fn keepPoints(s: ptr<function, Simplex>, i: u32, j: u32, k: u32, weight: vec3<f3
     (*s).weight[1] = weight.y;
     (*s).weight[2] = weight.z;
     (*s).count = n;
+    var v = vec3<f32>(0.0);
+    for (var m = 0u; m < n; m++) {
+        v += (*s).weight[m] * (*s).p[m].w;
+    }
+    (*s).point = v;
 }
 
 // The nearest point to the origin of segment i j, kept.
@@ -185,18 +191,30 @@ fn triangle(s: ptr<function, Simplex>, i: u32, j: u32, k: u32) {
         // No area: an edge stands for it.
         segment(s, i, j);
     } else {
-        let sum = va + vb + vc;
-        keepPoints(s, i, j, k, vec3<f32>(va / sum, vb / sum, vc / sum), 3u);
+        // Inside: the origin's projection onto the plane, and its weights
+        // by the areas it parts the triangle into. Weights from products
+        // of dot products, summed over corners 10 or more reaches out,
+        // miss it by thousandths of a reach in binary32 on a sliver (a
+        // box's corners with a hull's) and stop GJK short, apart.
+        let n = cross(ab, ac);
+        let p = (dot3(a, n) / dot3(n, n)) * n;
+        let wa = dot3(n, cross(b - p, c - p));
+        let wb = dot3(n, cross(c - p, a - p));
+        let wc = dot3(n, cross(a - p, b - p));
+        let total = wa + wb + wc;
+        if (total > 0.0) {
+            keepPoints(s, i, j, k, vec3<f32>(wa, wb, wc) / total, 3u);
+            (*s).point = p;
+        } else {
+            let sum = va + vb + vc;
+            keepPoints(s, i, j, k, vec3<f32>(va / sum, vb / sum, vc / sum), 3u);
+        }
     }
 }
 
-// The weighted point of the simplex.
+// The simplex's point nearest the origin, as its region found it.
 fn pointOf(s: Simplex) -> vec3<f32> {
-    var v = vec3<f32>(0.0);
-    for (var i = 0u; i < s.count; i++) {
-        v += s.weight[i] * s.p[i].w;
-    }
-    return v;
+    return s.point;
 }
 
 // The nearest point to the origin of the tetrahedron: of each face the
@@ -271,6 +289,7 @@ fn gjk(a: Poly, b: Poly, s: ptr<function, Simplex>, v: ptr<function, vec3<f32>>,
             (*s).p[0] = p;
             (*s).weight[0] = 1.0;
             (*s).count = 1u;
+            (*s).point = p.w;
             *v = p.w;
             reach = dot3(p.w, p.w);
             continue;
