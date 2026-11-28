@@ -201,23 +201,6 @@ static void Colliders(const mvfxEmitterPlan* plan, const uint32_t (*grids)[5], b
     }
 }
 
-void mvfxColliderWords(const mvfxPlannedCollider* collider, const uint32_t grid[5],
-                       uint32_t words[MVFX_COLLIDER_WORDS])
-{
-    memset(words, 0, MVFX_COLLIDER_WORDS * sizeof(uint32_t));
-    words[0] = collider->kind;
-    words[1] = collider->inside ? 1u : 0u;
-    mvfxFloatWords(words + 4, collider->center[0], collider->center[1], collider->center[2],
-                   collider->radius);
-    mvfxFloatWords(words + 8, collider->normal[0], collider->normal[1], collider->normal[2], 0.0f);
-    mvfxFloatWords(words + 12, collider->halfExtents[0], collider->halfExtents[1],
-                   collider->halfExtents[2], 0.0f);
-    memcpy(words + 16, collider->rotation, 4 * sizeof(float));
-    memcpy(words + 20, grid, 4 * sizeof(uint32_t));
-    words[24] = grid[4];
-    mvfxFloatWords(words + 28, collider->scale, collider->grow, 0.0f, 0.0f);
-}
-
 mvfxStepSpans mvfxStepSpansOf(const mvfxEmitterPlan* plan, bool beam)
 {
     return (mvfxStepSpans){

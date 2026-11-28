@@ -1083,14 +1083,15 @@ static void TestLargestReach(void)
 }
 
 // Lopsided hulls 0.1 to 0.5 across, turned any way, let go at rest 0.3
-// above a box collider of half size h centered h below the origin, so
-// its top face is at 0 for every h; their records after 45 steps.
-static int32_t OnBoxOf(float h, TestParticle out[8])
+// above a box collider of half size h centered h below the origin, turned
+// about Y by rotation, so its top face is at 0 for every h; their records
+// after 45 steps.
+static int32_t OnBoxOf(float h, const float rotation[4], TestParticle out[8])
 {
     const mvfxCollider box = {.kind = mvfx_colliderBox,
                               .center = {0, -h, 0},
                               .halfExtents = {h, h, h},
-                              .rotation = {0, 0, 0, 1}};
+                              .rotation = {rotation[0], rotation[1], rotation[2], rotation[3]}};
     static const float size[3] = {0.1f, 0.1f, 0.1f};
     static const float turn[3] = {0, 0, 0};
     static const double above[12] = {0.3, 0.3, 0, -0.3, 0.3, 0, 0, 0.3, 0.3, 0, 0.3, -0.3};
@@ -1109,26 +1110,35 @@ static int32_t OnBoxOf(float h, TestParticle out[8])
 
 static void TestLargeBox(void)
 {
-    // A hull's search against a box the particles' space does not turn
-    // takes the box clipped to the hull's neighbourhood, so the bodies
-    // meet a box of half size 1e6 (MVFX_MAX_EXTENT) with the same bits as
-    // one of 10: the clipped boxes are the same.
-    TestParticle small[8];
-    TestParticle large[8];
-    int32_t count = OnBoxOf(10.0f, small);
-    CHECK(count == 4 && OnBoxOf(1e6f, large) == 4, "four bodies on each box");
-    bool landed = true;
-    bool same = true;
-    for (int32_t i = 0; i < 4 && count == 4; ++i)
+    // A hull's search against a box takes the box clipped to the hull's
+    // neighbourhood, in the particles' space where it does not turn the
+    // box and in the box's frame where it does, so the bodies meet a box
+    // of half size 1e6 (MVFX_MAX_EXTENT) with the same bits as one of 10:
+    // the clipped boxes are the same.
+    static const float still[4] = {0, 0, 0, 1};
+    // 0.02 about Y.
+    static const float turned[4] = {0, 0.0099998333f, 0, 0.99995f};
+    for (int32_t t = 0; t < 2; ++t)
     {
-        landed = landed && small[i].position[1] > 0.0f && small[i].position[1] < 0.29f;
-        same = same &&
-               memcmp(small[i].position, large[i].position, sizeof small[i].position) == 0 &&
-               memcmp(small[i].velocity, large[i].velocity, sizeof small[i].velocity) == 0 &&
-               memcmp(small[i].orientation, large[i].orientation, sizeof small[i].orientation) == 0;
+        TestParticle small[8];
+        TestParticle large[8];
+        const float* rotation = t == 0 ? still : turned;
+        int32_t count = OnBoxOf(10.0f, rotation, small);
+        CHECK(count == 4 && OnBoxOf(1e6f, rotation, large) == 4, "four bodies on each box");
+        bool landed = true;
+        bool same = true;
+        for (int32_t i = 0; i < 4 && count == 4; ++i)
+        {
+            landed = landed && small[i].position[1] > 0.0f && small[i].position[1] < 0.29f;
+            same = same &&
+                   memcmp(small[i].position, large[i].position, sizeof small[i].position) == 0 &&
+                   memcmp(small[i].velocity, large[i].velocity, sizeof small[i].velocity) == 0 &&
+                   memcmp(small[i].orientation, large[i].orientation,
+                          sizeof small[i].orientation) == 0;
+        }
+        CHECK(landed, t == 0 ? "the hulls landed on the box" : "and on the turned box");
+        CHECK(same, t == 0 ? "on a box of 1e6 as on one of 10, bit for bit" : "and turned");
     }
-    CHECK(landed, "the hulls landed on the box");
-    CHECK(same, "on a box of 1e6 as on one of 10, bit for bit");
 }
 
 static void TestChecks(void)

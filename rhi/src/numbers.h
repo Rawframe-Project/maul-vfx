@@ -19,7 +19,8 @@ double mvfxExpMinus(double x);
 // A collider's words as the kernels read them
 // (shared/collider_numbers.wgsl): its kind and inside; center and radius;
 // normal; half extents; rotation; its grid (first word, size), the grid's
-// format; its scale and grow; the words between them 0.
+// format, or a box's faces' offsets in their words (it has no grid); its
+// scale and grow; the words between them 0.
 #define MVFX_COLLIDER_WORDS 32
 void mvfxColliderWords(const mvfxPlannedCollider* collider, const uint32_t grid[5],
                        uint32_t words[MVFX_COLLIDER_WORDS]);

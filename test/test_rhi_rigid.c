@@ -24,8 +24,9 @@
 // keeps them within; spheres, capsules, boxes and hulls on heightfields
 // and distance grids, the emitter's and the instance's, and on a depth
 // image's terraces (and boxes at its wall); hulls on a sphere and a box
-// they are kept out of, at rest over the middles of boxes 16 across, and
-// born into a box; hulls of no width placed in
+// they are kept out of, at rest over the middles of boxes 16 across and
+// on a turned box 1e6 and a tilted one 1e4 in half size, and born into a
+// box; hulls of no width placed in
 // a box; capsules of the largest size on grids; bodies near the ends of
 // sizes and densities, in their own units, tumbling and thrown on a
 // floor; capsules and boxes 1e-8 of their length across landing on a
@@ -470,6 +471,38 @@ static void TestColliders(Gpu* gpu, mvfxGpu* kernels)
         &(Run){
             .mostApart = 4, .emitters = &emitter, .spawn = &onTables, .least = -1, .mesh = &s_hull},
         "hulls resting on the middles of boxes 8 in half size");
+    // The suite's hulls at rest 0.3 above boxes the particles' space
+    // turns, which both paths clip in the box's frame: one of half size 1e6
+    // turned 0.02 about Y, its top face at 0, and one of half size 1e4
+    // tilted 0.1 about the diagonal of X and Z, its top face through the
+    // origin.
+    static const mvfxCollider turnedBoxes[2] = {
+        {.kind = mvfx_colliderBox,
+         .space = mvfx_spaceWorld,
+         .center = {0, -1e6f, 0},
+         .halfExtents = {1e6f, 1e6f, 1e6f},
+         .rotation = {0, 0.0099998333f, 0, 0.99995f}},
+        {.kind = mvfx_colliderBox,
+         .space = mvfx_spaceWorld,
+         .center = {705.92886f, -9950.0417f, -705.92886f},
+         .halfExtents = {1e4f, 1e4f, 1e4f},
+         .rotation = {0.03534061f, 0, 0.03534061f, 0.99875026f}}};
+    static const char* const turnedNames[2] = {"hulls resting on a turned box 1e6 in half size",
+                                               "hulls resting on a tilted box 1e4 in half size"};
+    for (int32_t t = 0; t < 2; ++t)
+    {
+        emitter = Thrown(mvfx_rigidHull, &turnedBoxes[t], 1);
+        emitter.rate = 0.0f;
+        emitter.burstCount = 0;
+        emitter.hostSpawnCapacity = 8;
+        Met(gpu, kernels,
+            &(Run){.mostApart = 4,
+                   .emitters = &emitter,
+                   .spawn = &resting,
+                   .least = -1,
+                   .mesh = &s_hull},
+            turnedNames[t]);
+    }
     // Hulls at the edge of MVFX_MAX_HULL_REACH (2^28): two of size 2.95e5,
     // 1.5104e8 in half size and reaching 2.5% short of it, placed upright
     // 16 above the origin and moving down at 1e4 (binary32's places 16

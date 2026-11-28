@@ -13,18 +13,23 @@ static float Dot(const float a[3], const float b[3])
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
-bool mvfxClipBox(const mvfxResolvedCollider* c, const float x[3], float r, float low[3],
-                 float high[3])
+// How far a clip reaches from a body of reach r: twice the power of two
+// at most 8 r, its exponent bits alone; 0 for a reach of 0.
+static float ClipReach(float r)
 {
-    // Twice the power of two at most 8 r, its exponent bits alone: 0 for
-    // a reach of 0.
     const float eight = 8.0f * r;
     uint32_t bits = 0;
     memcpy(&bits, &eight, sizeof bits);
     bits &= 0x7f800000u;
     float reach = 0.0f;
     memcpy(&reach, &bits, sizeof reach);
-    reach *= 2.0f;
+    return reach * 2.0f;
+}
+
+bool mvfxClipBox(const mvfxResolvedCollider* c, const float x[3], float r, float low[3],
+                 float high[3])
+{
+    const float reach = ClipReach(r);
     bool deep = true;
     for (int32_t k = 0; k < 3; ++k)
     {
@@ -44,6 +49,67 @@ bool mvfxClipBox(const mvfxResolvedCollider* c, const float x[3], float r, float
         meets = meets && low[k] <= high[k];
     }
     return meets;
+}
+
+bool mvfxClipTurnedBox(const mvfxResolvedCollider* c, const float x[3], float r, mvfxPolytope* out)
+{
+    const float reach = ClipReach(r);
+    const float inverse[4] = {-c->rotation[0], -c->rotation[1], -c->rotation[2], c->rotation[3]};
+    const double d[3] = {(double)x[0] - (double)c->center[0], (double)x[1] - (double)c->center[1],
+                         (double)x[2] - (double)c->center[2]};
+    double local[3];
+    mvfxRotateDouble(inverse, d, local);
+    double low[3];
+    double high[3];
+    bool deep = true;
+    for (int32_t k = 0; k < 3; ++k)
+    {
+        low[k] = -(double)c->halfExtents[k];
+        high[k] = (double)c->halfExtents[k];
+        deep = deep && local[k] - low[k] > 2.0 * (double)r && high[k] - local[k] > 2.0 * (double)r;
+    }
+    for (int32_t k = 0; k < 3 && !deep; ++k)
+    {
+        low[k] = fmax(low[k], local[k] - (double)reach);
+        high[k] = fmin(high[k], local[k] + (double)reach);
+        if (!(low[k] <= high[k]))
+        {
+            return false;
+        }
+    }
+    // The box's loops and counts, then its corners and faces in binary64.
+    const float* h = c->halfExtents;
+    const float whole[3] = {-h[0], -h[1], -h[2]};
+    mvfxBoxPolytope(c->center, c->rotation, whole, h, out);
+    for (int32_t i = 0; i < 8; ++i)
+    {
+        double corner[3];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            corner[k] = (i >> k & 1) != 0 ? high[k] : low[k];
+        }
+        double turned[3];
+        mvfxRotateDouble(c->rotation, corner, turned);
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out->vertices[i][k] = (float)(turned[k] + (double)c->center[k]);
+        }
+    }
+    for (int32_t f = 0; f < 6; ++f)
+    {
+        double axis[3] = {0.0, 0.0, 0.0};
+        axis[f / 2] = f % 2 == 0 ? 1.0 : -1.0;
+        double n[3];
+        mvfxRotateDouble(c->rotation, axis, n);
+        double offset = f % 2 == 0 ? high[f / 2] : -low[f / 2];
+        for (int32_t k = 0; k < 3; ++k)
+        {
+            out->planes[f][k] = (float)n[k];
+            offset += n[k] * (double)c->center[k];
+        }
+        out->planes[f][3] = (float)offset;
+    }
+    return true;
 }
 
 static void ToBody(const float q[4], const float v[3], float out[3])
