@@ -2,9 +2,7 @@
 // Copyright (c) 2026 Sirac Ozmen
 //
 // How the device suites open their device, and what they ask of its
-// adapter: the driver a cell names in MVFX_RHI_REQUIRED, and whether it is
-// WARP, D3D12's software adapter, whose shader compiler some checks expect
-// to fail.
+// adapter: the driver a cell names in MVFX_RHI_REQUIRED.
 
 #ifndef MAUL_VFX_TEST_RHI_DRIVER_H
 #define MAUL_VFX_TEST_RHI_DRIVER_H
@@ -63,15 +61,6 @@ static inline bool IsRequiredDriver(mrhiInstance* instance, mrhiAdapterId adapte
         return false;
     }
     return true;
-}
-
-// Whether the adapter is WARP: D3D12's Microsoft Basic Render Driver,
-// vendor 0x1414 and device 0x8C.
-static inline bool IsWarp(mrhiInstance* instance, mrhiAdapterId adapter)
-{
-    mrhiAdapterInfo info;
-    return mrhiAdapter_GetInfo(instance, adapter, &info) == mrhi_success &&
-           info.driver == mrhi_driverD3d12 && info.vendorId == 0x1414u && info.deviceId == 0x8Cu;
 }
 
 // Opens a device as def asks on the first adapter the instance's drivers

@@ -8,8 +8,7 @@
 // arithmetic (rhi/kernels/shared/exact.wgsl, through a test kernel) against
 // the core's: 1 over every significand, drawn quotients, 64-bit counts near
 // rounding ties as binary32, drawn lives' ticks as mvfxDeathTick's, and
-// 64-bit remainders stored over their inputs and eight words apart (the
-// first expected wrong on WARP, the second right everywhere); and the drag
+// 64-bit remainders stored over their inputs and eight words apart; and the drag
 // factors (rhi/kernels/shared/drag.wgsl) against the core's binary64 ones
 // over seven decades of drag times seconds; sheets' air shares and edges'
 // cross products (rhi/kernels/shared/air.wgsl) and gas cells' buoyant
@@ -68,9 +67,6 @@ typedef struct Gpu
 {
     mrhiInstance* instance;
     mrhiDevice* device;
-    // Whether the adapter is WARP, whose JIT gets the in-place remainders
-    // wrong.
-    bool warp;
 } Gpu;
 
 // The checks' device, with room for a frame of them: OpenDevice's result.
@@ -82,7 +78,6 @@ static int Open(Gpu* gpu)
     def.budgets.readbackBytes = 2u * CHECK_BYTES;
     mrhiAdapterId adapter;
     int opened = OpenDevice(def, &gpu->instance, &adapter, &gpu->device);
-    gpu->warp = opened == 0 && IsWarp(gpu->instance, adapter);
     return opened;
 }
 
@@ -451,6 +446,26 @@ static uint32_t Draw(uint64_t* state)
     return (uint32_t)(*state >> 32u);
 }
 
+// 64 drawn bits, the high word drawn first. Each draw is a statement of
+// its own: two draws in one expression or one call's arguments are
+// unsequenced, and clang-cl (the Microsoft ABI) evaluates a call's
+// arguments right to left, so the numbers would differ by platform and
+// from a check that draws them again in order.
+static uint64_t Draw64(uint64_t* state)
+{
+    uint64_t high = Draw(state);
+    uint64_t low = Draw(state);
+    return high << 32u | low;
+}
+
+// A drawn binary32's bits: an exponent field from low up, span of them,
+// drawn first, then a significand.
+static uint32_t DrawFloatBits(uint64_t* state, uint32_t low, uint32_t span)
+{
+    uint32_t exponent = low + Draw(state) % span;
+    return exponent << 23u | (Draw(state) & 0x007FFFFFu);
+}
+
 // 1 over every significand of [1, 2), the core's division: correctly
 // rounded for every significand, so for every exponent the quotient keeps
 // normal.
@@ -477,8 +492,8 @@ static void TestQuotients(Gpu* gpu, Checker* checker)
     for (uint32_t e = 0; e < CHECKS; ++e)
     {
         uint32_t* w = &checker->words[4 * e];
-        w[0] = ((87u + Draw(&state) % 81u) << 23u) | (Draw(&state) & 0x007FFFFFu);
-        w[1] = ((87u + Draw(&state) % 81u) << 23u) | (Draw(&state) & 0x007FFFFFu);
+        w[0] = DrawFloatBits(&state, 87u, 81u);
+        w[1] = DrawFloatBits(&state, 87u, 81u);
         if (e % 4 == 0)
         {
             w[1] = Bits(1.0f - (float)(Draw(&state) >> 8u) * 0x1p-24f);
@@ -504,8 +519,8 @@ static void TestSmallQuotients(Gpu* gpu, Checker* checker)
     for (uint32_t e = 0; e < CHECKS; ++e)
     {
         uint32_t* w = &checker->words[4 * e];
-        w[0] = ((1u + Draw(&state) % 24u) << 23u) | (Draw(&state) & 0x007FFFFFu);
-        w[1] = ((127u + Draw(&state) % 26u) << 23u) | (Draw(&state) & 0x007FFFFFu);
+        w[0] = DrawFloatBits(&state, 1u, 24u);
+        w[1] = DrawFloatBits(&state, 127u, 26u);
         if (e % 4 == 0)
         {
             w[0] = 0x00800001u | (Draw(&state) & 0x007FFFFEu);
@@ -536,7 +551,7 @@ static void TestConversions(Gpu* gpu, Checker* checker)
     for (uint32_t e = 0; e < CHECKS; ++e)
     {
         uint32_t length = 1u + e % 64u;
-        uint64_t x = ((uint64_t)Draw(&state) << 32u | Draw(&state)) >> (64u - length);
+        uint64_t x = Draw64(&state) >> (64u - length);
         x |= 1ull << (length - 1u);
         if (length > 25u && e % 3 != 0)
         {
@@ -658,7 +673,7 @@ static void PutPair(uint32_t* w, uint64_t first, uint64_t second)
 static uint64_t DrawBits(uint64_t* state, uint32_t bits)
 {
     uint32_t length = 1u + Draw(state) % bits;
-    uint64_t x = ((uint64_t)Draw(state) << 32u | Draw(state)) >> (64u - length);
+    uint64_t x = Draw64(state) >> (64u - length);
     return x | 1ull << (length - 1u);
 }
 
@@ -671,7 +686,8 @@ static void TestRemaindersAndRatios(Gpu* gpu, Checker* checker)
     uint64_t state = 5;
     for (uint32_t e = 0; e < CHECKS; ++e)
     {
-        PutPair(&checker->words[4 * e], DrawBits(&state, 64), DrawBits(&state, 48));
+        uint64_t x = DrawBits(&state, 64);
+        PutPair(&checker->words[4 * e], x, DrawBits(&state, 48));
     }
     bool ran = RunChecks(gpu, checker, CHECK_REMAINDERS, 0, CHECKS);
     state = 5;
@@ -693,20 +709,7 @@ static void TestRemaindersAndRatios(Gpu* gpu, Checker* checker)
     {
         printf("%lld of %d remainders wrong\n", (long long)wrong, CHECKS);
     }
-    if (gpu->warp)
-    {
-        // WARP stores the loop's state of this shape, x % d stored over x
-        // after a constant 64 steps, over words it never writes; the
-        // eight-word case below holds remainder64 itself there. Passing
-        // means a WARP without the fault, where this check is to be
-        // strict again.
-        printf("known WARP JIT fault: misplaced stores in a constant 64-step loop\n");
-        CHECK(ran && wrong != 0, "64-bit remainders pass on WARP, whose fault they expect");
-    }
-    else
-    {
-        CHECK(ran && wrong == 0, "64-bit remainders");
-    }
+    CHECK(ran && wrong == 0, "64-bit remainders");
     uint64_t* pairs = calloc(2 * (size_t)CHECKS, sizeof *pairs);
     for (uint32_t e = 0; pairs != NULL && e < CHECKS; ++e)
     {
@@ -735,9 +738,8 @@ static void TestRemaindersAndRatios(Gpu* gpu, Checker* checker)
 }
 
 // The same remainders eight words an element: x and d in, x % d out in
-// words 4 and 5 (not over x), words 6 and 7 a value no step writes. Every
-// device runs it, WARP among them, whose JIT gets the in-place shape
-// wrong; inputs and the untouched words must come back as they went.
+// words 4 and 5 (not over x), words 6 and 7 a value no step writes;
+// inputs and the untouched words must come back as they went.
 static void TestRemaindersApart(Gpu* gpu, Checker* checker)
 {
     const uint32_t count = CHECKS / 2;
@@ -853,8 +855,8 @@ static void TestHeldSpeeds(Gpu* gpu, Checker* checker)
         uint32_t* w = &checker->words[8 * e];
         for (int32_t k = 0; k < 3; ++k)
         {
-            float drawn =
-                ldexpf((float)Draw(&state) / 4294967296.0f - 0.5f, (int32_t)(Draw(&state) % 42u));
+            float scale = (float)Draw(&state) / 4294967296.0f - 0.5f;
+            float drawn = ldexpf(scale, (int32_t)(Draw(&state) % 42u));
             w[k] = Bits(e < SPECIAL ? special[e][k] : drawn);
         }
         w[3] = Bits(e < SPECIAL ? 1e9f : ldexpf(1e3f, (int32_t)(Draw(&state) % 20u)));
